@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Data & secrets
+data/
+*.db
+*.sqlite
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Mobile
+ui/mobile/node_modules/
+ui/mobile/.expo/
+ui/mobile/android/.gradle/
+ui/mobile/android/build/
+ui/mobile/ios/Pods/
+ui/mobile/ios/build/
+
+# Web
+ui/web/node_modules/
+ui/web/dist/
+ui/web/.next/
