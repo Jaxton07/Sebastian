@@ -3,7 +3,6 @@ import { AppState } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { createSSEConnection } from '../api/sse';
 import { useSessionStore } from '../store/session';
-// @ts-ignore - TODO: Remove in Task 10
 import { useAgentsStore } from '../store/agents';
 import { useSettingsStore } from '../store/settings';
 import type { SSEEvent, TurnDeltaData, AgentDeltaData } from '../types';
