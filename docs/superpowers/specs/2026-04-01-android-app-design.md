@@ -137,6 +137,18 @@ ui/mobile/
 **两页共用组件**：`Sidebar`、`MessageList`、`MessageBubble`、`StreamingBubble`、`MessageInput`
 **数据源区别**：对话页连接 Session 消息流，SubAgents 页连接 Agent 输出流（`GET /api/v1/agents/{id}/stream`）
 
+### 5.4 输入框状态（对话页 & SubAgents 页通用）
+
+`MessageInput` 有两种状态，由 `isWorking` prop 控制：
+
+| 状态 | 触发条件 | 发送按钮 | 回车键 | 点击发送按钮行为 |
+|------|----------|----------|--------|-----------------|
+| 空闲 | 无进行中任务/输出 | 发送图标 | 发送消息 | 发送消息 |
+| 工作中 | Sebastian 思考/输出/安排 Sub-Agent 中；或 Sub-Agent 正在执行任务中 | 停止图标 | 无效 | 发送停止指令（`POST /api/v1/tasks/{id}/cancel` 或 SSE 中断） |
+
+- 工作中状态下键盘回车键不触发发送
+- 停止按钮点击后立即切换回空闲状态（乐观更新），等待服务端确认
+
 ### 5.3 设置页
 
 - **Server URL**：手动填写，填写后自动测试连通性（`GET /api/v1/health`）
