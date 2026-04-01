@@ -69,3 +69,24 @@ async def test_add_and_get_checkpoints(session) -> None:
     assert len(checkpoints) == 1
     assert checkpoints[0].step == 1
     assert checkpoints[0].data["progress"] == 0.5
+
+
+def test_working_memory_set_get():
+    from sebastian.memory.working_memory import WorkingMemory
+    mem = WorkingMemory()
+    mem.set("task-1", "step", 3)
+    assert mem.get("task-1", "step") == 3
+
+
+def test_working_memory_clear():
+    from sebastian.memory.working_memory import WorkingMemory
+    mem = WorkingMemory()
+    mem.set("task-1", "x", "hello")
+    mem.clear("task-1")
+    assert mem.get("task-1", "x") is None
+
+
+def test_working_memory_default():
+    from sebastian.memory.working_memory import WorkingMemory
+    mem = WorkingMemory()
+    assert mem.get("nonexistent", "key", default="fallback") == "fallback"
