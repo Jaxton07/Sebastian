@@ -1,85 +1,99 @@
 from __future__ import annotations
+
+import importlib
 import os
-import pytest
 from unittest.mock import AsyncMock, patch
 
-# Set env vars before any app imports
+import pytest
+
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
 os.environ.setdefault("SEBASTIAN_JWT_SECRET", "test-secret-key")
 os.environ.setdefault("SEBASTIAN_DATA_DIR", "/tmp/sebastian_test")
 
 
 @pytest.fixture
-def mock_chat():
-    with patch(
-        "sebastian.orchestrator.sebas.Sebastian.chat",
-        new_callable=AsyncMock,
-    ) as m:
-        m.return_value = "Mocked response from Sebastian."
-        yield m
-
-
-@pytest.fixture
-def client(mock_chat, tmp_path):
+def client(tmp_path):
+    from sebastian.core.types import Session
     from sebastian.gateway.auth import hash_password
-    pw_hash = hash_password("testpass")
-    with patch.dict(os.environ, {
-        "SEBASTIAN_OWNER_PASSWORD_HASH": pw_hash,
-        "SEBASTIAN_DATA_DIR": str(tmp_path),
-        "ANTHROPIC_API_KEY": "test-key-not-real",
-        "SEBASTIAN_JWT_SECRET": "test-secret-key",
-    }):
-        # Reload config to pick up patched env vars
-        import importlib
+
+    password_hash = hash_password("testpass")
+    fake_session = Session(agent="sebastian", title="Test session")
+
+    with patch.dict(
+        os.environ,
+        {
+            "SEBASTIAN_OWNER_PASSWORD_HASH": password_hash,
+            "SEBASTIAN_DATA_DIR": str(tmp_path),
+            "ANTHROPIC_API_KEY": "test-key-not-real",
+            "SEBASTIAN_JWT_SECRET": "test-secret-key",
+        },
+    ):
         import sebastian.config as cfg_module
+
         importlib.reload(cfg_module)
 
-        # Patch settings object directly to ensure password hash is set
-        with patch.object(cfg_module.settings, "sebastian_owner_password_hash", pw_hash):
-            from starlette.testclient import TestClient
-            from sebastian.gateway.app import create_app
-            test_app = create_app()
-            with TestClient(test_app, raise_server_exceptions=True) as c:
-                yield c
+        with patch.object(
+            cfg_module.settings, "sebastian_owner_password_hash", password_hash
+        ):
+            with patch(
+                "sebastian.orchestrator.sebas.Sebastian.chat",
+                new_callable=AsyncMock,
+                return_value="Mocked response from Sebastian.",
+            ) as mock_chat:
+                with patch(
+                    "sebastian.orchestrator.sebas.Sebastian.get_or_create_session",
+                    new_callable=AsyncMock,
+                    return_value=fake_session,
+                ):
+                    from sebastian.gateway.app import create_app
+                    from starlette.testclient import TestClient
+
+                    test_app = create_app()
+                    with TestClient(test_app, raise_server_exceptions=True) as test_client:
+                        yield test_client, mock_chat, fake_session
 
 
 def _login(client) -> str:
-    resp = client.post("/api/v1/auth/login", json={"password": "testpass"})
-    assert resp.status_code == 200, resp.text
-    return resp.json()["access_token"]
+    response = client.post("/api/v1/auth/login", json={"password": "testpass"})
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
 
 def test_health_endpoint(client):
-    resp = client.get("/api/v1/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    http_client, _, _ = client
+    response = http_client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 def test_login_success(client):
-    token = _login(client)
+    http_client, _, _ = client
+    token = _login(http_client)
     assert len(token) > 10
 
 
 def test_login_wrong_password(client):
-    resp = client.post("/api/v1/auth/login", json={"password": "wrongpass"})
-    assert resp.status_code == 401
+    http_client, _, _ = client
+    response = http_client.post("/api/v1/auth/login", json={"password": "wrongpass"})
+    assert response.status_code == 401
 
 
 def test_send_turn_requires_auth(client):
-    resp = client.post("/api/v1/turns", json={"message": "hello"})
-    # FastAPI's HTTPBearer returns 403 when no credentials are provided,
-    # but returns 401 on some versions; accept either as "unauthenticated"
-    assert resp.status_code in (401, 403)
+    http_client, _, _ = client
+    response = http_client.post("/api/v1/turns", json={"content": "hello"})
+    assert response.status_code in (401, 403)
 
 
-def test_send_turn_returns_response(client, mock_chat):
-    token = _login(client)
-    resp = client.post(
+def test_send_turn_returns_response(client):
+    http_client, mock_chat, fake_session = client
+    token = _login(http_client)
+    response = http_client.post(
         "/api/v1/turns",
-        json={"message": "Hello Sebastian"},
+        json={"content": "Hello Sebastian"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
+    assert response.status_code == 200, response.text
+    data = response.json()
     assert data["response"] == "Mocked response from Sebastian."
-    assert "session_id" in data
+    assert data["session_id"] == fake_session.id
+    mock_chat.assert_awaited_once_with("Hello Sebastian", fake_session.id)
