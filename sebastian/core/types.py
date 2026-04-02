@@ -20,6 +20,14 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class SessionStatus(StrEnum):
+    """Enumeration of session lifecycle states."""
+
+    ACTIVE = "active"
+    IDLE = "idle"
+    ARCHIVED = "archived"
+
+
 class ToolResult(BaseModel):
     """Result of a tool execution."""
 
@@ -57,13 +65,32 @@ class Task(BaseModel):
     """Core task representation in the Sebastian system."""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    session_id: str
     goal: str
     plan: TaskPlan | None = None
     status: TaskStatus = TaskStatus.CREATED
     assigned_agent: str = "sebastian"
     parent_task_id: str | None = None
-    checkpoints: list[Checkpoint] = Field(default_factory=list)
     resource_budget: ResourceBudget = Field(default_factory=ResourceBudget)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
+
+
+class Session(BaseModel):
+    """Conversation session that owns messages and child tasks."""
+
+    id: str = Field(
+        default_factory=lambda: (
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+            + "_"
+            + uuid.uuid4().hex[:6]
+        )
+    )
+    agent: str
+    title: str
+    status: SessionStatus = SessionStatus.ACTIVE
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    task_count: int = 0
+    active_task_count: int = 0
