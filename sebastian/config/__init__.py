@@ -46,13 +46,21 @@ class Settings(BaseSettings):
         data_path = Path(self.sebastian_data_dir)
         return f"sqlite+aiosqlite:///{data_path}/sebastian.db"
 
+    @property
+    def sessions_dir(self) -> Path:
+        return Path(self.sebastian_data_dir) / "sessions"
+
 
 settings = Settings()
 
 
 def ensure_data_dir() -> None:
-    """Create the data directory. Call once at application startup."""
-    Path(settings.sebastian_data_dir).mkdir(parents=True, exist_ok=True)
+    """Create the data directory and sessions subdirectories."""
+    data = Path(settings.sebastian_data_dir)
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "sessions").mkdir(exist_ok=True)
+    (data / "sessions" / "sebastian").mkdir(exist_ok=True)
+    (data / "sessions" / "subagents").mkdir(exist_ok=True)
 
 
 __all__ = ["Settings", "settings", "ensure_data_dir"]

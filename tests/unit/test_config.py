@@ -47,3 +47,11 @@ def test_hash_and_verify_password():
     hashed = hash_password("secretpassword")
     assert verify_password("secretpassword", hashed)
     assert not verify_password("wrongpassword", hashed)
+
+
+def test_sessions_dir_derived_from_data_dir() -> None:
+    from pathlib import Path
+
+    from sebastian.config import settings
+
+    assert settings.sessions_dir == Path(settings.sebastian_data_dir) / "sessions"
