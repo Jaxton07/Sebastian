@@ -794,17 +794,25 @@ Sebastian 继承这些**设计经验**，不继承代码。重要改进点：
 
 ### Phase 1 — 核心引擎（独立仓库起步）
 
-目标：能对话、能执行工具、任务持久化、Android App 可以连上
+目标：能对话、能执行工具、Session 文件持久化、Android App 可以连上
 
+**已完成（旧 spec 实现，保留）：**
 - BaseAgent + Agent Loop（asyncio）
-- Sebastian 主管家（对话平面 + 任务平面 + Event Bus）
+- Sebastian 主管家（非阻塞对话路径 + 异步任务路径 + Event Bus）
 - Capability Bus：`capabilities/tools/` 扫描注册，基础工具（shell、file、web_search）
 - MCP Client 基础实现，`capabilities/mcps/` 扫描加载
-- Task Store（SQLite + SQLAlchemy + 检查点）
-- Gateway（FastAPI + SSE + REST API）
-- JWT 认证（Owner 密码登录）
-- Android App（对话界面 + 任务列表 + SSE 接收 + FCM 推送）
-- Docker Compose 单机部署
+- Gateway 框架（FastAPI + SSE + JWT 认证）
+- Android App 骨架（Chat 页、SubAgents 页、SSE 接收、FCM 推送）
+
+**待完成（新 spec 对齐）：**
+- 文件存储层：`data/sessions/` 目录结构、`index.json` 索引维护、Session/Task 读写（替换 SQLite TurnRecord/TaskRecord）
+- Session 一等公民：SessionStore（meta.json + messages.jsonl + tasks/）
+- Task 归属 Session：Task 增加 `session_id`，checkpoint 改为 JSONL 文件
+- Gateway 路由重构：以 Session 为中心（`/sessions`、`/sessions/{id}/turns`、`/agents/{agent}/sessions`）
+- `user.intervened` 事件实现（SubAgent 纠偏通道）
+- Android App 补齐：SubAgents 页改为 Session 列表督导面板、Session 详情页（消息流 + Task 进度 + 纠偏输入）、SessionMeta 字段补全
+- ApprovalModal 接入 approvals 流程
+- Docker Compose 单机部署（Phase 1 收尾）
 
 ### Phase 2 — Multi-Agent + 记忆系统
 
