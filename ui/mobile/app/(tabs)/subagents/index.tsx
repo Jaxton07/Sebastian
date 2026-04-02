@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAgentsStore } from '../../../src/store/agents';
 import { useAgents } from '../../../src/hooks/useAgents';
 import { sendAgentCommand, cancelAgent } from '../../../src/api/agents';
@@ -10,13 +11,18 @@ import { MessageList } from '../../../src/components/chat/MessageList';
 import { MessageInput } from '../../../src/components/chat/MessageInput';
 
 export default function SubAgentsScreen() {
+  const insets = useSafeAreaInsets();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentAgentId, streamingOutput, isWorking, setCurrentAgent } = useAgentsStore();
   const { data: agents = [] } = useAgents();
 
   async function handleSend(text: string) {
     if (!currentAgentId) return;
-    await sendAgentCommand(currentAgentId, text);
+    try {
+      await sendAgentCommand(currentAgentId, text);
+    } catch {
+      Alert.alert('发送失败，请重试');
+    }
   }
 
   async function handleStop() {
@@ -26,6 +32,12 @@ export default function SubAgentsScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity style={styles.menuButton} onPress={() => setSidebarOpen(true)}>
+          <Text style={styles.menuIcon}>☰</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Sub-Agents</Text>
+      </View>
       {!currentAgentId ? (
         <EmptyState message="从左侧选择一个 Sub-Agent 查看输出" />
       ) : (
@@ -43,4 +55,28 @@ export default function SubAgentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({ container: { flex: 1 } });
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    minHeight: 48,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  menuButton: {
+    padding: 8,
+  },
+  menuIcon: {
+    fontSize: 20,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 36,
+  },
+});

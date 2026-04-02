@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionStore } from '../../../src/store/session';
 import { useMessages } from '../../../src/hooks/useMessages';
 import { useSessions } from '../../../src/hooks/useSessions';
-import { useSSE } from '../../../src/hooks/useSSE';
 import { sendTurn, cancelTurn } from '../../../src/api/turns';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../../../src/components/common/Sidebar';
@@ -13,7 +13,7 @@ import { MessageList } from '../../../src/components/chat/MessageList';
 import { MessageInput } from '../../../src/components/chat/MessageInput';
 
 export default function ChatScreen() {
-  useSSE();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentSessionId, draftSession, streamingMessage, setCurrentSession, startDraft, persistSession } = useSessionStore();
@@ -22,11 +22,15 @@ export default function ChatScreen() {
   const isWorking = !!streamingMessage;
 
   async function handleSend(text: string) {
-    const { sessionId } = await sendTurn(currentSessionId, text);
-    if (!currentSessionId) {
-      persistSession({ id: sessionId, title: text.slice(0, 30), createdAt: new Date().toISOString() });
+    try {
+      const { sessionId } = await sendTurn(currentSessionId, text);
+      if (!currentSessionId) {
+        persistSession({ id: sessionId, title: text.slice(0, 30), createdAt: new Date().toISOString() });
+      }
+      queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
+    } catch {
+      Alert.alert('发送失败，请重试');
     }
-    queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
   }
 
   async function handleStop() {
@@ -37,6 +41,12 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity style={styles.menuButton} onPress={() => setSidebarOpen(true)}>
+          <Text style={styles.menuIcon}>☰</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>对话</Text>
+      </View>
       {isEmpty ? (
         <EmptyState message="发送消息开始对话" />
       ) : (
@@ -56,4 +66,28 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({ container: { flex: 1 } });
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    minHeight: 48,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  menuButton: {
+    padding: 8,
+  },
+  menuIcon: {
+    fontSize: 20,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 36,
+  },
+});
