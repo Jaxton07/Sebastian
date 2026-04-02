@@ -1,16 +1,21 @@
 from __future__ import annotations
-"""Module-level singletons initialized at startup via app lifespan."""
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sebastian.orchestrator.sebas import Sebastian
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from sebastian.gateway.sse import SSEManager
-    from sebastian.protocol.events.bus import EventBus
     from sebastian.orchestrator.conversation import ConversationManager
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sebastian.orchestrator.sebas import Sebastian
+    from sebastian.protocol.events.bus import EventBus
+    from sebastian.store.index_store import IndexStore
+    from sebastian.store.session_store import SessionStore
 
 sebastian: "Sebastian"
 sse_manager: "SSEManager"
 event_bus: "EventBus"
 conversation: "ConversationManager"
-session_factory: "async_sessionmaker[AsyncSession]"
+session_store: "SessionStore"
+index_store: "IndexStore"
+db_factory: "async_sessionmaker[AsyncSession]"

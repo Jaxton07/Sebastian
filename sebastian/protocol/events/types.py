@@ -27,6 +27,7 @@ class EventType(StrEnum):
 
     # User interaction
     USER_INTERRUPTED = "user.interrupted"
+    USER_INTERVENED = "user.intervened"
     USER_APPROVAL_REQUESTED = "user.approval_requested"
     USER_APPROVAL_GRANTED = "user.approval_granted"
     USER_APPROVAL_DENIED = "user.approval_denied"
