@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiofiles
 
 from sebastian.core.types import Session
 
 INDEX_FILE = "index.json"
-_LOCK = asyncio.Lock()
+_LOCKS_BY_PATH: dict[Path, asyncio.Lock] = {}
 
 
 class IndexStore:
@@ -18,6 +20,7 @@ class IndexStore:
 
     def __init__(self, sessions_dir: Path) -> None:
         self._path = sessions_dir / INDEX_FILE
+        self._lock = _LOCKS_BY_PATH.setdefault(self._path.resolve(), asyncio.Lock())
 
     async def _read(self) -> list[dict[str, Any]]:
         if not self._path.exists():
@@ -29,11 +32,13 @@ class IndexStore:
 
     async def _write(self, sessions: list[dict[str, Any]]) -> None:
         payload = json.dumps({"version": 1, "sessions": sessions}, default=str)
-        async with aiofiles.open(self._path, "w") as file:
+        temp_path = self._path.with_name(f"{self._path.name}.{uuid4().hex}.tmp")
+        async with aiofiles.open(temp_path, "w") as file:
             await file.write(payload)
+        os.replace(temp_path, self._path)
 
     async def upsert(self, session: Session) -> None:
-        async with _LOCK:
+        async with self._lock:
             sessions = await self._read()
             entry = {
                 "id": session.id,
@@ -55,7 +60,7 @@ class IndexStore:
         return [session for session in await self._read() if session["agent"] == agent]
 
     async def remove(self, session_id: str) -> None:
-        async with _LOCK:
+        async with self._lock:
             sessions = await self._read()
             sessions = [session for session in sessions if session["id"] != session_id]
             await self._write(sessions)

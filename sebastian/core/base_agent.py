@@ -46,12 +46,21 @@ class BaseAgent(ABC):
         user_message: str,
         session_id: str,
         task_id: str | None = None,
+        agent_name: str | None = None,
     ) -> str:
-        turns = await self._episodic.get_turns(session_id, agent=self.name, limit=20)
+        agent_context = agent_name or self.name
+        turns = await self._episodic.get_turns(session_id, agent=agent_context, limit=20)
         messages: list[dict[str, str]] = [
             {"role": turn.role, "content": turn.content} for turn in turns
         ]
         messages.append({"role": "user", "content": user_message})
+
+        await self._episodic.add_turn(
+            session_id,
+            "user",
+            user_message,
+            agent=agent_context,
+        )
 
         response = await self._loop.run(
             system_prompt=self.system_prompt,
@@ -59,11 +68,10 @@ class BaseAgent(ABC):
             task_id=task_id,
         )
 
-        await self._episodic.add_turn(session_id, "user", user_message, agent=self.name)
         await self._episodic.add_turn(
             session_id,
             "assistant",
             response,
-            agent=self.name,
+            agent=agent_context,
         )
         return response

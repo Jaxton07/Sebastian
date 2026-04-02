@@ -74,6 +74,30 @@ async def send_turn_to_session(
     }
 
 
+@router.post("/sessions/{session_id}/intervene")
+async def intervene_session(
+    session_id: str,
+    body: SendTurnBody,
+    agent: str,
+    _auth: dict = Depends(require_auth),
+) -> dict:
+    import sebastian.gateway.state as state
+
+    session = await state.session_store.get_session(session_id, agent)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    response = await state.sebastian.intervene(agent, session_id, body.content)
+    session.updated_at = datetime.now(timezone.utc)
+    await state.session_store.update_session(session)
+    await state.index_store.upsert(session)
+    return {
+        "session_id": session_id,
+        "response": response,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/sessions/{session_id}/tasks")
 async def list_session_tasks(
     session_id: str,

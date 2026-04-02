@@ -2,15 +2,11 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { createSSEConnection } from '../api/sse';
-import { useAgentsStore } from '../store/agents';
 import { useSessionStore } from '../store/session';
 import { useSettingsStore } from '../store/settings';
 import type {
-  AgentDeltaData,
   Approval,
-  ApprovalRequiredData,
   SSEEvent,
-  TurnDeltaData,
 } from '../types';
 
 const MAX_RETRIES = 3;
@@ -30,24 +26,31 @@ export function useSSE(options?: UseSSEOptions) {
   function handleEvent(event: SSEEvent) {
     retryCount.current = 0;
 
-    if (event.type === 'turn.delta') {
-      const data = event.data as TurnDeltaData;
-      useSessionStore.getState().appendStreamingDelta(data.delta);
-    } else if (event.type === 'turn.done') {
+    if (event.type === 'turn.response') {
       useSessionStore.getState().clearStreaming();
       queryClient.invalidateQueries({ queryKey: ['messages'] });
-    } else if (event.type === 'agent.delta') {
-      const data = event.data as AgentDeltaData;
-      useAgentsStore.getState().appendAgentDelta(data.agentId, data.delta);
-    } else if (event.type === 'agent.done') {
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
     } else if (event.type.startsWith('task.')) {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['session-tasks'] });
-    } else if (event.type === 'approval.required') {
-      const data = event.data as ApprovalRequiredData;
-      approvalHandler?.(data.approval);
+      queryClient.invalidateQueries({ queryKey: ['session-detail'] });
+    } else if (event.type === 'user.approval_requested') {
+      const data = event.data as {
+        approval_id: string;
+        task_id: string;
+        tool_name: string;
+        tool_input: Record<string, unknown>;
+        ts?: string;
+      };
+      approvalHandler?.({
+        id: data.approval_id,
+        taskId: data.task_id,
+        description: `${data.tool_name}: ${JSON.stringify(data.tool_input)}`,
+        requestedAt: data.ts ?? new Date().toISOString(),
+      });
+    } else if (event.type === 'user.intervened') {
+      queryClient.invalidateQueries({ queryKey: ['session-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
     }
   }
 

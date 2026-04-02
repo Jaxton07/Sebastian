@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sebastian.gateway.auth import require_auth
@@ -11,7 +12,7 @@ async def list_approvals(_auth: dict = Depends(require_auth)) -> dict:
     import sebastian.gateway.state as state
     from sqlalchemy import select
     from sebastian.store.models import ApprovalRecord
-    async with state.session_factory() as session:
+    async with state.db_factory() as session:
         result = await session.execute(
             select(ApprovalRecord).where(ApprovalRecord.status == "pending")
         )
@@ -21,10 +22,14 @@ async def list_approvals(_auth: dict = Depends(require_auth)) -> dict:
             {
                 "id": r.id,
                 "task_id": r.task_id,
+                "taskId": r.task_id,
+                "session_id": r.session_id,
                 "tool_name": r.tool_name,
                 "tool_input": r.tool_input,
+                "description": _approval_description(r.tool_name, r.tool_input),
                 "status": r.status,
                 "created_at": r.created_at.isoformat(),
+                "requestedAt": r.created_at.isoformat(),
             }
             for r in records
         ]
@@ -54,7 +59,7 @@ async def deny_approval(
 async def _resolve(approval_id: str, granted: bool, state) -> None:
     from sqlalchemy import select
     from sebastian.store.models import ApprovalRecord
-    async with state.session_factory() as session:
+    async with state.db_factory() as session:
         result = await session.execute(
             select(ApprovalRecord).where(ApprovalRecord.id == approval_id)
         )
@@ -65,3 +70,8 @@ async def _resolve(approval_id: str, granted: bool, state) -> None:
         record.resolved_at = datetime.now(timezone.utc)
         await session.commit()
     await state.conversation.resolve_approval(approval_id, granted)
+
+
+def _approval_description(tool_name: str, tool_input: dict) -> str:
+    rendered_input = json.dumps(tool_input, ensure_ascii=False, sort_keys=True)
+    return f"{tool_name}: {rendered_input}"

@@ -117,3 +117,26 @@ def test_send_turn_to_subagent_session_uses_intervention(client):
     mock_intervene.assert_awaited_once_with(
         "stock", session.id, "Please revise the plan"
     )
+
+
+def test_intervene_endpoint_exists_for_subagent_sessions(client):
+    http_client, _, mock_intervene = client
+    token = _login(http_client)
+
+    import asyncio
+
+    import sebastian.gateway.state as state
+    from sebastian.core.types import Session
+
+    session = Session(agent="stock", title="Review this")
+    asyncio.run(state.session_store.create_session(session))
+    asyncio.run(state.index_store.upsert(session))
+
+    response = http_client.post(
+        f"/api/v1/sessions/{session.id}/intervene?agent=stock",
+        json={"content": "correct this"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["response"] == "Intervened reply"
+    mock_intervene.assert_awaited_with("stock", session.id, "correct this")

@@ -39,8 +39,12 @@ export async function sendTurnToSession(
   content: string,
   agent = 'sebastian',
 ): Promise<{ sessionId: string; response: string }> {
+  const path =
+    agent === 'sebastian'
+      ? `/api/v1/sessions/${sessionId}/turns`
+      : `/api/v1/sessions/${sessionId}/intervene`;
   const { data } = await apiClient.post<{ session_id: string; response: string }>(
-    `/api/v1/sessions/${sessionId}/turns`,
+    path,
     { content },
     { params: { agent } },
   );

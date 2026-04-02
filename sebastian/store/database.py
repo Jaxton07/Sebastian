@@ -40,6 +40,8 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 async def init_db() -> None:
     """Create all tables. Call once at startup."""
+    from sebastian.store import models  # noqa: F401
+
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

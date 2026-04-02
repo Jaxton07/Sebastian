@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     event_bus = bus
     conversation = ConversationManager(event_bus)
-    task_manager = TaskManager(session_store, event_bus)
+    task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
     sebastian_agent = Sebastian(
         registry=registry,

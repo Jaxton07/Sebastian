@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiofiles
 
@@ -15,6 +18,8 @@ from sebastian.core.types import (
     TaskPlan,
     TaskStatus,
 )
+
+_SESSION_LOCKS_BY_PATH: dict[Path, asyncio.Lock] = {}
 
 
 def _session_dir(sessions_dir: Path, session: Session) -> Path:
@@ -42,9 +47,8 @@ class SessionStore:
 
     async def create_session(self, session: Session) -> Session:
         directory = _session_dir(self._dir, session)
-        meta_path = directory / "meta.json"
-        async with aiofiles.open(meta_path, "w") as file:
-            await file.write(session.model_dump_json())
+        async with self._session_lock(session.id, session.agent):
+            await self._write_session_meta(session)
         return session
 
     async def get_session(
@@ -59,10 +63,8 @@ class SessionStore:
         return Session(**json.loads(raw))
 
     async def update_session(self, session: Session) -> None:
-        directory = _session_dir_by_id(self._dir, session.id, session.agent)
-        meta_path = directory / "meta.json"
-        async with aiofiles.open(meta_path, "w") as file:
-            await file.write(session.model_dump_json())
+        async with self._session_lock(session.id, session.agent):
+            await self._write_session_meta(session)
 
     async def append_message(
         self,
@@ -95,11 +97,15 @@ class SessionStore:
         return messages[-limit:]
 
     async def create_task(self, task: Task) -> Task:
-        directory = _session_dir_by_id(self._dir, task.session_id, task.assigned_agent)
-        tasks_dir = directory / "tasks"
-        tasks_dir.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(tasks_dir / f"{task.id}.json", "w") as file:
-            await file.write(task.model_dump_json())
+        async with self._session_lock(task.session_id, task.assigned_agent):
+            directory = _session_dir_by_id(self._dir, task.session_id, task.assigned_agent)
+            tasks_dir = directory / "tasks"
+            tasks_dir.mkdir(parents=True, exist_ok=True)
+            await self._atomic_write_text(
+                tasks_dir / f"{task.id}.json",
+                task.model_dump_json(),
+            )
+            await self._refresh_session_counts_locked(task.session_id, task.assigned_agent)
         return task
 
     async def get_task(
@@ -134,20 +140,24 @@ class SessionStore:
         status: TaskStatus,
         agent: str = "sebastian",
     ) -> None:
-        task = await self.get_task(session_id, task_id, agent)
-        if task is None:
-            return
-        task.status = status
-        task.updated_at = datetime.now(timezone.utc)
-        if status in (
-            TaskStatus.COMPLETED,
-            TaskStatus.FAILED,
-            TaskStatus.CANCELLED,
-        ):
-            task.completed_at = datetime.now(timezone.utc)
-        directory = _session_dir_by_id(self._dir, session_id, agent)
-        async with aiofiles.open(directory / "tasks" / f"{task_id}.json", "w") as file:
-            await file.write(task.model_dump_json())
+        async with self._session_lock(session_id, agent):
+            task = await self.get_task(session_id, task_id, agent)
+            if task is None:
+                return
+            task.status = status
+            task.updated_at = datetime.now(timezone.utc)
+            if status in (
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            ):
+                task.completed_at = datetime.now(timezone.utc)
+            directory = _session_dir_by_id(self._dir, session_id, agent)
+            await self._atomic_write_text(
+                directory / "tasks" / f"{task_id}.json",
+                task.model_dump_json(),
+            )
+            await self._refresh_session_counts_locked(session_id, agent)
 
     async def append_checkpoint(
         self,
@@ -171,6 +181,38 @@ class SessionStore:
         async with aiofiles.open(path) as file:
             lines = await file.readlines()
         return [Checkpoint(**json.loads(line)) for line in lines if line.strip()]
+
+    async def _atomic_write_text(self, path: Path, content: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        async with aiofiles.open(temp_path, "w") as file:
+            await file.write(content)
+        os.replace(temp_path, path)
+
+    def _session_lock(self, session_id: str, agent: str) -> asyncio.Lock:
+        meta_path = (_session_dir_by_id(self._dir, session_id, agent) / "meta.json").resolve()
+        return _SESSION_LOCKS_BY_PATH.setdefault(meta_path, asyncio.Lock())
+
+    async def _write_session_meta(self, session: Session) -> None:
+        directory = _session_dir_by_id(self._dir, session.id, session.agent)
+        await self._atomic_write_text(directory / "meta.json", session.model_dump_json())
+
+    async def _refresh_session_counts_locked(self, session_id: str, agent: str) -> None:
+        session = await self.get_session(session_id, agent)
+        if session is None:
+            return
+        tasks = await self.list_tasks(session_id, agent)
+        terminal_statuses = {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }
+        session.task_count = len(tasks)
+        session.active_task_count = sum(
+            1 for task in tasks if task.status not in terminal_statuses
+        )
+        session.updated_at = datetime.now(timezone.utc)
+        await self._write_session_meta(session)
 
 
 def _task_from_dict(data: dict[str, Any]) -> Task:

@@ -32,7 +32,11 @@ export function createSSEConnection(onEvent: SSEHandler, onError: (err: Error) =
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const event = JSON.parse(line.slice(6)) as SSEEvent;
+              const parsed = JSON.parse(line.slice(6)) as SSEEvent & { event?: string };
+              const event = {
+                type: parsed.type ?? parsed.event,
+                data: parsed.data,
+              } as SSEEvent;
               onEvent(event);
             } catch { /* skip malformed */ }
           }

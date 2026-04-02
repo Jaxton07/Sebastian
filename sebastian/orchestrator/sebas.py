@@ -77,7 +77,7 @@ class Sebastian(BaseAgent):
         return session
 
     async def intervene(self, agent_name: str, session_id: str, message: str) -> str:
-        response = await self.run(message, session_id)
+        response = await self.run(message, session_id, agent_name=agent_name)
         await self._event_bus.publish(
             Event(
                 type=EventType.USER_INTERVENED,

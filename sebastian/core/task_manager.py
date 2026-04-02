@@ -7,6 +7,7 @@ from typing import Awaitable, Callable
 from sebastian.core.types import Task, TaskStatus
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event, EventType
+from sebastian.store.index_store import IndexStore
 from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
@@ -17,13 +18,20 @@ TaskFn = Callable[[Task], Awaitable[None]]
 class TaskManager:
     """Submits tasks for async background execution. Persists to SessionStore."""
 
-    def __init__(self, session_store: SessionStore, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        session_store: SessionStore,
+        event_bus: EventBus,
+        index_store: IndexStore | None = None,
+    ) -> None:
         self._store = session_store
         self._bus = event_bus
+        self._index = index_store
         self._running: dict[str, asyncio.Task] = {}
 
     async def submit(self, task: Task, fn: TaskFn) -> None:
         await self._store.create_task(task)
+        await self._sync_index(task.session_id, task.assigned_agent)
         await self._bus.publish(
             Event(
                 type=EventType.TASK_CREATED,
@@ -43,6 +51,7 @@ class TaskManager:
                 TaskStatus.RUNNING,
                 task.assigned_agent,
             )
+            await self._sync_index(task.session_id, task.assigned_agent)
             await self._bus.publish(
                 Event(type=EventType.TASK_STARTED, data={"task_id": task.id})
             )
@@ -54,6 +63,7 @@ class TaskManager:
                     TaskStatus.COMPLETED,
                     task.assigned_agent,
                 )
+                await self._sync_index(task.session_id, task.assigned_agent)
                 await self._bus.publish(
                     Event(type=EventType.TASK_COMPLETED, data={"task_id": task.id})
                 )
@@ -64,6 +74,7 @@ class TaskManager:
                     TaskStatus.CANCELLED,
                     task.assigned_agent,
                 )
+                await self._sync_index(task.session_id, task.assigned_agent)
                 await self._bus.publish(
                     Event(type=EventType.TASK_CANCELLED, data={"task_id": task.id})
                 )
@@ -75,6 +86,7 @@ class TaskManager:
                     TaskStatus.FAILED,
                     task.assigned_agent,
                 )
+                await self._sync_index(task.session_id, task.assigned_agent)
                 await self._bus.publish(
                     Event(
                         type=EventType.TASK_FAILED,
@@ -95,3 +107,10 @@ class TaskManager:
 
     def is_running(self, task_id: str) -> bool:
         return task_id in self._running
+
+    async def _sync_index(self, session_id: str, agent: str) -> None:
+        if self._index is None:
+            return
+        session = await self._store.get_session(session_id, agent)
+        if session is not None:
+            await self._index.upsert(session)

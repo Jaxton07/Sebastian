@@ -6,8 +6,22 @@ export async function registerDevice(fcmToken: string): Promise<void> {
 }
 
 export async function getApprovals(): Promise<Approval[]> {
-  const { data } = await apiClient.get<Approval[]>('/api/v1/approvals');
-  return data;
+  const { data } = await apiClient.get<{
+    approvals: Array<{
+      id: string;
+      taskId?: string;
+      task_id: string;
+      description: string;
+      requestedAt?: string;
+      created_at: string;
+    }>;
+  }>('/api/v1/approvals');
+  return data.approvals.map((approval) => ({
+    id: approval.id,
+    taskId: approval.taskId ?? approval.task_id,
+    description: approval.description,
+    requestedAt: approval.requestedAt ?? approval.created_at,
+  }));
 }
 
 export async function grantApproval(approvalId: string): Promise<void> {

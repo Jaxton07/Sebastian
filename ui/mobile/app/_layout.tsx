@@ -1,11 +1,12 @@
 import { useEffect, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { registerDevice } from '@/src/api/approvals';
+import { getApprovals, registerDevice } from '@/src/api/approvals';
 import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useApprovalStore } from '@/src/store/approval';
@@ -29,6 +30,15 @@ function AppInit({ children }: { children: ReactNode }) {
   const { load, jwtToken } = useSettingsStore();
   const { pending, grant, deny, setPending } = useApprovalStore();
 
+  async function hydratePendingApproval(): Promise<void> {
+    if (!jwtToken) {
+      setPending(null);
+      return;
+    }
+    const approvals = await getApprovals().catch(() => []);
+    setPending(approvals[0] ?? null);
+  }
+
   useSSE({
     onApprovalRequired: (approval) => setPending(approval),
   });
@@ -48,18 +58,33 @@ function AppInit({ children }: { children: ReactNode }) {
   }, [jwtToken]);
 
   useEffect(() => {
+    void hydratePendingApproval();
+  }, [jwtToken]);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void hydratePendingApproval();
+      }
+    });
     const subscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data as Record<string, string>;
-        if (data?.type === 'approval.required') {
+        if (
+          data?.type === 'approval.required' ||
+          data?.type === 'user.approval_requested'
+        ) {
           router.push('/(tabs)/chat');
         } else if (data?.type?.startsWith('task.')) {
           router.push('/(tabs)/subagents');
         }
       },
     );
-    return () => subscription.remove();
-  }, []);
+    return () => {
+      appStateSubscription.remove();
+      subscription.remove();
+    };
+  }, [jwtToken]);
 
   return (
     <>

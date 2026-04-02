@@ -64,10 +64,30 @@ export interface Approval {
 }
 
 export type SSEEventType =
-  | 'turn.delta' | 'turn.done'
-  | 'agent.delta' | 'agent.done'
-  | 'task.created' | 'task.updated' | 'task.completed' | 'task.failed'
-  | 'approval.required';
+  | 'task.planning_started'
+  | 'task.planning_failed'
+  | 'turn.received'
+  | 'turn.response'
+  | 'task.created'
+  | 'task.started'
+  | 'task.paused'
+  | 'task.resumed'
+  | 'task.completed'
+  | 'task.failed'
+  | 'task.cancelled'
+  | 'agent.delegated'
+  | 'agent.delegated.failed'
+  | 'agent.escalated'
+  | 'agent.result_received'
+  | 'user.approval_requested'
+  | 'user.approval_granted'
+  | 'user.approval_denied'
+  | 'user.intervened'
+  | 'user.interrupted'
+  | 'tool.registered'
+  | 'tool.running'
+  | 'tool.executed'
+  | 'tool.failed';
 
 export interface SSEEvent<T = unknown> {
   type: SSEEventType;

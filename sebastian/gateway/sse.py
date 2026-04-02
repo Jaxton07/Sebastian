@@ -35,6 +35,7 @@ class SSEManager:
                 if event is None:
                     break
                 payload = json.dumps({
+                    "type": event.type.value,
                     "event": event.type.value,
                     "data": event.data | {"ts": event.ts.isoformat()},
                 })
