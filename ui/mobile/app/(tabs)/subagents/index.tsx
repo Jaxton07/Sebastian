@@ -1,54 +1,62 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAgentsStore } from '../../../src/store/agents';
-import { useAgents } from '../../../src/hooks/useAgents';
-import { sendAgentCommand, cancelAgent } from '../../../src/api/agents';
-import { Sidebar } from '../../../src/components/common/Sidebar';
+import { getAgentSessions } from '../../../src/api/sessions';
 import { EmptyState } from '../../../src/components/common/EmptyState';
+import { Sidebar } from '../../../src/components/common/Sidebar';
 import { AgentSidebar } from '../../../src/components/subagents/AgentSidebar';
-import { MessageList } from '../../../src/components/chat/MessageList';
-import { MessageInput } from '../../../src/components/chat/MessageInput';
+import { SessionList } from '../../../src/components/subagents/SessionList';
+import { useAgents } from '../../../src/hooks/useAgents';
+import { useAgentsStore } from '../../../src/store/agents';
+import type { SessionMeta } from '../../../src/types';
 
 export default function SubAgentsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentAgentId, streamingOutput, isWorking, setCurrentAgent } = useAgentsStore();
+  const { currentAgentId, setCurrentAgent } = useAgentsStore();
   const { data: agents = [] } = useAgents();
 
-  async function handleSend(text: string) {
-    if (!currentAgentId) return;
-    try {
-      await sendAgentCommand(currentAgentId, text);
-    } catch {
-      Alert.alert('发送失败，请重试');
-    }
-  }
+  const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
 
-  async function handleStop() {
-    if (!currentAgentId) return;
-    await cancelAgent(currentAgentId);
+  const { data: sessions = [] } = useQuery({
+    queryKey: ['agent-sessions', currentAgentId],
+    queryFn: () => getAgentSessions(selectedAgent?.name ?? ''),
+    enabled: !!currentAgentId && !!selectedAgent,
+  });
+
+  function handleSelectSession(session: SessionMeta) {
+    router.push(`/(tabs)/subagents/session/${session.id}?agent=${session.agent}`);
   }
 
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity style={styles.menuButton} onPress={() => setSidebarOpen(true)}>
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={() => setSidebarOpen(true)}
+        >
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Sub-Agents</Text>
+        <Text style={styles.headerTitle}>
+          {selectedAgent ? selectedAgent.name : 'Sub-Agents'}
+        </Text>
       </View>
       {!currentAgentId ? (
-        <EmptyState message="从左侧选择一个 Sub-Agent 查看输出" />
+        <EmptyState message="从左侧选择一个 Sub-Agent 查看会话" />
       ) : (
-        <MessageList messages={[]} streamingContent={streamingOutput} />
+        <SessionList sessions={sessions} onSelect={handleSelectSession} />
       )}
-      <MessageInput isWorking={isWorking} onSend={handleSend} onStop={handleStop} />
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)}>
         <AgentSidebar
           agents={agents}
           currentAgentId={currentAgentId}
-          onSelect={(id) => { setCurrentAgent(id); setSidebarOpen(false); }}
+          onSelect={(id) => {
+            setCurrentAgent(id);
+            setSidebarOpen(false);
+          }}
         />
       </Sidebar>
     </View>
@@ -56,22 +64,18 @@ export default function SubAgentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
   header: {
     minHeight: 48,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#E0E0E0',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
   },
-  menuButton: {
-    padding: 8,
-  },
-  menuIcon: {
-    fontSize: 20,
-  },
+  menuButton: { padding: 8 },
+  menuIcon: { fontSize: 20 },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
