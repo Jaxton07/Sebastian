@@ -19,7 +19,12 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
     sessions_dir = tmp_path / "sessions"
     store = SessionStore(sessions_dir)
     await store.create_session(
-        Session(id="failure-path", agent="sebastian", title="Failure path")
+        Session(
+            id="failure-path",
+            agent_type="sebastian",
+            agent_id="sebastian_01",
+            title="Failure path",
+        )
     )
 
     mock_client = MagicMock()
@@ -31,7 +36,7 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
     with pytest.raises(RuntimeError, match="boom"):
         await agent.run("Hello", "failure-path")
 
-    messages = await store.get_messages("failure-path")
+    messages = await store.get_messages("failure-path", "sebastian", "sebastian_01")
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "Hello"
@@ -50,7 +55,12 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
     sessions_dir = tmp_path / "sessions"
     store = SessionStore(sessions_dir)
     await store.create_session(
-        Session(id="subagent-session", agent="stock", title="Stock session")
+        Session(
+            id="subagent-session",
+            agent_type="stock",
+            agent_id="stock_01",
+            title="Stock session",
+        )
     )
 
     mock_client = MagicMock()
@@ -65,8 +75,16 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
     )
 
     assert response == "done"
-    stock_messages = await store.get_messages("subagent-session", agent="stock")
+    stock_messages = await store.get_messages(
+        "subagent-session",
+        agent_type="stock",
+        agent_id="stock_01",
+    )
     assert [message["role"] for message in stock_messages] == ["user", "assistant"]
     assert stock_messages[0]["content"] == "Check this thesis"
-    sebastian_messages = await store.get_messages("subagent-session", agent="sebastian")
+    sebastian_messages = await store.get_messages(
+        "subagent-session",
+        agent_type="sebastian",
+        agent_id="sebastian_01",
+    )
     assert sebastian_messages == []

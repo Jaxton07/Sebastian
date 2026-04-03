@@ -42,7 +42,8 @@ class IndexStore:
             sessions = await self._read()
             entry = {
                 "id": session.id,
-                "agent": session.agent,
+                "agent_type": session.agent_type,
+                "agent_id": session.agent_id,
                 "title": session.title,
                 "status": session.status.value,
                 "updated_at": session.updated_at.isoformat(),
@@ -56,8 +57,24 @@ class IndexStore:
     async def list_all(self) -> list[dict[str, Any]]:
         return await self._read()
 
-    async def list_by_agent(self, agent: str) -> list[dict[str, Any]]:
-        return [session for session in await self._read() if session["agent"] == agent]
+    async def list_by_agent_type(self, agent_type: str) -> list[dict[str, Any]]:
+        return [
+            session
+            for session in await self._read()
+            if session.get("agent_type") == agent_type
+        ]
+
+    async def list_by_worker(
+        self,
+        agent_type: str,
+        agent_id: str,
+    ) -> list[dict[str, Any]]:
+        return [
+            session
+            for session in await self._read()
+            if session.get("agent_type") == agent_type
+            and session.get("agent_id") == agent_id
+        ]
 
     async def remove(self, session_id: str) -> None:
         async with self._lock:

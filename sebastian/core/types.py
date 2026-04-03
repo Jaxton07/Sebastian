@@ -20,6 +20,10 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class InvalidTaskTransitionError(Exception):
+    """Raised when a task transition is not permitted."""
+
+
 class SessionStatus(StrEnum):
     """Enumeration of session lifecycle states."""
 
@@ -87,7 +91,8 @@ class Session(BaseModel):
             + uuid.uuid4().hex[:6]
         )
     )
-    agent: str
+    agent_type: str
+    agent_id: str
     title: str
     status: SessionStatus = SessionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

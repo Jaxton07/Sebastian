@@ -48,9 +48,14 @@ def test_checkpoint_defaults():
 def test_session_defaults() -> None:
     from sebastian.core.types import Session, SessionStatus
 
-    session = Session(agent="sebastian", title="Test")
+    session = Session(
+        agent_type="sebastian",
+        agent_id="sebastian_01",
+        title="Test",
+    )
     assert session.status == SessionStatus.ACTIVE
-    assert session.agent == "sebastian"
+    assert session.agent_type == "sebastian"
+    assert session.agent_id == "sebastian_01"
     assert "/" not in session.id
 
 
@@ -59,3 +64,13 @@ def test_task_has_session_id() -> None:
 
     task = Task(goal="do something", session_id="abc")
     assert task.session_id == "abc"
+
+
+def test_session_has_agent_type_and_agent_id() -> None:
+    from sebastian.core.types import Session
+
+    session = Session(agent_type="stock", agent_id="stock_01", title="test")
+
+    assert session.agent_type == "stock"
+    assert session.agent_id == "stock_01"
+    assert not hasattr(session, "agent")
