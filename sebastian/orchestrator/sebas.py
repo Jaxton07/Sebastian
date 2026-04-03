@@ -43,35 +43,28 @@ class Sebastian(BaseAgent):
         self._event_bus = event_bus
 
     async def chat(self, user_message: str, session_id: str) -> str:
-        await self._event_bus.publish(
-            Event(
-                type=EventType.TURN_RECEIVED,
-                data={"session_id": session_id, "message": user_message[:200]},
-            )
-        )
-        response = await self.run(user_message, session_id)
-        await self._event_bus.publish(
-            Event(
-                type=EventType.TURN_RESPONSE,
-                data={"session_id": session_id, "response": response[:200]},
-            )
-        )
-        return response
+        return await self.run_streaming(user_message, session_id)
 
     async def get_or_create_session(
         self, session_id: str | None, first_message: str
     ) -> Session:
         if session_id:
             existing = await self._session_store.get_session(
-                session_id, agent="sebastian"
+                session_id,
+                agent_type="sebastian",
+                agent_id="sebastian_01",
             )
             if existing is not None:
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.updated_at = datetime.now(timezone.utc)  # noqa: UP017
                 await self._session_store.update_session(existing)
                 await self._index.upsert(existing)
                 return existing
 
-        session = Session(agent="sebastian", title=first_message[:40])
+        session = Session(
+            agent_type="sebastian",
+            agent_id="sebastian_01",
+            title=first_message[:40],
+        )
         await self._session_store.create_session(session)
         await self._index.upsert(session)
         return session
