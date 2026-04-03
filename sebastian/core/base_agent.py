@@ -100,11 +100,20 @@ class BaseAgent(ABC):
             with suppress(asyncio.CancelledError):
                 await self._active_stream
 
+        worker_session = await self._session_store.get_session_for_agent_type(
+            session_id,
+            agent_context,
+        )
+        if worker_session is None:
+            raise FileNotFoundError(
+                f"Session {session_id!r} not found for agent_type {agent_context!r}"
+            )
+
         await self._publish(
             session_id,
             EventType.TURN_RECEIVED,
             {
-                "agent_id": agent_context,
+                "agent_id": worker_session.agent_id,
                 "message": user_message[:200],
             },
         )

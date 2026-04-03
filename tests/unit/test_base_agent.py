@@ -150,7 +150,7 @@ async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
 
     received = next(event for event in collected_events if event.type == EventType.TURN_RECEIVED)
     assert received.data["session_id"] == "stream-session"
-    assert received.data["agent_id"] == "sebastian"
+    assert received.data["agent_id"] == "sebastian_01"
 
     response = next(event for event in collected_events if event.type == EventType.TURN_RESPONSE)
     assert response.data["session_id"] == "stream-session"
