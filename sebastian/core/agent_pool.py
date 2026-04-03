@@ -15,10 +15,14 @@ class WorkerStatus(StrEnum):
 class AgentPool:
     """Fixed-size worker slot pool for a given agent type."""
 
-    def __init__(self, agent_type: str) -> None:
+    def __init__(self, agent_type: str, worker_count: int = 3) -> None:
+        if worker_count < 1:
+            raise ValueError("worker_count must be at least 1")
+
         self._agent_type = agent_type
         self._workers: dict[str, WorkerStatus] = {
-            f"{agent_type}_{index:02d}": WorkerStatus.IDLE for index in range(1, 4)
+            f"{agent_type}_{index:02d}": WorkerStatus.IDLE
+            for index in range(1, worker_count + 1)
         }
         self._waiters: deque[asyncio.Future[str]] = deque()
 
@@ -37,10 +41,7 @@ class AgentPool:
 
     def release(self, worker_id: str) -> None:
         """Return a worker to the next waiter or mark it idle."""
-        if worker_id not in self._workers:
-            raise KeyError(worker_id)
-        if self._workers[worker_id] != WorkerStatus.BUSY:
-            raise ValueError(f"Worker {worker_id} is not busy")
+        self._require_busy(worker_id)
 
         while self._waiters:
             waiter = self._waiters.popleft()
@@ -52,6 +53,18 @@ class AgentPool:
         else:
             self._workers[worker_id] = WorkerStatus.IDLE
 
+    def mark_busy(self, worker_id: str) -> None:
+        """Mark a specific worker busy without assigning it through queueing."""
+        self._require_known_worker(worker_id)
+        if self._workers[worker_id] == WorkerStatus.BUSY:
+            raise ValueError(f"Worker {worker_id} is already busy")
+        self._workers[worker_id] = WorkerStatus.BUSY
+
+    def mark_idle(self, worker_id: str) -> None:
+        """Mark a specific worker idle without releasing queued waiters."""
+        self._require_busy(worker_id)
+        self._workers[worker_id] = WorkerStatus.IDLE
+
     def status(self) -> dict[str, WorkerStatus]:
         """Return a snapshot of all worker statuses."""
         return dict(self._workers)
@@ -60,3 +73,12 @@ class AgentPool:
     def queue_depth(self) -> int:
         """Return the number of queued waiters."""
         return sum(1 for waiter in self._waiters if not waiter.done())
+
+    def _require_known_worker(self, worker_id: str) -> None:
+        if worker_id not in self._workers:
+            raise KeyError(worker_id)
+
+    def _require_busy(self, worker_id: str) -> None:
+        self._require_known_worker(worker_id)
+        if self._workers[worker_id] != WorkerStatus.BUSY:
+            raise ValueError(f"Worker {worker_id} is not busy")

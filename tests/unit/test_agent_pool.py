@@ -93,3 +93,40 @@ def test_worker_names_are_fixed_order() -> None:
     pool = AgentPool("code")
 
     assert list(pool.status().keys()) == ["code_01", "code_02", "code_03"]
+
+
+def test_pool_can_be_initialized_with_single_worker() -> None:
+    from sebastian.core.agent_pool import AgentPool
+
+    pool = AgentPool("sebastian", worker_count=1)
+
+    assert list(pool.status().keys()) == ["sebastian_01"]
+
+
+def test_mark_worker_busy_and_idle_updates_specific_worker() -> None:
+    from sebastian.core.agent_pool import AgentPool, WorkerStatus
+
+    pool = AgentPool("life")
+
+    pool.mark_busy("life_03")
+    assert pool.status()["life_03"] == WorkerStatus.BUSY
+
+    pool.mark_idle("life_03")
+    assert pool.status()["life_03"] == WorkerStatus.IDLE
+
+
+def test_mark_worker_rejects_unknown_or_invalid_state_transitions() -> None:
+    from sebastian.core.agent_pool import AgentPool
+
+    pool = AgentPool("life")
+
+    with pytest.raises(KeyError, match="life_99"):
+        pool.mark_busy("life_99")
+
+    pool.mark_busy("life_02")
+
+    with pytest.raises(ValueError, match="Worker life_02 is already busy"):
+        pool.mark_busy("life_02")
+
+    with pytest.raises(ValueError, match="Worker life_01 is not busy"):
+        pool.mark_idle("life_01")

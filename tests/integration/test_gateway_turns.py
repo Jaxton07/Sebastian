@@ -121,54 +121,103 @@ def test_send_turn_returns_immediate_session_metadata(client):
     assert mock_run_streaming.await_count == 0
 
 
-def test_agents_returns_pool_status(client):
+def test_agents_returns_initialized_runtime_pools(client):
+    http_client, _, _ = client
+    token = _login(http_client)
+
+    response = http_client.get(
+        "/api/v1/agents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    agents = {agent["agent_type"]: agent for agent in response.json()["agents"]}
+
+    assert set(agents) == {"sebastian", "code", "life", "stock"}
+    assert agents["sebastian"] == {
+        "agent_type": "sebastian",
+        "workers": [
+            {
+                "agent_id": "sebastian_01",
+                "status": "idle",
+                "session_id": None,
+            }
+        ],
+        "queue_depth": 0,
+    }
+    for agent_type in ("code", "life", "stock"):
+        assert agents[agent_type] == {
+            "agent_type": agent_type,
+            "workers": [
+                {
+                    "agent_id": f"{agent_type}_01",
+                    "status": "idle",
+                    "session_id": None,
+                },
+                {
+                    "agent_id": f"{agent_type}_02",
+                    "status": "idle",
+                    "session_id": None,
+                },
+                {
+                    "agent_id": f"{agent_type}_03",
+                    "status": "idle",
+                    "session_id": None,
+                },
+            ],
+            "queue_depth": 0,
+        }
+
+
+def test_agents_reflect_runtime_turn_events(client):
     http_client, _, _ = client
     token = _login(http_client)
 
     import sebastian.gateway.state as state
-    from sebastian.core.agent_pool import AgentPool
+    from sebastian.protocol.events.types import Event, EventType
 
-    previous_pools = state.agent_pools
-    previous_worker_sessions = state.worker_sessions
-
-    stock_pool = AgentPool("stock")
-    busy_worker = asyncio.run(stock_pool.acquire())
-
-    try:
-        state.agent_pools = {"stock": stock_pool}
-        state.worker_sessions = {busy_worker: "session-123"}
-
-        response = http_client.get(
-            "/api/v1/agents",
-            headers={"Authorization": f"Bearer {token}"},
+    asyncio.run(
+        state.event_bus.publish(
+            Event(
+                type=EventType.TURN_RECEIVED,
+                data={"agent_id": "stock_02", "session_id": "session-123"},
+            )
         )
-    finally:
-        state.agent_pools = previous_pools
-        state.worker_sessions = previous_worker_sessions
+    )
+
+    response = http_client.get(
+        "/api/v1/agents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     assert response.status_code == 200, response.text
-    assert response.json() == {
-        "agents": [
-            {
-                "agent_type": "stock",
-                "workers": [
-                    {
-                        "agent_id": "stock_01",
-                        "status": "busy",
-                        "session_id": "session-123",
-                    },
-                    {
-                        "agent_id": "stock_02",
-                        "status": "idle",
-                        "session_id": None,
-                    },
-                    {
-                        "agent_id": "stock_03",
-                        "status": "idle",
-                        "session_id": None,
-                    },
-                ],
-                "queue_depth": 0,
-            }
-        ]
+    agents = {agent["agent_type"]: agent for agent in response.json()["agents"]}
+    stock_workers = {worker["agent_id"]: worker for worker in agents["stock"]["workers"]}
+    assert stock_workers["stock_02"] == {
+        "agent_id": "stock_02",
+        "status": "busy",
+        "session_id": "session-123",
+    }
+
+    asyncio.run(
+        state.event_bus.publish(
+            Event(
+                type=EventType.TURN_RESPONSE,
+                data={"session_id": "session-123", "content": "done"},
+            )
+        )
+    )
+
+    response = http_client.get(
+        "/api/v1/agents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    agents = {agent["agent_type"]: agent for agent in response.json()["agents"]}
+    stock_workers = {worker["agent_id"]: worker for worker in agents["stock"]["workers"]}
+    assert stock_workers["stock_02"] == {
+        "agent_id": "stock_02",
+        "status": "idle",
+        "session_id": None,
     }
