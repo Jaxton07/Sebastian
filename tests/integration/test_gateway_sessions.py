@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -34,27 +35,44 @@ def client(tmp_path):
             cfg_module.settings, "sebastian_owner_password_hash", password_hash
         ):
             with patch(
-                "sebastian.orchestrator.sebas.Sebastian.chat",
+                "sebastian.orchestrator.sebas.Sebastian.run_streaming",
                 new_callable=AsyncMock,
                 return_value="Session reply",
-            ) as mock_chat:
+            ) as mock_run_streaming:
                 with patch(
                     "sebastian.orchestrator.sebas.Sebastian.intervene",
                     new_callable=AsyncMock,
                     return_value="Intervened reply",
                 ) as mock_intervene:
-                    from sebastian.gateway.app import create_app
                     from starlette.testclient import TestClient
+
+                    from sebastian.gateway.app import create_app
 
                     test_app = create_app()
                     with TestClient(test_app, raise_server_exceptions=True) as test_client:
-                        yield test_client, mock_chat, mock_intervene
+                        yield test_client, mock_run_streaming, mock_intervene
 
 
 def _login(client) -> str:
     response = client.post("/api/v1/auth/login", json={"password": "testpass"})
     assert response.status_code == 200, response.text
     return response.json()["access_token"]
+
+
+def _store_session(session) -> None:
+    import sebastian.gateway.state as state
+
+    asyncio.run(state.session_store.create_session(session))
+    asyncio.run(state.index_store.upsert(session))
+
+
+def _capture_background_task(scheduled_coroutines: list[object]):
+    def inner(coroutine):
+        scheduled_coroutines.append(coroutine)
+        coroutine.close()
+        return MagicMock()
+
+    return inner
 
 
 def test_list_sessions_empty(client):
@@ -76,13 +94,24 @@ def test_get_session_returns_meta_and_messages(client):
     import sebastian.gateway.state as state
     from sebastian.core.types import Session
 
-    session = Session(agent="sebastian", title="Hello world")
+    session = Session(
+        agent_type="sebastian",
+        agent_id="sebastian_01",
+        title="Hello world",
+    )
     assert state.session_store is not None
     assert state.index_store is not None
-    import asyncio
 
     asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.session_store.append_message(session.id, "user", "Hello"))
+    asyncio.run(
+        state.session_store.append_message(
+            session.id,
+            "user",
+            "Hello",
+            agent_type="sebastian",
+            agent_id="sebastian_01",
+        )
+    )
     asyncio.run(state.index_store.upsert(session))
 
     response = http_client.get(
@@ -95,48 +124,101 @@ def test_get_session_returns_meta_and_messages(client):
     assert data["messages"][0]["content"] == "Hello"
 
 
+def test_send_turn_to_sebastian_session_runs_background_stream(client):
+    http_client, mock_run_streaming, _ = client
+    token = _login(http_client)
+
+    from sebastian.core.types import Session
+
+    session = Session(
+        agent_type="sebastian",
+        agent_id="sebastian_01",
+        title="Sebastian session",
+    )
+    _store_session(session)
+    scheduled_coroutines = []
+
+    with patch(
+        "sebastian.gateway.routes.sessions.asyncio.create_task",
+        side_effect=_capture_background_task(scheduled_coroutines),
+    ):
+        response = http_client.post(
+            f"/api/v1/sessions/{session.id}/turns",
+            json={"content": "Continue the conversation"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["session_id"] == session.id
+    assert "ts" in payload
+    assert "response" not in payload
+    assert len(scheduled_coroutines) == 1
+    mock_run_streaming.assert_called_once_with("Continue the conversation", session.id)
+    assert mock_run_streaming.await_count == 0
+
+
 def test_send_turn_to_subagent_session_uses_intervention(client):
     http_client, _, mock_intervene = client
     token = _login(http_client)
 
     import sebastian.gateway.state as state
     from sebastian.core.types import Session
-    import asyncio
 
-    session = Session(agent="stock", title="Stock session")
-    asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
+    session = Session(agent_type="stock", agent_id="stock_02", title="Stock session")
+    original_updated_at = session.updated_at
+    _store_session(session)
+    scheduled_coroutines = []
 
-    response = http_client.post(
-        f"/api/v1/sessions/{session.id}/turns?agent=stock",
-        json={"content": "Please revise the plan"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    with patch(
+        "sebastian.gateway.routes.sessions.asyncio.create_task",
+        side_effect=_capture_background_task(scheduled_coroutines),
+    ):
+        response = http_client.post(
+            f"/api/v1/sessions/{session.id}/turns",
+            json={"content": "Please revise the plan"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
     assert response.status_code == 200, response.text
-    assert response.json()["response"] == "Intervened reply"
-    mock_intervene.assert_awaited_once_with(
-        "stock", session.id, "Please revise the plan"
+    payload = response.json()
+    assert payload["session_id"] == session.id
+    assert "ts" in payload
+    assert "response" not in payload
+    assert len(scheduled_coroutines) == 1
+    mock_intervene.assert_called_once_with("stock", session.id, "Please revise the plan")
+    assert mock_intervene.await_count == 0
+
+    stored_session = asyncio.run(
+        state.session_store.get_session(session.id, "stock", "stock_02")
     )
+    assert stored_session is not None
+    assert stored_session.updated_at >= original_updated_at
 
 
-def test_intervene_endpoint_exists_for_subagent_sessions(client):
-    http_client, _, mock_intervene = client
+def test_session_task_routes_resolve_stored_agent_metadata(client):
+    http_client, _, _ = client
     token = _login(http_client)
 
-    import asyncio
-
     import sebastian.gateway.state as state
-    from sebastian.core.types import Session
+    from sebastian.core.types import Session, Task
 
-    session = Session(agent="stock", title="Review this")
-    asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
+    session = Session(agent_type="stock", agent_id="stock_03", title="Task session")
+    task = Task(session_id=session.id, goal="Review the investment thesis")
+    _store_session(session)
+    asyncio.run(state.session_store.create_task(task, "stock", "stock_03"))
 
-    response = http_client.post(
-        f"/api/v1/sessions/{session.id}/intervene?agent=stock",
-        json={"content": "correct this"},
+    list_response = http_client.get(
+        f"/api/v1/sessions/{session.id}/tasks",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["response"] == "Intervened reply"
-    mock_intervene.assert_awaited_with("stock", session.id, "correct this")
+    assert list_response.status_code == 200, list_response.text
+    tasks = list_response.json()["tasks"]
+    assert [item["id"] for item in tasks] == [task.id]
+
+    detail_response = http_client.get(
+        f"/api/v1/sessions/{session.id}/tasks/{task.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json()["task"]["id"] == task.id

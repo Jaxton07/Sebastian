@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+    from sebastian.core.agent_pool import AgentPool
     from sebastian.gateway.sse import SSEManager
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
@@ -12,10 +13,12 @@ if TYPE_CHECKING:
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
 
-sebastian: "Sebastian"
-sse_manager: "SSEManager"
-event_bus: "EventBus"
-conversation: "ConversationManager"
-session_store: "SessionStore"
-index_store: "IndexStore"
-db_factory: "async_sessionmaker[AsyncSession]"
+sebastian: Sebastian
+sse_manager: SSEManager
+event_bus: EventBus
+conversation: ConversationManager
+session_store: SessionStore
+index_store: IndexStore
+db_factory: async_sessionmaker[AsyncSession]
+agent_pools: dict[str, AgentPool] = {}
+worker_sessions: dict[str, str | None] = {}

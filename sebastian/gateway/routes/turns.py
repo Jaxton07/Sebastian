@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -26,6 +27,14 @@ class SendTurnRequest(BaseModel):
     session_id: str | None = None
 
 
+def _log_background_turn_failure(task: asyncio.Task[object]) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.exception("Background Sebastian turn failed", exc_info=exc)
+
+
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(body: LoginRequest) -> TokenResponse:
     from sebastian.config import settings
@@ -45,9 +54,9 @@ async def send_turn(
     import sebastian.gateway.state as state
 
     session = await state.sebastian.get_or_create_session(body.session_id, body.content)
-    response = await state.sebastian.chat(body.content, session.id)
+    task = asyncio.create_task(state.sebastian.run_streaming(body.content, session.id))
+    task.add_done_callback(_log_background_turn_failure)
     return {
         "session_id": session.id,
-        "response": response,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }
