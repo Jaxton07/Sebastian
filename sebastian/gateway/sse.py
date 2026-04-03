@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
+from collections import deque
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event
@@ -10,36 +13,86 @@ from sebastian.protocol.events.types import Event
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
+class _BufferedEvent:
+    event_id: int
+    event: Event
+
+
+@dataclass(slots=True)
+class _StreamSubscription:
+    queue: asyncio.Queue[_BufferedEvent | None]
+    session_id: str | None
+
+
 class SSEManager:
     """Manages active SSE client connections. Subscribes to the global EventBus
     and broadcasts all events to connected clients as SSE-formatted strings."""
 
     def __init__(self, event_bus: EventBus) -> None:
-        self._queues: list[asyncio.Queue[Event | None]] = []
+        self._queues: list[_StreamSubscription] = []
+        self._buffer: deque[_BufferedEvent] = deque(maxlen=500)
+        self._next_event_id = 1
+        self._lock = asyncio.Lock()
         event_bus.subscribe(self._on_event)
 
     async def _on_event(self, event: Event) -> None:
-        for q in list(self._queues):
+        async with self._lock:
+            buffered_event = _BufferedEvent(self._next_event_id, event)
+            self._next_event_id += 1
+            self._buffer.append(buffered_event)
+            subscriptions = list(self._queues)
+
+        for subscription in subscriptions:
+            if (
+                subscription.session_id is not None
+                and event.data.get("session_id") != subscription.session_id
+            ):
+                continue
             try:
-                q.put_nowait(event)
+                subscription.queue.put_nowait(buffered_event)
             except asyncio.QueueFull:
                 logger.warning("SSE queue full, dropping event %s", event.type)
 
-    async def stream(self) -> AsyncGenerator[str, None]:
+    @staticmethod
+    def _format_chunk(buffered_event: _BufferedEvent) -> str:
+        payload = json.dumps({
+            "type": buffered_event.event.type.value,
+            "event": buffered_event.event.type.value,
+            "data": buffered_event.event.data | {"ts": buffered_event.event.ts.isoformat()},
+        })
+        return f"id: {buffered_event.event_id}\ndata: {payload}\n\n"
+
+    async def stream(
+        self,
+        session_id: str | None = None,
+        last_event_id: int | None = None,
+    ) -> AsyncGenerator[str, None]:
         """Async generator — yield SSE-formatted strings for one client."""
-        q: asyncio.Queue[Event | None] = asyncio.Queue(maxsize=200)
-        self._queues.append(q)
+        subscription = _StreamSubscription(
+            queue=asyncio.Queue(maxsize=200),
+            session_id=session_id,
+        )
+        async with self._lock:
+            self._queues.append(subscription)
+            replay_events = [
+                buffered_event
+                for buffered_event in self._buffer
+                if (last_event_id is None or buffered_event.event_id > last_event_id)
+                and (
+                    session_id is None
+                    or buffered_event.event.data.get("session_id") == session_id
+                )
+            ]
         try:
+            for buffered_event in replay_events:
+                yield self._format_chunk(buffered_event)
             while True:
-                event = await q.get()
-                if event is None:
+                buffered_event = await subscription.queue.get()
+                if buffered_event is None:
                     break
-                payload = json.dumps({
-                    "type": event.type.value,
-                    "event": event.type.value,
-                    "data": event.data | {"ts": event.ts.isoformat()},
-                })
-                yield f"data: {payload}\n\n"
+                yield self._format_chunk(buffered_event)
         finally:
-            if q in self._queues:
-                self._queues.remove(q)
+            async with self._lock:
+                if subscription in self._queues:
+                    self._queues.remove(subscription)
