@@ -1,8 +1,10 @@
 # Sebastian 架构设计文档
 
-**版本**：v0.3
-**日期**：2026-04-02
-**状态**：待实施
+**版本**：v0.4
+**日期**：2026-04-03
+**状态**：部分实施中
+
+> v0.4 更新：补充 AgentPool / Worker 多开模型，Session 模型拆分 agent_type + agent_id，补全 block 级 SSE 事件协议，更新 REST API，Phase 1 待完成清单与新 spec 对齐。详见 `docs/superpowers/specs/2026-04-03-phase1-core-runtime-design.md`。
 
 ---
 
@@ -128,6 +130,20 @@ LifeAgent extends BaseAgent
 
 所有 Agent 运行在同一个 Python 进程中，以 `asyncio` 协程并发执行。A2A 消息通过内存队列传递，接口设计完全符合 A2A 规范，迁移到独立进程时只需替换传输层。
 选择同进程模型原因：无需进程管理、调试简单、内存共享省去序列化开销。隔离性靠沙箱（代码执行）和权限系统（数据访问）来补偿，不靠进程隔离。
+
+**AgentPool / Worker 多开模型**：
+
+每个 `agent_type`（如 stock、code）可同时运行最多 **3 个** worker 实例，worker 有固定身份（`stock_01` / `stock_02` / `stock_03`），用完释放回 pool，超限任务进队列等待。
+
+```
+StockAgent（agent_type，队长）
+├── stock_01（worker，状态: busy，当前 session: xxx）
+├── stock_02（worker，状态: busy，当前 session: yyy）
+├── stock_03（worker，状态: idle）
+└── 等待队列: [task_004, task_005]
+```
+
+Worker 采用持久身份（非临时实例），理由：App 需展示具体 worker 状态，Phase 2 可为每个 worker 建立专属 episodic memory。Sebastian 本体只有 1 个 worker（`sebastian_01`）。
 
 ### 2.4 三层协议栈
 
@@ -506,7 +522,8 @@ data/sessions/
 ```python
 class Session(BaseModel):
     id: str                        # 时间戳_短UUID
-    agent: str                     # "sebastian" 或 subagent name
+    agent_type: str                # "sebastian" / "stock" 等（agent 类型）
+    agent_id: str                  # "sebastian_01" / "stock_02" 等（具体 worker）
     title: str                     # 会话标题（首条消息自动生成）
     status: SessionStatus          # active / idle / archived
     created_at: datetime
@@ -556,7 +573,22 @@ class TaskResult(BaseModel):
 
 ### 事件类型（Event Bus）
 
+SSE 帧格式：`id: {seq}\ndata: {"type":"...","data":{...},"ts":"..."}\n\n`
+服务端维护 500 条滑动缓冲，断线重连带 `Last-Event-ID` 重放。
+
 ```
+# Turn 生命周期（对话平面）
+turn.received                # 用户消息进入
+turn.delta                   # LLM 文字 token（含 block_id）
+turn.thinking_delta          # LLM thinking token（含 block_id，extended thinking）
+turn.response                # 整个 turn 正常结束（含完整 content）
+turn.interrupted             # 用户打断，生成取消（含 partial_content）
+
+# Block 边界（前端用于构建 thinking/tool 折叠卡片，block_id 格式：b{iteration}_{index}）
+thinking_block.start / thinking_block.stop
+text_block.start / text_block.stop
+tool_block.start / tool_block.stop   # tool_block.start 时 name 已知，stop 时 inputs 完整
+
 # Task 生命周期
 task.created
 task.planning_started / task.planning_failed
@@ -564,23 +596,22 @@ task.started / task.paused / task.resumed
 task.completed / task.failed / task.cancelled
 
 # Agent 协同
-agent.delegated              # Sebastian 成功委派给 Sub-Agent
-agent.delegated.failed       # 委派失败（Sub-Agent 不可用、容量满）
+agent.delegated              # Sebastian 成功委派给 Sub-Agent worker
+agent.delegated.failed       # 委派失败（worker 全忙且队列满）
 agent.escalated              # Sub-Agent 向 Sebastian 上报请求决策
 agent.escalated.failed       # 上报失败（超时、无响应）
 agent.result_received        # Sub-Agent 返回结果
 
 # 用户交互
-user.interrupted             # 用户打断当前对话/任务
 user.intervened              # 用户直接向 SubAgent 发送纠偏指令（静默通知 Sebastian）
-user.approval_requested      # 等待用户审批（敏感操作）
-user.approval_granted        # 用户批准
-user.approval_denied         # 用户拒绝
+approval.requested           # 等待用户审批（敏感操作）
+approval.granted             # 用户批准
+approval.denied              # 用户拒绝
 
 # 工具生命周期
 tool.registered              # 工具注册成功（含 Dynamic Tool）
 tool.registered.failed       # 工具注册失败（代码错误、沙箱验证失败）
-tool.running                 # 工具开始执行（长耗时工具可用于进度跟踪）
+tool.running                 # 工具开始执行
 tool.executed                # 工具执行成功
 tool.failed                  # 工具执行失败（含错误信息）
 
@@ -641,50 +672,67 @@ SubAgent 页面**没有"新建对话"按钮**——SubAgent 的 Session 由 Seba
 **REST API（Gateway 暴露）**：
 
 ```
-# 会话（Session）
-GET    /api/v1/sessions                       # 全局 Session 索引（来自 index.json）
+# 认证
+POST   /api/v1/auth/login
+
+# 对话（Sebastian 主入口）
+POST   /api/v1/turns                          # 立即返回 {session_id, ts}，内容走 SSE
+
+# Session
+GET    /api/v1/sessions                       # 全局索引，支持 agent_type/status 过滤
 GET    /api/v1/sessions/{id}                  # Session 详情（meta + messages）
-POST   /api/v1/sessions/{id}/turns            # 向指定 Session 发送消息（含纠偏指令）
-GET    /api/v1/sessions/{id}/tasks            # Session 下的 Task 列表
-GET    /api/v1/agents/{agent}/sessions        # 指定 Agent 的 Session 列表
+GET    /api/v1/agents/{agent_type}/sessions   # 指定 agent_type 的所有 sessions（跨 worker）
+GET    /api/v1/agents/{agent_type}/workers/{agent_id}/sessions  # 指定 worker 的 sessions
 
-# 对话（Sebastian 主入口，语法糖封装）
-POST   /api/v1/turns                          # 向 Sebastian 当前/新 Session 发送消息
+# Turn（SubAgent 纠偏 / 继续对话）
+POST   /api/v1/sessions/{id}/turns            # 向指定 Session 发送消息，触发 user.intervened
 
-# 任务管理
-GET    /api/v1/sessions/{id}/tasks/{task_id}  # Task 详情
-POST   /api/v1/sessions/{id}/tasks/{task_id}/pause   # 暂停任务
-POST   /api/v1/sessions/{id}/tasks/{task_id}/resume  # 恢复任务
-DELETE /api/v1/sessions/{id}/tasks/{task_id}         # 取消任务
+# Task
+GET    /api/v1/sessions/{id}/tasks
+GET    /api/v1/sessions/{id}/tasks/{task_id}
+POST   /api/v1/sessions/{id}/tasks/{task_id}/cancel
 
 # 审批
-GET    /api/v1/approvals                # 待审批列表
-POST   /api/v1/approvals/{id}/grant     # 批准
-POST   /api/v1/approvals/{id}/deny      # 拒绝
+GET    /api/v1/approvals
+POST   /api/v1/approvals/{id}/grant
+POST   /api/v1/approvals/{id}/deny
 
-# 事件流（SSE）
-GET    /api/v1/stream                         # 全局实时事件流
-GET    /api/v1/sessions/{id}/stream           # 单 Session 事件流
+# SSE
+GET    /api/v1/stream                         # 全局实时事件流（Sebastian 主页用）
+GET    /api/v1/sessions/{id}/stream           # 单 Session 事件流（SubAgent 详情页用）
 
 # 语音（Phase 3）
-POST   /api/v1/voice/transcribe         # 上传音频 → 文字
+POST   /api/v1/voice/transcribe
 
 # 系统
-GET    /api/v1/agents                   # 已注册 Agent 列表与状态
-GET    /api/v1/health                   # 健康检查
+GET    /api/v1/agents                         # agent 列表 + 每个 worker 状态 + queue_depth
+GET    /api/v1/health
 ```
 
-**SSE 事件格式**：
+**`POST /api/v1/turns` 立即返回，不等 LLM**：
+
+```json
+// Request
+{ "content": "帮我分析港股近期走势", "session_id": "..." }
+// Response 200
+{ "session_id": "2026-04-03T10-30-00_abc123", "ts": "2026-04-03T10:30:01Z" }
+```
+
+**`GET /api/v1/agents` 返回 worker 状态**：
 
 ```json
 {
-  "event": "task.started",
-  "data": {
-    "task_id": "abc123",
-    "goal": "研究近两天的股票行情",
-    "assigned_agent": "StockAgent",
-    "ts": "2026-04-01T10:00:00Z"
-  }
+  "agents": [
+    {
+      "agent_type": "stock", "description": "金融顾问",
+      "workers": [
+        { "agent_id": "stock_01", "status": "busy", "session_id": "..." },
+        { "agent_id": "stock_02", "status": "busy", "session_id": "..." },
+        { "agent_id": "stock_03", "status": "idle", "session_id": null }
+      ],
+      "queue_depth": 2
+    }
+  ]
 }
 ```
 
@@ -787,6 +835,12 @@ Sebastian 继承这些**设计经验**，不继承代码。重要改进点：
 - [x] 初始仓库：不公开
 - [x] 主要交互入口：Android App 优先，iOS 跟进
 - [x] A2A 协议：采用 Google A2A 开放规范，同进程内存队列实现
+- [x] 流式输出通道：独立 SSE 通道，POST /turns 立即返回，token 走 SSE
+- [x] AgentLoop 设计：async generator（yield LLMStreamEvent），不持有 EventBus
+- [x] 打断机制：cancel stream + keep partial + 以新 context 重新请求（无 fork/ghost）
+- [x] SSE 事件粒度：block 级（block_id 唯一标识每张卡片），解决多段 thinking 流写入同一卡片问题
+- [x] AgentPool：每个 agent_type 固定 3 个持久 worker，超限排队，worker 有具名身份
+- [x] Session 模型：agent 字段拆分为 agent_type + agent_id
 
 ---
 
@@ -804,13 +858,31 @@ Sebastian 继承这些**设计经验**，不继承代码。重要改进点：
 - Gateway 框架（FastAPI + SSE + JWT 认证）
 - Android App 骨架（Chat 页、SubAgents 页、SSE 接收、FCM 推送）
 
-**待完成（新 spec 对齐）：**
-- 文件存储层：`data/sessions/` 目录结构、`index.json` 索引维护、Session/Task 读写（替换 SQLite TurnRecord/TaskRecord）
-- Session 一等公民：SessionStore（meta.json + messages.jsonl + tasks/）
-- Task 归属 Session：Task 增加 `session_id`，checkpoint 改为 JSONL 文件
-- Gateway 路由重构：以 Session 为中心（`/sessions`、`/sessions/{id}/turns`、`/agents/{agent}/sessions`）
-- `user.intervened` 事件实现（SubAgent 纠偏通道）
-- Android App 补齐：SubAgents 页改为 Session 列表督导面板、Session 详情页（消息流 + Task 进度 + 纠偏输入）、SessionMeta 字段补全
+**待完成（按 `2026-04-03-phase1-core-runtime-design.md` 实施）：**
+
+核心运行时：
+- `AgentLoop` 重构为 streaming async generator，yield `LLMStreamEvent`
+- `BaseAgent` 新增 `run_streaming()`，消费 generator，分发表 publish 事件，打断机制
+- `AgentPool`：每个 agent_type 3 个持久 worker，acquire/release/排队
+- `Task 状态机`：`_transition()` 统一状态变更 + 合法性校验，`PLANNING` 阶段占位
+- `Session 模型`：`agent` → `agent_type + agent_id`
+- `EventType` 补全 block 级事件（thinking_block.start/stop、text_block.*、tool_block.*、turn.interrupted）
+
+持久化层：
+- 文件存储层：`data/sessions/` 目录结构、`index.json` 索引维护
+- SessionStore（meta.json + messages.jsonl + tasks/）
+- Task 归属 Session，checkpoint 改为 JSONL 文件
+
+Gateway：
+- `POST /turns` 非阻塞返回
+- 路由补全（worker 路由、task cancel、session 级 SSE）
+- SSEManager：event id + 500 条滑动缓冲 + 断线重放
+- 错误格式统一（FastAPI exception handler）
+
+App：
+- SubAgents 页：agent_type 列表 → worker 列表 → session 列表（三级）
+- Session 详情页：消息流 + Task 进度 + 纠偏输入 + block 级渲染（thinking/tool 折叠卡）
+- SSE 切换策略：主页全局流，详情页单 session 流
 - ApprovalModal 接入 approvals 流程
 - Docker Compose 单机部署（Phase 1 收尾）
 
@@ -859,4 +931,4 @@ Sebastian 继承这些**设计经验**，不继承代码。重要改进点：
 
 ---
 
-*本文档 v0.3，基于 v0.2 修订：Session 升为一等公民，引入城堡管理体系（垂直树）作为主叙事框架，双平面降级为内部实现细节，存储改为文件系统，新增 SubAgent 督导模型。*
+*本文档 v0.4，基于 v0.3 修订：补充 AgentPool / Worker 多开模型（每 agent_type 3 个持久 worker，持名身份，超限排队）；Session 模型 agent 字段拆分为 agent_type + agent_id；补全 block 级 SSE 事件协议（block_id 解决多段 thinking 卡片问题）；REST API 更新（worker 路由、/turns 非阻塞返回）；打断机制确认为 cancel+partial 方案；Phase 1 待完成清单全面更新。详细运行时设计见 `2026-04-03-phase1-core-runtime-design.md`。*
