@@ -13,6 +13,7 @@ import { login, logout } from '../../../src/api/auth';
 import { ServerConfig } from '../../../src/components/settings/ServerConfig';
 import { LLMProviderConfig } from '../../../src/components/settings/LLMProviderConfig';
 import { MemorySection } from '../../../src/components/settings/MemorySection';
+import { DebugLogging } from '../../../src/components/settings/DebugLogging';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -93,6 +94,7 @@ export default function SettingsScreen() {
       )}
       <LLMProviderConfig />
       <MemorySection />
+      <DebugLogging />
     </ScrollView>
   );
 }
