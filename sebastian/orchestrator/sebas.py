@@ -86,11 +86,12 @@ class Sebastian(BaseAgent):
         self.system_prompt = self.build_system_prompt(registry, self._agent_registry)
 
     def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:
+        from sebastian.agents._loader import AgentConfig
+
         if not agent_registry:
             return ""
         lines = ["## Available Sub-Agents", ""]
         for config in agent_registry.values():
-            from sebastian.agents._loader import AgentConfig
             if isinstance(config, AgentConfig):
                 lines.append(f"- **{config.agent_type}** ({config.name}): {config.description}")
         lines += [
