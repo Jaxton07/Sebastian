@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     def sessions_dir(self) -> Path:
         return Path(self.sebastian_data_dir) / "sessions"
 
+    @property
+    def extensions_dir(self) -> Path:
+        return Path(self.sebastian_data_dir) / "extensions"
+
+    @property
+    def skills_extensions_dir(self) -> Path:
+        return self.extensions_dir / "skills"
+
+    @property
+    def agents_extensions_dir(self) -> Path:
+        return self.extensions_dir / "agents"
+
 
 settings = Settings()
 
@@ -64,6 +76,9 @@ def ensure_data_dir() -> None:
     (data / "sessions").mkdir(exist_ok=True)
     (data / "sessions" / "sebastian").mkdir(exist_ok=True)
     (data / "sessions" / "subagents").mkdir(exist_ok=True)
+    (data / "extensions").mkdir(exist_ok=True)
+    (data / "extensions" / "skills").mkdir(exist_ok=True)
+    (data / "extensions" / "agents").mkdir(exist_ok=True)
 
 
 __all__ = ["Settings", "settings", "ensure_data_dir"]

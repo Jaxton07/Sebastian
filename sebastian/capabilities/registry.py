@@ -53,6 +53,18 @@ class CapabilityRegistry:
         self._mcp_tools[name] = (spec, fn)
         logger.info("MCP tool registered: %s", name)
 
+    def register_skill_specs(self, specs: list[dict[str, Any]]) -> None:
+        """Register skill tool specs (read-only — LLM uses description as instructions)."""
+        for spec in specs:
+            name = spec["name"]
+            description = spec["description"]
+
+            async def _skill_fn(instructions: str = "", _desc: str = description) -> ToolResult:
+                return ToolResult(ok=True, output=_desc)
+
+            self._mcp_tools[name] = (spec, _skill_fn)
+            logger.info("Skill registered: %s", name)
+
 
 # Global singleton shared by all agents
 registry = CapabilityRegistry()

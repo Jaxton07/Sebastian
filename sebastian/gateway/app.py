@@ -149,6 +149,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     load_tools()
 
+    from sebastian.capabilities.skills._loader import load_skills
+    skill_specs = load_skills(
+        extra_dirs=[settings.skills_extensions_dir],
+    )
+    registry.register_skill_specs(skill_specs)
+    logger.info("Loaded %d skills", len(skill_specs))
+
     mcp_clients = load_mcps()
     if mcp_clients:
         await connect_all(mcp_clients, registry)
