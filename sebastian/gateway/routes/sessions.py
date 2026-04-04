@@ -235,7 +235,10 @@ async def cancel_task(
     return {"task_id": task_id, "cancelled": cancelled}
 
 
-@router.post("/sessions/{session_id}/tasks/{task_id}/cancel")
+@router.post(
+    "/sessions/{session_id}/tasks/{task_id}/cancel",
+    response_model=None,
+)
 async def cancel_task_post(
     session_id: str,
     task_id: str,
@@ -252,10 +255,11 @@ async def cancel_task_post(
     try:
         cancelled = await state.sebastian._task_manager.cancel(task_id)
     except InvalidTaskTransitionError as exc:
-        return JSONResponse(
+        # Placeholder for when TaskManager.cancel() is wired through _transition().
+        raise HTTPException(
             status_code=409,
-            content={"detail": str(exc), "code": "INVALID_TASK_TRANSITION"},
-        )
+            detail={"detail": str(exc), "code": "INVALID_TASK_TRANSITION"},
+        ) from exc
     if not cancelled:
         raise HTTPException(status_code=404, detail="Task not found or not cancellable")
     return {"ok": True}
