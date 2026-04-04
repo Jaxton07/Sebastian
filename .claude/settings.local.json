@@ -53,6 +53,7 @@
       "Bash(python -m pytest:*)",
       "Bash(python -m ruff:*)",
       "Bash(python -c:*)",
+      "Bash(python3 -c:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb devices:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb:*)",
       "mcp__pycharm__list_directory_tree",
