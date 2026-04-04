@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sebastian.protocol.a2a.dispatcher import A2ADispatcher
 
 
 class WorkerStatus(StrEnum):
@@ -24,6 +28,10 @@ class AgentPool:
             f"{agent_type}_{index:02d}": WorkerStatus.IDLE for index in range(1, worker_count + 1)
         }
         self._waiters: deque[asyncio.Future[str]] = deque()
+        self._current_goals: dict[str, str | None] = {
+            worker_id: None for worker_id in self._workers
+        }
+        self._worker_tasks: list[asyncio.Task[None]] = []
 
     async def acquire(self) -> str:
         """Return an idle worker_id or wait until one becomes available."""
@@ -81,6 +89,57 @@ class AgentPool:
     def queue_depth(self) -> int:
         """Return the number of queued waiters."""
         return sum(1 for waiter in self._waiters if not waiter.done())
+
+    @property
+    def current_goals(self) -> dict[str, str | None]:
+        """Return a snapshot of current goals per worker."""
+        return dict(self._current_goals)
+
+    def start_worker_loops(
+        self,
+        queue: asyncio.Queue[Any],
+        dispatcher: A2ADispatcher,
+        agent_instances: dict[str, Any],
+    ) -> list[asyncio.Task[None]]:
+        """Start one worker coroutine per agent instance. Returns the tasks."""
+        tasks: list[asyncio.Task[None]] = []
+        for worker_id, agent in agent_instances.items():
+            task = asyncio.create_task(
+                self._worker_loop(worker_id, queue, dispatcher, agent),
+                name=f"a2a_worker_{worker_id}",
+            )
+            tasks.append(task)
+        self._worker_tasks = tasks
+        return tasks
+
+    async def _worker_loop(
+        self,
+        worker_id: str,
+        queue: asyncio.Queue[Any],
+        dispatcher: A2ADispatcher,
+        agent: Any,
+    ) -> None:
+        """Run until cancelled, pulling tasks from queue and delegating to agent."""
+        from sebastian.protocol.a2a.types import TaskResult
+
+        while True:
+            task = await queue.get()
+            self._current_goals[worker_id] = task.goal
+            try:
+                result = await agent.execute_delegated_task(task)
+                dispatcher.resolve(result)
+            except asyncio.CancelledError:
+                dispatcher.resolve(
+                    TaskResult(task_id=task.task_id, ok=False, error="Worker cancelled")
+                )
+                raise
+            except Exception as exc:
+                dispatcher.resolve(
+                    TaskResult(task_id=task.task_id, ok=False, error=str(exc))
+                )
+            finally:
+                self._current_goals[worker_id] = None
+                queue.task_done()
 
     def _require_known_worker(self, worker_id: str) -> None:
         if worker_id not in self._workers:
