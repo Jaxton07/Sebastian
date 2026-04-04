@@ -5,10 +5,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from sebastian.core.types import Session, Task
+from sebastian.core.types import InvalidTaskTransitionError, Session, Task
 from sebastian.gateway.auth import require_auth
 
 logger = logging.getLogger(__name__)
@@ -19,11 +20,23 @@ JSONDict = dict[str, Any]
 
 
 @router.get("/sessions")
-async def list_sessions(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
+async def list_sessions(
+    agent_type: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
     import sebastian.gateway.state as state
 
     sessions = await state.index_store.list_all()
-    return {"sessions": sessions}
+    if agent_type is not None:
+        sessions = [s for s in sessions if s.get("agent_type") == agent_type]
+    if status is not None:
+        sessions = [s for s in sessions if s.get("status") == status]
+    total = len(sessions)
+    sessions = sessions[offset : offset + limit]
+    return {"sessions": sessions, "total": total}
 
 
 @router.get("/agents/{agent_type}/sessions")
@@ -220,3 +233,29 @@ async def cancel_task(
     await _resolve_session_task(state, session_id, task_id)
     cancelled = await state.sebastian._task_manager.cancel(task_id)
     return {"task_id": task_id, "cancelled": cancelled}
+
+
+@router.post("/sessions/{session_id}/tasks/{task_id}/cancel")
+async def cancel_task_post(
+    session_id: str,
+    task_id: str,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict | JSONResponse:
+    """Cancel a task by POST (spec Section 8.2).
+
+    Returns 200 + {"ok": true} on success, 404 if not found,
+    409 if the state machine forbids cancellation.
+    """
+    import sebastian.gateway.state as state
+
+    _, task = await _resolve_session_task(state, session_id, task_id)
+    try:
+        cancelled = await state.sebastian._task_manager.cancel(task_id)
+    except InvalidTaskTransitionError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(exc), "code": "INVALID_TASK_TRANSITION"},
+        )
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Task not found or not cancellable")
+    return {"ok": True}
