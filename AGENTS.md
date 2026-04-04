@@ -46,6 +46,7 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 - `sebastian/README.md`
 - `ui/mobile/README.md`
 - `sebastian/core/README.md`
+- `sebastian/llm/README.md`
 - `sebastian/gateway/README.md`
 - `sebastian/agents/README.md`
 - `sebastian/capabilities/README.md`
