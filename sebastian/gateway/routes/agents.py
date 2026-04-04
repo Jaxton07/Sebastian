@@ -18,6 +18,10 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
 
     agents = []
     for agent_type, pool in state.agent_pools.items():
+        cfg = state.agent_registry.get(agent_type)
+        agent_name = cfg.name if cfg else agent_type
+        agent_description = cfg.description if cfg else ""
+
         workers = []
         for agent_id, worker_status in pool.status().items():
             workers.append(
@@ -25,19 +29,20 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
                     "agent_id": agent_id,
                     "status": worker_status.value,
                     "session_id": state.worker_sessions.get(agent_id),
+                    "current_goal": pool.current_goals.get(agent_id),
                 }
             )
         agents.append(
             {
                 "agent_type": agent_type,
+                "name": agent_name,
+                "description": agent_description,
                 "workers": workers,
                 "queue_depth": pool.queue_depth,
             }
         )
 
-    return {
-        "agents": agents,
-    }
+    return {"agents": agents}
 
 
 @router.get("/health")

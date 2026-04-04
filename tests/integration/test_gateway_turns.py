@@ -136,33 +136,56 @@ def test_agents_returns_initialized_runtime_pools(client):
     assert set(agents) == {"sebastian", "code", "life", "stock"}
     assert agents["sebastian"] == {
         "agent_type": "sebastian",
+        "name": "sebastian",
+        "description": "",
         "workers": [
             {
                 "agent_id": "sebastian_01",
                 "status": "idle",
                 "session_id": None,
+                "current_goal": None,
             }
         ],
         "queue_depth": 0,
     }
+    agent_meta = {
+        "code": (
+            "Code Agent",
+            "Executes code tasks: writes, runs, and debugs Python and shell scripts",
+        ),
+        "life": (
+            "Life Agent",
+            "Handles daily life tasks: schedules, reminders, personal planning, and lifestyle queries",  # noqa: E501
+        ),
+        "stock": (
+            "Stock Agent",
+            "Performs stock and investment research: price lookup, financial analysis, market summaries",  # noqa: E501
+        ),
+    }
     for agent_type in ("code", "life", "stock"):
+        name, description = agent_meta[agent_type]
         assert agents[agent_type] == {
             "agent_type": agent_type,
+            "name": name,
+            "description": description,
             "workers": [
                 {
                     "agent_id": f"{agent_type}_01",
                     "status": "idle",
                     "session_id": None,
+                    "current_goal": None,
                 },
                 {
                     "agent_id": f"{agent_type}_02",
                     "status": "idle",
                     "session_id": None,
+                    "current_goal": None,
                 },
                 {
                     "agent_id": f"{agent_type}_03",
                     "status": "idle",
                     "session_id": None,
+                    "current_goal": None,
                 },
             ],
             "queue_depth": 0,
@@ -197,6 +220,7 @@ def test_agents_reflect_runtime_turn_events(client):
         "agent_id": "stock_02",
         "status": "busy",
         "session_id": "session-123",
+        "current_goal": None,
     }
 
     asyncio.run(
@@ -220,4 +244,5 @@ def test_agents_reflect_runtime_turn_events(client):
         "agent_id": "stock_02",
         "status": "idle",
         "session_id": None,
+        "current_goal": None,
     }
