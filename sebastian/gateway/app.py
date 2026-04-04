@@ -52,6 +52,8 @@ def _initialize_a2a_and_pools(
                 session_store=session_store,
                 event_bus=event_bus,
                 provider=default_provider,
+                allowed_tools=cfg.allowed_tools,
+                allowed_skills=cfg.allowed_skills,
             )
             agent_instances[worker_id] = agent
             worker_sessions[worker_id] = None
