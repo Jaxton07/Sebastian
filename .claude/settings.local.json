@@ -54,7 +54,11 @@
       "Bash(python -m ruff:*)",
       "Bash(python -c:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb devices:*)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb:*)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb:*)",
+      "mcp__pycharm__list_directory_tree",
+      "WebSearch",
+      "Bash(git -C /Users/ericw/work/code/ai/sebastian status --short)",
+      "Bash(git -C /Users/ericw/work/code/ai/sebastian commit -m ':*)"
     ]
   }
 }
