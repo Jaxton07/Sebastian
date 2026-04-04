@@ -3,7 +3,7 @@ import type { AuthResponse } from '../types';
 
 export async function login(password: string): Promise<string> {
   const { data } = await apiClient.post<AuthResponse>('/api/v1/auth/login', { password });
-  return data.token;
+  return data.access_token;
 }
 
 export async function logout(): Promise<void> {

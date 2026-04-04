@@ -124,6 +124,6 @@ export interface LLMProviderCreate {
   is_default?: boolean;
 }
 
-export interface AuthResponse { token: string; }
+export interface AuthResponse { access_token: string; token_type: string; }
 export interface PaginatedMessages { items: Message[]; nextCursor: string | null; }
 export interface PaginatedSessions { items: SessionMeta[]; nextCursor: string | null; }
