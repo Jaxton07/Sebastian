@@ -146,6 +146,19 @@ def _schedule_session_turn(state: Any, session: Session, content: str) -> None:
     task.add_done_callback(_log_background_turn_failure)
 
 
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    import sebastian.gateway.state as state
+
+    session = await _resolve_session(state, session_id)
+    await state.session_store.delete_session(session)
+    await state.index_store.remove(session_id)
+    return {"session_id": session_id, "deleted": True}
+
+
 @router.post("/sessions/{session_id}/turns")
 async def send_turn_to_session(
     session_id: str,

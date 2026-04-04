@@ -90,3 +90,7 @@ export async function getSessionTasks(
   const { data } = await apiClient.get<{ tasks: TaskDetail[] }>(`/api/v1/sessions/${sessionId}/tasks`);
   return data.tasks;
 }
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await apiClient.delete(`/api/v1/sessions/${sessionId}`);
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import weakref
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,6 +100,11 @@ class SessionStore:
     async def update_session(self, session: Session) -> None:
         async with self._session_lock(session.id, session.agent_type, session.agent_id):
             await self._write_session_meta(session)
+
+    async def delete_session(self, session: Session) -> None:
+        directory = _session_dir_by_id(self._dir, session.id, session.agent_type, session.agent_id)
+        if directory.exists():
+            await asyncio.to_thread(shutil.rmtree, directory)
 
     async def append_message(
         self,

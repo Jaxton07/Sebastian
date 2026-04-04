@@ -5,6 +5,7 @@ import { useSessionStore } from '../../../src/store/session';
 import { useMessages } from '../../../src/hooks/useMessages';
 import { useSessions } from '../../../src/hooks/useSessions';
 import { sendTurn, cancelTurn } from '../../../src/api/turns';
+import { deleteSession } from '../../../src/api/sessions';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../../../src/components/common/Sidebar';
 import { EmptyState } from '../../../src/components/common/EmptyState';
@@ -45,6 +46,25 @@ export default function ChatScreen() {
     if (currentSessionId) await cancelTurn(currentSessionId);
   }
 
+  async function handleDeleteSession(id: string) {
+    Alert.alert('删除对话', '确认删除这条对话记录？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteSession(id);
+            if (currentSessionId === id) setCurrentSession(null);
+            queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
+          } catch {
+            Alert.alert('删除失败，请重试');
+          }
+        },
+      },
+    ]);
+  }
+
   const isEmpty = !currentSessionId && !draftSession;
 
   return (
@@ -68,6 +88,7 @@ export default function ChatScreen() {
           draftSession={draftSession}
           onSelect={(id) => { setCurrentSession(id); setSidebarOpen(false); }}
           onNewChat={() => { startDraft(); setSidebarOpen(false); }}
+          onDelete={handleDeleteSession}
         />
       </Sidebar>
     </View>
