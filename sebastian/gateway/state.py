@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
     from sebastian.core.agent_pool import AgentPool
     from sebastian.gateway.sse import SSEManager
+    from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import EventBus
@@ -20,5 +21,6 @@ conversation: ConversationManager
 session_store: SessionStore
 index_store: IndexStore
 db_factory: async_sessionmaker[AsyncSession]
+llm_registry: LLMProviderRegistry
 agent_pools: dict[str, AgentPool] = {}
 worker_sessions: dict[str, str | None] = {}

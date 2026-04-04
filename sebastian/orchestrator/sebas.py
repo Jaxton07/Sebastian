@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sebastian.capabilities.registry import CapabilityRegistry
+
+if TYPE_CHECKING:
+    from sebastian.llm.provider import LLMProvider
 from sebastian.core.base_agent import BaseAgent
 from sebastian.core.task_manager import TaskManager
 from sebastian.core.types import Session, Task
@@ -35,8 +39,9 @@ class Sebastian(BaseAgent):
         task_manager: TaskManager,
         conversation: ConversationManager,
         event_bus: EventBus,
+        provider: LLMProvider | None = None,
     ) -> None:
-        super().__init__(registry, session_store, event_bus=event_bus)
+        super().__init__(registry, session_store, event_bus=event_bus, provider=provider)
         self._index = index_store
         self._task_manager = task_manager
         self._conversation = conversation

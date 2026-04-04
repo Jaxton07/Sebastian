@@ -118,6 +118,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     session_store = SessionStore(settings.sessions_dir)
     index_store = IndexStore(settings.sessions_dir)
 
+    from sebastian.llm.registry import LLMProviderRegistry
+    llm_registry = LLMProviderRegistry(db_factory)
+    default_provider = await llm_registry.get_default()
+
     load_tools()
 
     mcp_clients = load_mcps()
@@ -135,6 +139,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         task_manager=task_manager,
         conversation=conversation,
         event_bus=event_bus,
+        provider=default_provider,
     )
 
     state.sebastian = sebastian_agent
@@ -144,6 +149,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.session_store = session_store
     state.index_store = index_store
     state.db_factory = db_factory
+    state.llm_registry = llm_registry
     state.agent_pools, state.worker_sessions = _initialize_runtime_agent_state()
     runtime_subscriptions = _register_runtime_agent_state_handlers()
 
