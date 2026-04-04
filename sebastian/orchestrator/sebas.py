@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from sebastian.capabilities.registry import CapabilityRegistry
 
 if TYPE_CHECKING:
+    from sebastian.agents._loader import AgentConfig
     from sebastian.llm.provider import LLMProvider
 from sebastian.core.base_agent import BaseAgent
 from sebastian.core.task_manager import TaskManager
@@ -27,6 +28,21 @@ When you encounter a decision that requires the user's input, ask clearly and co
 You never fabricate results — if a tool fails, say so and suggest alternatives."""
 
 
+def _build_system_prompt(agent_registry: dict[str, AgentConfig]) -> str:
+    """Build a system prompt that includes available sub-agents for delegation."""
+    if not agent_registry:
+        return SEBASTIAN_SYSTEM_PROMPT
+
+    lines = [SEBASTIAN_SYSTEM_PROMPT, "", "## Available Sub-Agents", ""]
+    for config in agent_registry.values():
+        lines.append(f"- **{config.agent_type}** ({config.name}): {config.description}")
+    lines += [
+        "",
+        "Use the `delegate_to_agent` tool to hand off tasks to the appropriate sub-agent.",
+    ]
+    return "\n".join(lines)
+
+
 class Sebastian(BaseAgent):
     name = "sebastian"
     system_prompt = SEBASTIAN_SYSTEM_PROMPT
@@ -40,11 +56,14 @@ class Sebastian(BaseAgent):
         conversation: ConversationManager,
         event_bus: EventBus,
         provider: LLMProvider | None = None,
+        agent_registry: dict[str, AgentConfig] | None = None,
     ) -> None:
         super().__init__(registry, session_store, event_bus=event_bus, provider=provider)
         self._index = index_store
         self._task_manager = task_manager
         self._conversation = conversation
+        if agent_registry:
+            self.system_prompt = _build_system_prompt(agent_registry)
 
     async def chat(self, user_message: str, session_id: str) -> str:
         return await self.run_streaming(user_message, session_id)
