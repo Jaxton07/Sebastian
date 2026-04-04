@@ -1,39 +1,22 @@
 /**
- * Icon components adapted from openJax/ui/web/src/pic/icon.
- * SVG source files live in src/assets/icons/ for reference.
- *
- * React Native does not support SVG natively without react-native-svg.
- * These components use Text with Unicode characters as stand-ins until
- * react-native-svg is added to the project.
+ * Icon components using react-native-svg + react-native-svg-transformer.
+ * SVG source files live in src/assets/icons/.
+ * Metro is configured in metro.config.js to transform .svg imports.
  */
-import { Text, type TextStyle } from 'react-native';
+import type { ViewStyle } from 'react-native';
+import type { SvgProps } from 'react-native-svg';
+import DeleteSvg from '../../assets/icons/delete.svg';
 
 interface IconProps {
   size?: number;
   color?: string;
-  style?: TextStyle;
+  style?: ViewStyle;
 }
 
-export function TrashIcon({ size = 16, color = '#999', style }: IconProps) {
-  return (
-    <Text style={[{ fontSize: size, color, lineHeight: size + 2 }, style]}>
-      🗑
-    </Text>
-  );
+function svgProps(size: number, color: string, style?: ViewStyle): SvgProps {
+  return { width: size, height: size, color, fill: color, style };
 }
 
-export function EditIcon({ size = 16, color = '#999', style }: IconProps) {
-  return (
-    <Text style={[{ fontSize: size, color, lineHeight: size + 2 }, style]}>
-      ✏️
-    </Text>
-  );
-}
-
-export function CloseIcon({ size = 16, color = '#999', style }: IconProps) {
-  return (
-    <Text style={[{ fontSize: size, color, lineHeight: size + 2 }, style]}>
-      ✕
-    </Text>
-  );
+export function DeleteIcon({ size = 16, color = '#bbb', style }: IconProps) {
+  return <DeleteSvg {...svgProps(size, color, style)} />;
 }

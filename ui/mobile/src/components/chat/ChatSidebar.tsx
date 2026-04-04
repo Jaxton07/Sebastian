@@ -1,5 +1,5 @@
 import { FlatList, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { TrashIcon } from '../common/Icons';
+import { DeleteIcon } from '../common/Icons';
 import type { SessionMeta } from '../../types';
 
 interface Props {
@@ -33,7 +33,7 @@ export function ChatSidebar({ sessions, currentSessionId, draftSession, onSelect
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(item.id)}>
-              <TrashIcon size={15} color="#bbb" />
+              <DeleteIcon size={18} color="#bbb" />
             </TouchableOpacity>
           </View>
         )}
