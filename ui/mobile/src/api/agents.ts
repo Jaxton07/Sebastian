@@ -39,7 +39,9 @@ function mapAgentSummary(agent: BackendAgentSummary): Agent {
 
 export async function getAgents(): Promise<Agent[]> {
   const { data } = await apiClient.get<BackendAgentsResponse>('/api/v1/agents');
-  return data.agents.map(mapAgentSummary);
+  return data.agents
+    .filter((a) => a.agent_type !== 'sebastian')
+    .map(mapAgentSummary);
 }
 
 export async function sendAgentCommand(agentId: string, content: string): Promise<void> {
