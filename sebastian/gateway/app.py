@@ -3,40 +3,64 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 
 if TYPE_CHECKING:
+    from sebastian.agents._loader import AgentConfig
+    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.agent_pool import AgentPool
-    from sebastian.protocol.events.bus import EventHandler
+    from sebastian.llm.base import LLMProvider
+    from sebastian.protocol.a2a.dispatcher import A2ADispatcher
+    from sebastian.protocol.events.bus import EventBus, EventHandler
     from sebastian.protocol.events.types import EventType
+    from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
 
-def _discover_agent_types() -> list[str]:
-    agents_dir = Path(__file__).resolve().parents[1] / "agents"
-    agent_types = ["sebastian"]
-    for entry in sorted(agents_dir.iterdir()):
-        if entry.is_dir() and not entry.name.startswith("__"):
-            agent_types.append(entry.name)
-    return agent_types
-
-
-def _initialize_runtime_agent_state() -> tuple[dict[str, AgentPool], dict[str, str | None]]:
+def _initialize_a2a_and_pools(
+    agent_configs: list[AgentConfig],
+    dispatcher: A2ADispatcher,
+    default_provider: LLMProvider,
+    session_store: SessionStore,
+    registry: CapabilityRegistry,
+    event_bus: EventBus,
+) -> tuple[dict[str, AgentPool], dict[str, str | None]]:
+    """Create AgentPool + agent instances + worker loops for each sub-agent config."""
     from sebastian.core.agent_pool import AgentPool
 
     agent_pools: dict[str, AgentPool] = {}
     worker_sessions: dict[str, str | None] = {}
 
-    for agent_type in _discover_agent_types():
-        worker_count = 1 if agent_type == "sebastian" else 3
-        pool = AgentPool(agent_type, worker_count=worker_count)
-        agent_pools[agent_type] = pool
+    # Sebastian's pool (no worker loops — it runs via HTTP turns)
+    sebastian_pool = AgentPool("sebastian", worker_count=1)
+    agent_pools["sebastian"] = sebastian_pool
+    for worker_id in sebastian_pool.status():
+        worker_sessions[worker_id] = None
+
+    for cfg in agent_configs:
+        pool = AgentPool(cfg.agent_type, worker_count=cfg.worker_count)
+        agent_pools[cfg.agent_type] = pool
+
+        agent_instances: dict[str, Any] = {}
         for worker_id in pool.status():
+            agent = cfg.agent_class(
+                registry=registry,
+                session_store=session_store,
+                event_bus=event_bus,
+                provider=default_provider,
+            )
+            agent_instances[worker_id] = agent
             worker_sessions[worker_id] = None
+
+        queue = dispatcher.register_agent(cfg.agent_type)
+        pool.start_worker_loops(
+            queue=queue,
+            dispatcher=dispatcher,
+            agent_instances=agent_instances,
+        )
 
     return agent_pools, worker_sessions
 
@@ -128,10 +152,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if mcp_clients:
         await connect_all(mcp_clients, registry)
 
+    from sebastian.agents._loader import load_agents
+    from sebastian.protocol.a2a.dispatcher import A2ADispatcher
+
     event_bus = bus
     conversation = ConversationManager(event_bus)
     task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
+
+    agent_configs = load_agents()
+    agent_registry = {cfg.agent_type: cfg for cfg in agent_configs}
+    dispatcher = A2ADispatcher()
+
     sebastian_agent = Sebastian(
         registry=registry,
         session_store=session_store,
@@ -140,6 +172,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         conversation=conversation,
         event_bus=event_bus,
         provider=default_provider,
+        agent_registry=agent_registry,
+    )
+
+    agent_pools, worker_sessions = _initialize_a2a_and_pools(
+        agent_configs=agent_configs,
+        dispatcher=dispatcher,
+        default_provider=default_provider,
+        session_store=session_store,
+        registry=registry,
+        event_bus=event_bus,
     )
 
     state.sebastian = sebastian_agent
@@ -150,7 +192,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.index_store = index_store
     state.db_factory = db_factory
     state.llm_registry = llm_registry
-    state.agent_pools, state.worker_sessions = _initialize_runtime_agent_state()
+    state.dispatcher = dispatcher
+    state.agent_registry = agent_registry
+    state.agent_pools = agent_pools
+    state.worker_sessions = worker_sessions
     runtime_subscriptions = _register_runtime_agent_state_handlers()
 
     logger.info("Sebastian gateway started")
