@@ -36,8 +36,7 @@ def test_load_agents_reads_allowed_tools_from_manifest(tmp_path: Path) -> None:
     init.write_text("class MyAgent: pass\n")
 
     configs = load_agents(extra_dirs=[tmp_path])
-    assert len(configs) == 1
-    cfg = configs[0]
+    cfg = next(c for c in configs if c.agent_type == "myagent")
     assert cfg.allowed_tools == ["file_read"]
     assert cfg.allowed_skills == []
 
@@ -54,6 +53,6 @@ def test_load_agents_defaults_allowed_to_none_when_not_declared(tmp_path: Path) 
     init.write_text("class MyAgent2: pass\n")
 
     configs = load_agents(extra_dirs=[tmp_path])
-    assert len(configs) == 1
-    assert configs[0].allowed_tools is None
-    assert configs[0].allowed_skills is None
+    cfg = next(c for c in configs if c.agent_type == "myagent2")
+    assert cfg.allowed_tools is None
+    assert cfg.allowed_skills is None

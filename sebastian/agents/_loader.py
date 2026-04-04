@@ -24,15 +24,13 @@ class AgentConfig:
 def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
     """Scan built-in agents dir and optional extra dirs for manifest.toml files.
 
-    When extra_dirs is provided, only those directories are scanned (builtin is skipped).
-    This allows tests and user extensions to load agents in isolation.
-    When extra_dirs is None, the built-in agents directory is scanned.
+    Builtins are always scanned first. extra_dirs are appended after, so a later
+    entry with the same agent_type will override an earlier one (including builtins).
     """
-    if extra_dirs is not None:
-        dirs: list[tuple[Path, bool]] = [(d, False) for d in extra_dirs]
-    else:
-        builtin_dir = Path(__file__).parent
-        dirs = [(builtin_dir, True)]
+    builtin_dir = Path(__file__).parent
+    dirs: list[tuple[Path, bool]] = [(builtin_dir, True)]
+    if extra_dirs:
+        dirs += [(d, False) for d in extra_dirs]
 
     configs: dict[str, AgentConfig] = {}
 
