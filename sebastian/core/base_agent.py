@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from sebastian.protocol.a2a.types import TaskResult as A2ATaskResult
 
 from sebastian.capabilities.registry import CapabilityRegistry
+from sebastian.config import settings
 from sebastian.core.agent_loop import AgentLoop
 from sebastian.core.stream_events import (
     TextBlockStart,
@@ -35,10 +36,10 @@ from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
-BASE_SYSTEM_PROMPT = (
-    "You are Sebastian, a personal AI butler. You are helpful, precise, and action-oriented. "
-    "You have access to tools and will use them when needed. "
-    "Think step by step, act efficiently, and always confirm important actions before executing."
+BASE_PERSONA = (
+    "You are Sebastian, a personal AI butler for {owner_name}. "
+    "You are helpful, precise, and action-oriented. "
+    "You have access to tools and will use them when needed."
 )
 
 _STREAM_EVENT_TYPES: dict[type[object], EventType] = {
@@ -54,7 +55,10 @@ _STREAM_EVENT_TYPES: dict[type[object], EventType] = {
 
 class BaseAgent(ABC):
     name: str = "base_agent"
-    system_prompt: str = BASE_SYSTEM_PROMPT
+    persona: str = BASE_PERSONA
+    allowed_tools: list[str] | None = None
+    allowed_skills: list[str] | None = None
+    system_prompt: str = ""  # populated by build_system_prompt in __init__
 
     def __init__(
         self,
@@ -63,6 +67,8 @@ class BaseAgent(ABC):
         event_bus: EventBus | None = None,
         provider: LLMProvider | None = None,
         model: str | None = None,
+        allowed_tools: list[str] | None = None,
+        allowed_skills: list[str] | None = None,
     ) -> None:
         self._registry = registry
         self._session_store = session_store
@@ -71,7 +77,11 @@ class BaseAgent(ABC):
         self.working_memory = WorkingMemory()
         self._active_stream: asyncio.Task[str] | None = None
 
-        from sebastian.config import settings
+        # instance-level overrides class-level defaults
+        if allowed_tools is not None:
+            self.allowed_tools = allowed_tools
+        if allowed_skills is not None:
+            self.allowed_skills = allowed_skills
 
         resolved_model = model or settings.sebastian_model
         self._provider_injected = provider is not None
@@ -81,7 +91,55 @@ class BaseAgent(ABC):
 
             provider = AnthropicProvider(api_key=settings.anthropic_api_key)
 
-        self._loop = AgentLoop(provider, registry, resolved_model)
+        _allowed_tools_set = set(self.allowed_tools) if self.allowed_tools is not None else None
+        _allowed_skills_set = set(self.allowed_skills) if self.allowed_skills is not None else None
+        self._loop = AgentLoop(
+            provider,
+            registry,
+            resolved_model,
+            allowed_tools=_allowed_tools_set,
+            allowed_skills=_allowed_skills_set,
+        )
+        self.system_prompt = self.build_system_prompt(registry)
+
+    def _persona_section(self) -> str:
+        return self.persona.format(owner_name=settings.sebastian_owner_name)
+
+    def _tools_section(self, registry: CapabilityRegistry) -> str:
+        allowed = set(self.allowed_tools) if self.allowed_tools is not None else None
+        specs = registry.get_tool_specs(allowed)
+        if not specs:
+            return ""
+        lines = ["## Available Tools", ""]
+        for spec in specs:
+            lines.append(f"- **{spec['name']}**: {spec['description']}")
+        return "\n".join(lines)
+
+    def _skills_section(self, registry: CapabilityRegistry) -> str:
+        allowed = set(self.allowed_skills) if self.allowed_skills is not None else None
+        specs = registry.get_skill_specs(allowed)
+        if not specs:
+            return ""
+        lines = ["## Available Skills", ""]
+        for spec in specs:
+            lines.append(f"- **{spec['name']}**: {spec['description']}")
+        return "\n".join(lines)
+
+    def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:  # noqa: ARG002
+        return ""
+
+    def build_system_prompt(
+        self,
+        registry: CapabilityRegistry,
+        agent_registry: dict[str, object] | None = None,
+    ) -> str:
+        sections = [
+            self._persona_section(),
+            self._tools_section(registry),
+            self._skills_section(registry),
+            self._agents_section(agent_registry),
+        ]
+        return "\n\n".join(s for s in sections if s)
 
     async def run(
         self,
