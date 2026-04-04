@@ -52,7 +52,9 @@
       "Bash(python -m pytest tests/unit/test_llm_provider.py -v)",
       "Bash(python -m pytest:*)",
       "Bash(python -m ruff:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb:*)"
     ]
   }
 }
