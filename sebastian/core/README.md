@@ -9,7 +9,7 @@
 | 文件 | 职责 |
 |---|---|
 | `base_agent.py` | 所有 Agent 的抽象基类，持有 registry/session_store/event_bus，提供 `run_streaming()` 入口 |
-| `agent_loop.py` | 单次 LLM turn 执行循环：发请求 → 处理 tool_use → 迭代，最多 `MAX_ITERATIONS=20` 轮 |
+| `agent_loop.py` | 单次 LLM turn 执行循环：发请求 → 处理 tool_use → 迭代，最多 `MAX_ITERATIONS=20` 轮；根据 `provider.message_format` 自动选择 Anthropic/OpenAI 消息格式 |
 | `task_manager.py` | Task 提交与状态机驱动：`submit()` 创建异步 Task，`transition()` 推进状态，发布 EventBus 事件 |
 | `agent_pool.py` | 固定大小 Worker 槽池：`acquire()` 拿到空闲 worker_id，`release()` 归还，内部用 Future 队列等待 |
 | `tool.py` | `@tool` 装饰器系统：自动提取函数签名生成 `ToolSpec`，注册到全局 `_tools` 字典 |
@@ -52,7 +52,8 @@ CREATED → PLANNING → RUNNING → COMPLETED
 ## 常见任务入口
 
 - **修改 Task 状态流转规则** → `task_manager.py` 的 `_VALID_TRANSITIONS`
-- **修改 LLM 调用参数/最大迭代次数** → `agent_loop.py` 的 `MAX_ITERATIONS` 和 `_run_turn()`
+- **修改 LLM 调用参数/最大迭代次数** → `agent_loop.py` 的 `MAX_ITERATIONS`
+- **切换消息格式（Anthropic/OpenAI）** → `LLMProvider.message_format`，`AnthropicProvider` 默认 `"anthropic"`，`OpenAICompatProvider` 默认 `"openai"`，AgentLoop 自动适配
 - **新增/修改 BaseAgent 行为** → `base_agent.py`，覆写 `system_prompt` 或 `run_streaming()`
 - **调整 Worker 并发数** → `gateway/app.py` 中 `AgentPool(worker_count=N)` 的初始化
 - **新增核心数据类型** → `types.py`
