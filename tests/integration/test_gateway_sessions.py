@@ -90,7 +90,9 @@ def test_list_sessions_empty(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"sessions": []}
+    body = response.json()
+    assert body["sessions"] == []
+    assert body["total"] == 0
 
 
 def test_get_session_returns_meta_and_messages(client):
