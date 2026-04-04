@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sebastian.capabilities.registry import CapabilityRegistry
 from sebastian.core.stream_events import (
     LLMStreamEvent,
-    TextBlockStart,
+    ProviderCallEnd,
     TextBlockStop,
-    TextDelta,
-    ThinkingBlockStart,
     ThinkingBlockStop,
-    ThinkingDelta,
-    ToolCallBlockStart,
     ToolCallReady,
     ToolResult,
     TurnDone,
 )
+
+if TYPE_CHECKING:
+    from sebastian.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +45,22 @@ def _validate_injected_tool_result(
 
 
 class AgentLoop:
-    """Core reasoning loop that streams structured LLM events turn by turn."""
+    """Core reasoning loop. Drives multi-turn LLM conversation via LLMProvider."""
 
     def __init__(
         self,
-        client: Any,  # anthropic.AsyncAnthropic
+        provider: LLMProvider,
         registry: CapabilityRegistry,
         model: str = "claude-opus-4-6",
         max_tokens: int | None = None,
     ) -> None:
-        self._client = client
+        self._provider = provider
         self._registry = registry
         self._model = model
         if max_tokens is not None:
             self._max_tokens = max_tokens
         else:
             from sebastian.config import settings
-
             self._max_tokens = settings.llm_max_tokens
 
     async def stream(
@@ -71,111 +69,68 @@ class AgentLoop:
         messages: list[dict[str, Any]],
         task_id: str | None = None,
     ) -> AsyncGenerator[LLMStreamEvent, ToolResult | None]:
-        """Yield LLM stream events and accept tool results injected via asend()."""
+        """Yield LLM stream events; accept tool results injected via asend()."""
         working = list(messages)
         tools = self._registry.get_all_tool_specs()
         full_text_parts: list[str] = []
 
         for iteration in range(MAX_ITERATIONS):
-            kwargs: dict[str, Any] = {
-                "model": self._model,
-                "max_tokens": self._max_tokens,
-                "system": system_prompt,
-                "messages": working,
-            }
-            if tools:
-                kwargs["tools"] = tools
-
             assistant_content: list[dict[str, Any]] = []
             tool_results_for_next: list[dict[str, Any]] = []
+            stop_reason = "end_turn"
 
-            async with self._client.messages.stream(**kwargs) as stream:
-                async for raw in stream:
-                    block_index = getattr(raw, "index", 0)
-                    block_id = f"b{iteration}_{block_index}"
+            async for event in self._provider.stream(
+                system=system_prompt,
+                messages=working,
+                tools=tools,
+                model=self._model,
+                max_tokens=self._max_tokens,
+                block_id_prefix=f"b{iteration}_",
+            ):
+                if isinstance(event, ProviderCallEnd):
+                    stop_reason = event.stop_reason
+                    continue
 
-                    if raw.type == "content_block_start":
-                        block_type = raw.content_block.type
-                        if block_type == "thinking":
-                            yield ThinkingBlockStart(block_id=block_id)
-                        elif block_type == "text":
-                            yield TextBlockStart(block_id=block_id)
-                        elif block_type == "tool_use":
-                            yield ToolCallBlockStart(
-                                block_id=block_id,
-                                tool_id=raw.content_block.id,
-                                name=raw.content_block.name,
-                            )
-                        continue
+                if isinstance(event, ThinkingBlockStop):
+                    assistant_content.append(
+                        {"type": "thinking", "thinking": event.thinking}
+                    )
+                    yield event
 
-                    if raw.type == "content_block_delta":
-                        delta_type = raw.delta.type
-                        if delta_type == "thinking_delta":
-                            yield ThinkingDelta(
-                                block_id=block_id,
-                                delta=raw.delta.thinking,
-                            )
-                        elif delta_type == "text_delta":
-                            full_text_parts.append(raw.delta.text)
-                            yield TextDelta(
-                                block_id=block_id,
-                                delta=raw.delta.text,
-                            )
-                        continue
+                elif isinstance(event, TextBlockStop):
+                    full_text_parts.append(event.text)
+                    assistant_content.append({"type": "text", "text": event.text})
+                    yield event
 
-                    if raw.type != "content_block_stop":
-                        continue
+                elif isinstance(event, ToolCallReady):
+                    assistant_content.append(
+                        {
+                            "type": "tool_use",
+                            "id": event.tool_id,
+                            "name": event.name,
+                            "input": event.inputs,
+                        }
+                    )
+                    injected = yield event
+                    validated = _validate_injected_tool_result(
+                        tool_id=event.tool_id,
+                        tool_name=event.name,
+                        result=injected,
+                    )
+                    tool_results_for_next.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": event.tool_id,
+                            "content": _tool_result_content(validated),
+                        }
+                    )
 
-                    block = stream.current_message.content[block_index]
-                    if block.type == "thinking":
-                        assistant_content.append(
-                            {
-                                "type": "thinking",
-                                "thinking": block.thinking,
-                            }
-                        )
-                        yield ThinkingBlockStop(block_id=block_id)
-                    elif block.type == "text":
-                        assistant_content.append(
-                            {
-                                "type": "text",
-                                "text": block.text,
-                            }
-                        )
-                        yield TextBlockStop(block_id=block_id)
-                    elif block.type == "tool_use":
-                        assistant_content.append(
-                            {
-                                "type": "tool_use",
-                                "id": block.id,
-                                "name": block.name,
-                                "input": block.input,
-                            }
-                        )
-                        injected = yield ToolCallReady(
-                            block_id=block_id,
-                            tool_id=block.id,
-                            name=block.name,
-                            inputs=block.input,
-                        )
-                        validated_result = _validate_injected_tool_result(
-                            tool_id=block.id,
-                            tool_name=block.name,
-                            result=injected,
-                        )
-                        tool_results_for_next.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": _tool_result_content(validated_result),
-                            }
-                        )
-
-                final_message = await stream.get_final_message()
+                else:
+                    yield event
 
             working.append({"role": "assistant", "content": assistant_content})
 
-            if final_message.stop_reason != "tool_use":
+            if stop_reason != "tool_use":
                 yield TurnDone(full_text="".join(full_text_parts))
                 return
 
