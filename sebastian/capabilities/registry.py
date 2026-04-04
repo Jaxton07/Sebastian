@@ -88,6 +88,9 @@ class CapabilityRegistry:
             name = spec["name"]
             description = spec["description"]
 
+            if name in self._mcp_tools and name not in self._skill_names:
+                logger.warning("Skill %r overwrites existing MCP tool registration", name)
+
             async def _skill_fn(instructions: str = "", _desc: str = description) -> ToolResult:
                 return ToolResult(ok=True, output=_desc)
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from sebastian.capabilities.registry import CapabilityRegistry
 from sebastian.core.types import ToolResult
 
@@ -11,10 +10,26 @@ def _make_registry() -> CapabilityRegistry:
     async def mcp_fn(**kwargs):  # type: ignore[no-untyped-def]
         return ToolResult(ok=True, output="ok")
 
-    reg.register_mcp_tool("web_search", {"name": "web_search", "description": "search", "input_schema": {}}, mcp_fn)
-    reg.register_mcp_tool("shell_exec", {"name": "shell_exec", "description": "shell", "input_schema": {}}, mcp_fn)
+    reg.register_mcp_tool(
+        "web_search",
+        {"name": "web_search", "description": "search", "input_schema": {}},
+        mcp_fn,
+    )
+    reg.register_mcp_tool(
+        "shell_exec",
+        {"name": "shell_exec", "description": "shell", "input_schema": {}},
+        mcp_fn,
+    )
     # 注册一个 Skill
-    reg.register_skill_specs([{"name": "research_skill", "description": "do research", "input_schema": {"type": "object", "properties": {}, "required": []}}])
+    reg.register_skill_specs(
+        [
+            {
+                "name": "research_skill",
+                "description": "do research",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            }
+        ]
+    )
     return reg
 
 
