@@ -1,0 +1,5 @@
+[agent]
+name = "Stock Agent"
+description = "Performs stock and investment research: price lookup, financial analysis, market summaries"
+worker_count = 3
+class_name = "StockAgent"

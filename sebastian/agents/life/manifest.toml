@@ -1,0 +1,5 @@
+[agent]
+name = "Life Agent"
+description = "Handles daily life tasks: schedules, reminders, personal planning, and lifestyle queries"
+worker_count = 3
+class_name = "LifeAgent"
