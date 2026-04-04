@@ -56,6 +56,7 @@ export default function ChatScreen() {
           try {
             await deleteSession(id);
             if (currentSessionId === id) setCurrentSession(null);
+            queryClient.invalidateQueries({ queryKey: ['sessions'] });
             queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
           } catch {
             Alert.alert('删除失败，请重试');
