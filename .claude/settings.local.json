@@ -27,7 +27,16 @@
       "Bash(echo \"Metro PID: $!\")",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell:*)",
       "Bash(python3 -c ':*)",
-      "Bash(pkill -f \"uvicorn sebastian\")"
+      "Bash(pkill -f \"uvicorn sebastian\")",
+      "mcp__pycharm__get_file_text_by_path",
+      "Bash(pytest tests/ -v --tb=short)",
+      "Bash(mypy sebastian/ --ignore-missing-imports)",
+      "mcp__pycharm__search_symbol",
+      "Bash(python -m pytest tests/unit/ -v --tb=short)",
+      "Bash(ruff format:*)",
+      "Bash(python -m pytest tests/unit/ -q)",
+      "mcp__pycharm__search_in_files_by_text",
+      "Bash(pytest tests/ -q --tb=short)"
     ]
   }
 }
