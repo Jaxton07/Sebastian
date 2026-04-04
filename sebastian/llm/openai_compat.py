@@ -181,7 +181,9 @@ def _parse_think_tags(
 ) -> tuple[str, str, list[LLMStreamEvent]]:
     """Parse <think>...</think> from streaming text. Returns updated buffers + events."""
     events: list[LLMStreamEvent] = []
-    combined = (think_buffer if think_block_started and not text_block_started else "") + new_content
+    _combined = (  # state machine uses `remaining` directly; kept for readability
+        think_buffer if think_block_started and not text_block_started else ""
+    ) + new_content
 
     # Simple state machine: if we haven't seen </think> yet, check if this content has it
     in_think = think_block_started and not text_block_started
