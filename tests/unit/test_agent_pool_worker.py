@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
 
@@ -44,7 +45,7 @@ async def test_worker_loop_processes_task_and_resolves() -> None:
 
 @pytest.mark.asyncio
 async def test_worker_loop_tracks_current_goal() -> None:
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
 
     from sebastian.core.agent_pool import AgentPool
     from sebastian.protocol.a2a.dispatcher import A2ADispatcher

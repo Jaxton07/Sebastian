@@ -71,9 +71,7 @@ class UserRecord(Base):
 class LLMProviderRecord(Base):
     __tablename__ = "llm_providers"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

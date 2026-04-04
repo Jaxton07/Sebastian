@@ -26,9 +26,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict[str, Any]) -> str:
     payload = data.copy()
-    expire = datetime.now(UTC) + timedelta(
-        minutes=settings.sebastian_jwt_expire_minutes
-    )
+    expire = datetime.now(UTC) + timedelta(minutes=settings.sebastian_jwt_expire_minutes)
     payload["exp"] = expire
     return cast(
         str,

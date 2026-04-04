@@ -42,9 +42,7 @@ async def delegate_to_agent(agent_type: str, goal: str, context: str = "") -> To
     a2a_result = await dispatcher.delegate(agent_type, task)
     if a2a_result.ok:
         summary = (
-            a2a_result.output.get("summary", str(a2a_result.output))
-            if a2a_result.output
-            else ""
+            a2a_result.output.get("summary", str(a2a_result.output)) if a2a_result.output else ""
         )
         return ToolResult(ok=True, output=summary)
     return ToolResult(ok=False, error=a2a_result.error or "Delegation failed")

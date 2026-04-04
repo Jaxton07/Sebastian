@@ -22,11 +22,13 @@ class CapabilityRegistry:
         """Return all tool specs in Anthropic API `tools` format."""
         specs: list[dict[str, Any]] = []
         for spec in list_tool_specs():
-            specs.append({
-                "name": spec.name,
-                "description": spec.description,
-                "input_schema": spec.parameters,
-            })
+            specs.append(
+                {
+                    "name": spec.name,
+                    "description": spec.description,
+                    "input_schema": spec.parameters,
+                }
+            )
         for name, (spec_dict, _) in self._mcp_tools.items():
             specs.append(spec_dict)
         return specs

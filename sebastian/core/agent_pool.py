@@ -134,9 +134,7 @@ class AgentPool:
                 )
                 raise
             except Exception as exc:
-                dispatcher.resolve(
-                    TaskResult(task_id=task.task_id, ok=False, error=str(exc))
-                )
+                dispatcher.resolve(TaskResult(task_id=task.task_id, ok=False, error=str(exc)))
             finally:
                 self._current_goals[worker_id] = None
                 queue.task_done()

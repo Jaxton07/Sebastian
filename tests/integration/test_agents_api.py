@@ -12,11 +12,10 @@ async def test_agents_response_includes_name_and_description() -> None:
     os.environ.setdefault("SEBASTIAN_OWNER_PASSWORD_HASH", "")
 
     from sebastian.gateway.app import create_app
+
     app = create_app()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(
             "/api/v1/agents",
             headers={"Authorization": "Bearer test"},

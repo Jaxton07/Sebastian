@@ -54,6 +54,7 @@ async def connect_all(clients: list[Any], registry: Any) -> None:
             def _make_caller(c: Any, n: str) -> Any:
                 async def _call(**kwargs: Any) -> Any:
                     return await c.call_tool(n, **kwargs)
+
                 return _call
 
             registry.register_mcp_tool(tool_name, spec, _make_caller(client, tool_name))

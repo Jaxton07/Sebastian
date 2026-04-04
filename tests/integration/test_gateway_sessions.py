@@ -31,9 +31,7 @@ def client(tmp_path):
 
         importlib.reload(cfg_module)
 
-        with patch.object(
-            cfg_module.settings, "sebastian_owner_password_hash", password_hash
-        ):
+        with patch.object(cfg_module.settings, "sebastian_owner_password_hash", password_hash):
             with patch(
                 "sebastian.orchestrator.sebas.Sebastian.run_streaming",
                 new_callable=AsyncMock,
@@ -197,9 +195,7 @@ def test_send_turn_to_subagent_session_uses_intervention(client):
     mock_intervene.assert_called_once_with("stock", session.id, "Please revise the plan")
     assert mock_intervene.await_count == 0
 
-    stored_session = asyncio.run(
-        state.session_store.get_session(session.id, "stock", "stock_02")
-    )
+    stored_session = asyncio.run(state.session_store.get_session(session.id, "stock", "stock_02"))
     assert stored_session is not None
     assert stored_session.updated_at >= original_updated_at
 

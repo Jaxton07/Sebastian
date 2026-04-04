@@ -65,6 +65,7 @@ class AgentLoop:
             self._max_tokens = max_tokens
         else:
             from sebastian.config import settings
+
             self._max_tokens = settings.llm_max_tokens
 
     async def stream(
@@ -106,9 +107,7 @@ class AgentLoop:
 
                 if isinstance(event, ThinkingBlockStop):
                     if not is_openai:
-                        assistant_blocks.append(
-                            {"type": "thinking", "thinking": event.thinking}
-                        )
+                        assistant_blocks.append({"type": "thinking", "thinking": event.thinking})
                     yield event
 
                 elif isinstance(event, TextBlockStop):
@@ -120,14 +119,16 @@ class AgentLoop:
 
                 elif isinstance(event, ToolCallReady):
                     if is_openai:
-                        tool_calls_openai.append({
-                            "id": event.tool_id,
-                            "type": "function",
-                            "function": {
-                                "name": event.name,
-                                "arguments": json.dumps(event.inputs),
-                            },
-                        })
+                        tool_calls_openai.append(
+                            {
+                                "id": event.tool_id,
+                                "type": "function",
+                                "function": {
+                                    "name": event.name,
+                                    "arguments": json.dumps(event.inputs),
+                                },
+                            }
+                        )
                     else:
                         assistant_blocks.append(
                             {
@@ -167,12 +168,16 @@ class AgentLoop:
                     if isinstance(event, TextDelta):
                         _llm_stream_logger.debug(
                             "text_delta block_id=%s delta=%r task_id=%s",
-                            event.block_id, event.delta, task_id,
+                            event.block_id,
+                            event.delta,
+                            task_id,
                         )
                     elif isinstance(event, ThinkingDelta):
                         _llm_stream_logger.debug(
                             "thinking_delta block_id=%s delta=%r task_id=%s",
-                            event.block_id, event.delta, task_id,
+                            event.block_id,
+                            event.delta,
+                            task_id,
                         )
                     yield event
 

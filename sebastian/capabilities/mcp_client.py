@@ -40,9 +40,7 @@ class MCPClient:
                 env=self._env,
             )
             ctx = stdio_client(server_params)
-            self._read, self._write = await asyncio.wait_for(
-                ctx.__aenter__(), timeout=10.0
-            )
+            self._read, self._write = await asyncio.wait_for(ctx.__aenter__(), timeout=10.0)
             self._session = ClientSession(self._read, self._write)
             await self._session.__aenter__()
             await self._session.initialize()
@@ -59,15 +57,17 @@ class MCPClient:
         response = await self._session.list_tools()
         result = []
         for t in response.tools:
-            result.append({
-                "name": t.name,
-                "description": t.description or "",
-                "input_schema": (
-                    t.inputSchema
-                    if hasattr(t, "inputSchema")
-                    else {"type": "object", "properties": {}}
-                ),
-            })
+            result.append(
+                {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "input_schema": (
+                        t.inputSchema
+                        if hasattr(t, "inputSchema")
+                        else {"type": "object", "properties": {}}
+                    ),
+                }
+            )
         return result
 
     async def call_tool(self, tool_name: str, **kwargs: Any) -> ToolResult:

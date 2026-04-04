@@ -22,9 +22,7 @@ class EpisodicMemory:
     async def _get_agent_context(self, session_id: str, agent: str) -> tuple[str, str]:
         session = await self._store.get_session_for_agent_type(session_id, agent)
         if session is None:
-            raise FileNotFoundError(
-                f"Session {session_id!r} not found for agent_type {agent!r}"
-            )
+            raise FileNotFoundError(f"Session {session_id!r} not found for agent_type {agent!r}")
         return session.agent_type, session.agent_id
 
     async def add_turn(

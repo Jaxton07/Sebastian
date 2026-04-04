@@ -21,9 +21,7 @@ async def test_llm_provider_record_roundtrip(db_session) -> None:
     db_session.add(record)
     await db_session.commit()
 
-    result = await db_session.execute(
-        select(LLMProviderRecord).where(LLMProviderRecord.is_default)
-    )
+    result = await db_session.execute(select(LLMProviderRecord).where(LLMProviderRecord.is_default))
     loaded = result.scalar_one()
     assert loaded.name == "Claude Home"
     assert loaded.api_key == "sk-ant-test"

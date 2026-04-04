@@ -22,9 +22,7 @@ def serve(
 
 @app.command()
 def init(
-    password: str = typer.Option(
-        ..., prompt=True, hide_input=True, help="Owner password"
-    ),
+    password: str = typer.Option(..., prompt=True, hide_input=True, help="Owner password"),
 ) -> None:
     """Initialize Sebastian: hash owner password and print to .env."""
     from sebastian.gateway.auth import hash_password

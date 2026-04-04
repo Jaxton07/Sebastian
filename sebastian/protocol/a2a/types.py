@@ -14,6 +14,7 @@ class Artifact(BaseModel):
 
 class DelegateTask(BaseModel):
     """Sebastian → Sub-Agent: delegate a task."""
+
     task_id: str
     goal: str
     context: dict[str, Any] = Field(default_factory=dict)
@@ -23,6 +24,7 @@ class DelegateTask(BaseModel):
 
 class EscalateRequest(BaseModel):
     """Sub-Agent → Sebastian: request a decision."""
+
     task_id: str
     reason: str
     options: list[str] = Field(default_factory=list)
@@ -31,6 +33,7 @@ class EscalateRequest(BaseModel):
 
 class TaskResult(BaseModel):
     """Sub-Agent → Sebastian: report completion."""
+
     task_id: str
     ok: bool
     output: dict[str, Any] = Field(default_factory=dict)

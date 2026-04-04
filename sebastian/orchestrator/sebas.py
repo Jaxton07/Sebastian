@@ -71,9 +71,7 @@ class Sebastian(BaseAgent):
     async def chat(self, user_message: str, session_id: str) -> str:
         return await self.run_streaming(user_message, session_id)
 
-    async def get_or_create_session(
-        self, session_id: str | None, first_message: str
-    ) -> Session:
+    async def get_or_create_session(self, session_id: str | None, first_message: str) -> Session:
         if session_id:
             existing = await self._session_store.get_session(
                 session_id,

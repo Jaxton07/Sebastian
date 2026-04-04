@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from sebastian.core.stream_events import (
     ProviderCallEnd,
@@ -19,12 +20,14 @@ async def test_base_agent_uses_injected_provider() -> None:
     from sebastian.core.base_agent import BaseAgent
     from sebastian.store.session_store import SessionStore
 
-    provider = MockLLMProvider([
-        TextBlockStart(block_id="b0_0"),
-        TextDelta(block_id="b0_0", delta="Hello from sub."),
-        TextBlockStop(block_id="b0_0", text="Hello from sub."),
-        ProviderCallEnd(stop_reason="end_turn"),
-    ])
+    provider = MockLLMProvider(
+        [
+            TextBlockStart(block_id="b0_0"),
+            TextDelta(block_id="b0_0", delta="Hello from sub."),
+            TextBlockStop(block_id="b0_0", text="Hello from sub."),
+            ProviderCallEnd(stop_reason="end_turn"),
+        ]
+    )
 
     class TestAgent(BaseAgent):
         name = "test"
@@ -34,6 +37,7 @@ async def test_base_agent_uses_injected_provider() -> None:
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
 
     from sebastian.memory.episodic_memory import EpisodicMemory
+
     episodic_mock = MagicMock(spec=EpisodicMemory)
     episodic_mock.get_turns = AsyncMock(return_value=[])
     episodic_mock.add_turn = AsyncMock()

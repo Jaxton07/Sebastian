@@ -26,9 +26,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         from sebastian.config import settings
 
-        _engine = create_async_engine(
-            settings.database_url, echo=False, future=True
-        )
+        _engine = create_async_engine(settings.database_url, echo=False, future=True)
     return _engine
 
 

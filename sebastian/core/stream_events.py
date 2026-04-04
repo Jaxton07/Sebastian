@@ -18,7 +18,7 @@ class ThinkingDelta:
 @dataclass
 class ThinkingBlockStop:
     block_id: str
-    thinking: str        # full accumulated thinking text for this block
+    thinking: str  # full accumulated thinking text for this block
 
 
 @dataclass
@@ -35,7 +35,7 @@ class TextDelta:
 @dataclass
 class TextBlockStop:
     block_id: str
-    text: str            # full accumulated text for this block
+    text: str  # full accumulated text for this block
 
 
 @dataclass
@@ -64,7 +64,7 @@ class ToolResult:
 
 @dataclass
 class ProviderCallEnd:
-    stop_reason: str     # "end_turn" | "tool_use" | "max_tokens" | "stop_sequence"
+    stop_reason: str  # "end_turn" | "tool_use" | "max_tokens" | "stop_sequence"
 
 
 @dataclass

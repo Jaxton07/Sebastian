@@ -27,9 +27,8 @@ class EventBus:
         self._handlers[key] = [h for h in self._handlers[key] if h is not handler]
 
     async def publish(self, event: Event) -> None:
-        handlers = (
-            list(self._handlers.get(event.type.value, []))
-            + list(self._handlers.get(_WILDCARD, []))
+        handlers = list(self._handlers.get(event.type.value, [])) + list(
+            self._handlers.get(_WILDCARD, [])
         )
         if not handlers:
             return

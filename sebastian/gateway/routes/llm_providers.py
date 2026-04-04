@@ -14,7 +14,7 @@ AuthPayload = dict[str, Any]
 
 class LLMProviderCreate(BaseModel):
     name: str
-    provider_type: str          # "anthropic" | "openai"
+    provider_type: str  # "anthropic" | "openai"
     api_key: str
     model: str
     base_url: str | None = None
@@ -51,6 +51,7 @@ async def list_llm_providers(
     _auth: AuthPayload = Depends(require_auth),
 ) -> dict[str, Any]:
     import sebastian.gateway.state as state
+
     records = await state.llm_registry.list_all()
     return {"providers": [_record_to_dict(r) for r in records]}
 

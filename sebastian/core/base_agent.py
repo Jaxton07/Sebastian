@@ -72,10 +72,13 @@ class BaseAgent(ABC):
         self._active_stream: asyncio.Task[str] | None = None
 
         from sebastian.config import settings
+
         resolved_model = model or settings.sebastian_model
+        self._provider_injected = provider is not None
 
         if provider is None:
             from sebastian.llm.anthropic import AnthropicProvider
+
             provider = AnthropicProvider(api_key=settings.anthropic_api_key)
 
         self._loop = AgentLoop(provider, registry, resolved_model)
@@ -101,13 +104,17 @@ class BaseAgent(ABC):
         task_id: str | None = None,
         agent_name: str | None = None,
     ) -> str:
-        try:
-            import sebastian.gateway.state as _state
-            provider, model = await _state.llm_registry.get_default_with_model()
-            self._loop._provider = provider
-            self._loop._model = model
-        except AttributeError:
-            pass  # state not initialised (unit tests) — keep existing provider
+        if not self._provider_injected:
+            try:
+                import sebastian.gateway.state as _state
+
+                if not hasattr(_state, "llm_registry"):
+                    raise AttributeError("llm_registry not initialised")
+                provider, model = await _state.llm_registry.get_default_with_model()
+                self._loop._provider = provider
+                self._loop._model = model
+            except AttributeError:
+                pass  # state not initialised — keep existing provider
 
         agent_context = agent_name or self.name
         if self._active_stream is not None and not self._active_stream.done():

@@ -21,12 +21,14 @@ async def test_execute_delegated_task_returns_task_result() -> None:
     from sebastian.protocol.a2a.types import DelegateTask
     from sebastian.store.session_store import SessionStore
 
-    provider = MockLLMProvider([
-        TextBlockStart(block_id="b0_0"),
-        TextDelta(block_id="b0_0", delta="Task complete."),
-        TextBlockStop(block_id="b0_0", text="Task complete."),
-        ProviderCallEnd(stop_reason="end_turn"),
-    ])
+    provider = MockLLMProvider(
+        [
+            TextBlockStart(block_id="b0_0"),
+            TextDelta(block_id="b0_0", delta="Task complete."),
+            TextBlockStop(block_id="b0_0", text="Task complete."),
+            ProviderCallEnd(stop_reason="end_turn"),
+        ]
+    )
 
     class TestAgent(BaseAgent):
         name = "test"

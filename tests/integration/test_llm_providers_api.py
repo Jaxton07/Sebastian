@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture(autouse=True)
@@ -15,11 +15,10 @@ def set_env():
 @pytest.mark.asyncio
 async def test_llm_providers_crud() -> None:
     from sebastian.gateway.app import create_app
+
     app = create_app()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Route exists at minimum (auth may reject)
         resp = await client.get(
             "/api/v1/llm-providers",

@@ -36,9 +36,7 @@ class TaskStore:
 
     async def get(self, task_id: str) -> Task | None:
         """Retrieve a task by ID."""
-        result = await self._session.execute(
-            select(TaskRecord).where(TaskRecord.id == task_id)
-        )
+        result = await self._session.execute(select(TaskRecord).where(TaskRecord.id == task_id))
         record = result.scalar_one_or_none()
         return self._to_task(record) if record else None
 
@@ -53,9 +51,7 @@ class TaskStore:
 
     async def update_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status and set completion time if applicable."""
-        result = await self._session.execute(
-            select(TaskRecord).where(TaskRecord.id == task_id)
-        )
+        result = await self._session.execute(select(TaskRecord).where(TaskRecord.id == task_id))
         record = result.scalar_one_or_none()
         if record is None:
             return

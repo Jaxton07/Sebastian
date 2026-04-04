@@ -32,15 +32,17 @@ class ConversationManager:
         future: asyncio.Future[bool] = loop.create_future()
         self._pending[approval_id] = future
 
-        await self._bus.publish(Event(
-            type=EventType.USER_APPROVAL_REQUESTED,
-            data={
-                "approval_id": approval_id,
-                "task_id": task_id,
-                "tool_name": tool_name,
-                "tool_input": tool_input,
-            },
-        ))
+        await self._bus.publish(
+            Event(
+                type=EventType.USER_APPROVAL_REQUESTED,
+                data={
+                    "approval_id": approval_id,
+                    "task_id": task_id,
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                },
+            )
+        )
 
         try:
             return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
@@ -55,10 +57,10 @@ class ConversationManager:
         if future is None or future.done():
             return
         future.set_result(granted)
-        event_type = (
-            EventType.USER_APPROVAL_GRANTED if granted else EventType.USER_APPROVAL_DENIED
+        event_type = EventType.USER_APPROVAL_GRANTED if granted else EventType.USER_APPROVAL_DENIED
+        await self._bus.publish(
+            Event(
+                type=event_type,
+                data={"approval_id": approval_id, "granted": granted},
+            )
         )
-        await self._bus.publish(Event(
-            type=event_type,
-            data={"approval_id": approval_id, "granted": granted},
-        ))

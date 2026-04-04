@@ -64,7 +64,7 @@ def test_list_approvals_uses_db_factory_and_returns_description(
 
     async def seed() -> None:
         async with state.db_factory() as session:
-            session.add(
+            await session.merge(
                 ApprovalRecord(
                     id="approval-1",
                     task_id="task-1",

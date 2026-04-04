@@ -25,9 +25,7 @@ class LLMProviderRegistry:
     async def get_default_with_model(self) -> tuple[LLMProvider, str]:
         async with self._db_factory() as session:
             result = await session.execute(
-                select(LLMProviderRecord)
-                .where(LLMProviderRecord.is_default.is_(True))
-                .limit(1)
+                select(LLMProviderRecord).where(LLMProviderRecord.is_default.is_(True)).limit(1)
             )
             record = result.scalar_one_or_none()
 

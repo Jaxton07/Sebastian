@@ -54,6 +54,4 @@ class A2ADispatcher:
         if future is not None and not future.done():
             future.set_result(result)
         else:
-            logger.debug(
-                "resolve() called for unknown or already-done task_id=%s", result.task_id
-            )
+            logger.debug("resolve() called for unknown or already-done task_id=%s", result.task_id)

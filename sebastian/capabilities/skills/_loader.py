@@ -18,7 +18,7 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
         end = content.find("\n---", 3)
         if end != -1:
             fm_block = content[3:end].strip()
-            body = content[end + 4:].strip()
+            body = content[end + 4 :].strip()
             for line in fm_block.splitlines():
                 m = re.match(r"^(\w+)\s*:\s*(.+)$", line.strip())
                 if m:

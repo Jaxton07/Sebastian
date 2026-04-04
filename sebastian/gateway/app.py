@@ -123,6 +123,8 @@ def _register_runtime_agent_state_handlers() -> list[tuple[EventType, EventHandl
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    from pathlib import Path
+
     import sebastian.gateway.state as state
     from sebastian.capabilities.mcps._loader import connect_all, load_mcps
     from sebastian.capabilities.registry import registry
@@ -130,15 +132,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.config import ensure_data_dir, settings
     from sebastian.core.task_manager import TaskManager
     from sebastian.gateway.sse import SSEManager
+    from sebastian.log import setup_logging
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import bus
     from sebastian.store.database import get_session_factory, init_db
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
-
-    from pathlib import Path
-    from sebastian.log import setup_logging
 
     ensure_data_dir()
     setup_logging(
@@ -152,12 +152,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     index_store = IndexStore(settings.sessions_dir)
 
     from sebastian.llm.registry import LLMProviderRegistry
+
     llm_registry = LLMProviderRegistry(db_factory)
     default_provider = await llm_registry.get_default()
 
     load_tools()
 
     from sebastian.capabilities.skills._loader import load_skills
+
     skill_specs = load_skills(
         extra_dirs=[settings.skills_extensions_dir],
     )
@@ -227,7 +229,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    from sebastian.gateway.routes import agents, approvals, debug, llm_providers, sessions, stream, turns
+    from sebastian.gateway.routes import (
+        agents,
+        approvals,
+        debug,
+        llm_providers,
+        sessions,
+        stream,
+        turns,
+    )
 
     app = FastAPI(title="Sebastian Gateway", version="0.1.0", lifespan=lifespan)
     app.include_router(turns.router, prefix="/api/v1")

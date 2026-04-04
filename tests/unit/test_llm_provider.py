@@ -5,12 +5,14 @@ import pytest
 
 def test_llm_provider_is_abstract() -> None:
     from sebastian.llm.provider import LLMProvider
+
     with pytest.raises(TypeError, match="Can't instantiate abstract class"):
         LLMProvider()  # type: ignore[abstract]
 
 
 def test_llm_provider_stream_signature_accepted_by_subclass() -> None:
     from collections.abc import AsyncGenerator
+
     from sebastian.core.stream_events import LLMStreamEvent
     from sebastian.llm.provider import LLMProvider
 
@@ -60,17 +62,17 @@ async def test_anthropic_provider_streams_text_and_ends() -> None:
     final_msg.stop_reason = "end_turn"
 
     raw_events = [
-        _make_raw("content_block_start", index=0,
-                  content_block=MagicMock(type="text")),
-        _make_raw("content_block_delta", index=0,
-                  delta=MagicMock(type="text_delta", text="Hello world")),
+        _make_raw("content_block_start", index=0, content_block=MagicMock(type="text")),
+        _make_raw(
+            "content_block_delta", index=0, delta=MagicMock(type="text_delta", text="Hello world")
+        ),
         _make_raw("content_block_stop", index=0),
     ]
 
     stream_ctx = MagicMock()
     stream_ctx.__aenter__ = AsyncMock(return_value=stream_ctx)
     stream_ctx.__aexit__ = AsyncMock(return_value=False)
-    stream_ctx.current_message = MagicMock(content=[text_block])
+    stream_ctx.current_message_snapshot = MagicMock(content=[text_block])
     stream_ctx.get_final_message = AsyncMock(return_value=final_msg)
 
     async def _iter():

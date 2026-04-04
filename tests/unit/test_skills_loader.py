@@ -12,6 +12,7 @@ def test_skill_loader_reads_skill_md(tmp_path: Path) -> None:
     )
 
     from sebastian.capabilities.skills._loader import load_skills
+
     skills = load_skills(extra_dirs=[tmp_path])
 
     assert len(skills) == 1
@@ -25,6 +26,7 @@ def test_skill_loader_skips_dirs_without_skill_md(tmp_path: Path) -> None:
     (no_skill_dir / "README.md").write_text("# not a skill")
 
     from sebastian.capabilities.skills._loader import load_skills
+
     skills = load_skills(extra_dirs=[tmp_path])
     assert len(skills) == 0
 
@@ -44,6 +46,7 @@ def test_skill_loader_user_dir_overrides_builtin(tmp_path: Path) -> None:
         )
 
     from sebastian.capabilities.skills._loader import load_skills
+
     skills = load_skills(builtin_dir=builtin_dir, extra_dirs=[user_dir])
     greet = next(s for s in skills if s["name"] == "skill__greet")
     assert "user" in greet["description"]

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,10 +15,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     # setup_logging before app import
     from sebastian.log import setup_logging
+
     setup_logging(data_dir=tmp_path)
 
     from fastapi import FastAPI
+
     from sebastian.gateway.routes.debug import router
+
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     return TestClient(app)
@@ -28,6 +30,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 @pytest.fixture()
 def auth_headers(tmp_path: Path) -> dict[str, str]:
     from sebastian.gateway.auth import create_access_token
+
     token = create_access_token({"sub": "owner", "role": "owner"})
     return {"Authorization": f"Bearer {token}"}
 

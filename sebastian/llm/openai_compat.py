@@ -109,9 +109,13 @@ class OpenAICompatProvider(LLMProvider):
                 if self._thinking_format == "think_tags":
                     # Buffer and parse <think>...</think> inline
                     think_buffer, text_buffer, events = _parse_think_tags(
-                        think_buffer, text_buffer,
-                        content, f"{block_id_prefix}think", text_block_id,
-                        think_block_started, text_block_started,
+                        think_buffer,
+                        text_buffer,
+                        content,
+                        f"{block_id_prefix}think",
+                        text_block_id,
+                        think_block_started,
+                        text_block_started,
                     )
                     for ev in events:
                         if isinstance(ev, ThinkingBlockStart):
@@ -144,9 +148,7 @@ class OpenAICompatProvider(LLMProvider):
 
         # Flush open text/thinking blocks
         if think_block_started and self._thinking_format in ("reasoning_content", "think_tags"):
-            yield ThinkingBlockStop(
-                block_id=f"{block_id_prefix}think", thinking=think_buffer
-            )
+            yield ThinkingBlockStop(block_id=f"{block_id_prefix}think", thinking=think_buffer)
         if text_block_started:
             yield TextBlockStop(block_id=text_block_id, text=text_buffer)
 
@@ -158,9 +160,7 @@ class OpenAICompatProvider(LLMProvider):
                 inputs = json.loads(tc["arguments"]) if tc["arguments"] else {}
             except json.JSONDecodeError:
                 inputs = {}
-            yield ToolCallBlockStart(
-                block_id=tc_block_id, tool_id=tc["id"], name=tc["name"]
-            )
+            yield ToolCallBlockStart(block_id=tc_block_id, tool_id=tc["id"], name=tc["name"])
             yield ToolCallReady(
                 block_id=tc_block_id,
                 tool_id=tc["id"],
@@ -206,7 +206,7 @@ def _parse_think_tags(
                 events.append(ThinkingBlockStop(block_id=think_block_id, thinking=think_buffer))
                 think_buffer = ""
                 in_think = False
-                remaining = remaining[close_idx + len("</think>"):]
+                remaining = remaining[close_idx + len("</think>") :]
         else:
             open_idx = remaining.find("<think>")
             if open_idx == -1:
@@ -226,6 +226,6 @@ def _parse_think_tags(
                     events.append(TextDelta(block_id=text_block_id, delta=pre))
                 events.append(ThinkingBlockStart(block_id=think_block_id))
                 in_think = True
-                remaining = remaining[open_idx + len("<think>"):]
+                remaining = remaining[open_idx + len("<think>") :]
 
     return think_buffer, text_buffer, events

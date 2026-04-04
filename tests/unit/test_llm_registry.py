@@ -20,9 +20,7 @@ async def registry_with_db():
 
 
 @pytest.mark.asyncio
-async def test_registry_returns_env_fallback_when_no_default(
-    registry_with_db, monkeypatch
-) -> None:
+async def test_registry_returns_env_fallback_when_no_default(registry_with_db, monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fallback")
     from sebastian.llm.anthropic import AnthropicProvider
 
