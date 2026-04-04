@@ -10,7 +10,9 @@ from sebastian.core.stream_events import (
     LLMStreamEvent,
     ProviderCallEnd,
     TextBlockStop,
+    TextDelta,
     ThinkingBlockStop,
+    ThinkingDelta,
     ToolCallReady,
     ToolResult,
     TurnDone,
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
     from sebastian.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
+_llm_stream_logger = logging.getLogger("sebastian.llm.stream")
 
 MAX_ITERATIONS = 20
 
@@ -93,6 +96,10 @@ class AgentLoop:
                 max_tokens=self._max_tokens,
                 block_id_prefix=f"b{iteration}_",
             ):
+                _llm_stream_logger.debug(
+                    "stream_event type=%s task_id=%s", type(event).__name__, task_id
+                )
+
                 if isinstance(event, ProviderCallEnd):
                     stop_reason = event.stop_reason
                     continue
@@ -157,6 +164,16 @@ class AgentLoop:
                         tool_results_for_next.append(block)
 
                 else:
+                    if isinstance(event, TextDelta):
+                        _llm_stream_logger.debug(
+                            "text_delta block_id=%s delta=%r task_id=%s",
+                            event.block_id, event.delta, task_id,
+                        )
+                    elif isinstance(event, ThinkingDelta):
+                        _llm_stream_logger.debug(
+                            "thinking_delta block_id=%s delta=%r task_id=%s",
+                            event.block_id, event.delta, task_id,
+                        )
                     yield event
 
             # Append assistant turn in provider-appropriate format
