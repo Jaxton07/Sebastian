@@ -21,24 +21,25 @@ def _check_rg() -> bool:
 def _build_rg_cmd(
     pattern: str,
     search_path: str,
-    glob: str | None,
+    glob_pattern: str | None,
     ignore_case: bool,
     context_lines: int | None,
 ) -> list[str]:
-    cmd = ["rg", "--line-number", "--no-heading", pattern, search_path]
+    cmd = ["rg", "--line-number", "--no-heading"]
     if ignore_case:
-        cmd.insert(1, "-i")
-    if glob:
-        cmd[1:1] = ["--glob", glob]
+        cmd.append("-i")
+    if glob_pattern:
+        cmd.extend(["--glob", glob_pattern])
     if context_lines:
-        cmd[1:1] = ["-C", str(context_lines)]
+        cmd.extend(["-C", str(context_lines)])
+    cmd.extend([pattern, search_path])
     return cmd
 
 
 def _build_grep_cmd(
     pattern: str,
     search_path: str,
-    glob: str | None,
+    glob_pattern: str | None,
     ignore_case: bool,
     context_lines: int | None,
 ) -> list[str]:
@@ -47,20 +48,20 @@ def _build_grep_cmd(
         cmd.append("-i")
     if context_lines:
         cmd.extend(["-C", str(context_lines)])
-    if glob:
-        cmd.extend(["--include", glob])
+    if glob_pattern:
+        cmd.extend(["--include", glob_pattern])
     cmd.extend([pattern, search_path])
     return cmd
 
 
-async def _run_cmd(cmd: list[str]) -> tuple[str, int]:
+async def _run_cmd(cmd: list[str]) -> tuple[str, int | None]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout_bytes, _ = await proc.communicate()
-    return stdout_bytes.decode(errors="replace"), proc.returncode or 0
+    return stdout_bytes.decode(errors="replace"), proc.returncode
 
 
 @tool(
@@ -86,10 +87,10 @@ async def grep(
     use_rg = _check_rg()
 
     if use_rg:
-        cmd = _build_rg_cmd(pattern, search_path, glob, ignore_case, context_lines)
+        cmd = _build_rg_cmd(pattern, search_path, glob_pattern=glob, ignore_case=ignore_case, context_lines=context_lines)
         backend = "ripgrep"
     else:
-        cmd = _build_grep_cmd(pattern, search_path, glob, ignore_case, context_lines)
+        cmd = _build_grep_cmd(pattern, search_path, glob_pattern=glob, ignore_case=ignore_case, context_lines=context_lines)
         backend = "grep"
 
     output, _ = await _run_cmd(cmd)
