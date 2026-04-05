@@ -62,9 +62,6 @@ export function useConversation(sessionId: string | null): void {
 
     // 2. Connect per-session SSE
     function connect(): void {
-      // Reset retry count on every fresh connect attempt (handles re-mount)
-      retryRef.current = 0;
-
       disconnectRef.current?.();
 
       disconnectRef.current = createSessionSSEConnection(
@@ -158,6 +155,7 @@ export function useConversation(sessionId: string | null): void {
       }
     }
 
+    retryRef.current = 0;
     connect();
 
     return () => {
@@ -170,5 +168,5 @@ export function useConversation(sessionId: string | null): void {
       disconnectRef.current = null;
       store.getState().pauseSession(sid);
     };
-  }, [sessionId, jwtToken]);
+  }, [sessionId, jwtToken, queryClient]);
 }
