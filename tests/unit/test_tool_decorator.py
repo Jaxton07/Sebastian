@@ -50,3 +50,56 @@ async def test_call_tool_unknown_returns_error() -> None:
     assert not result.ok
     assert result.error is not None
     assert "nonexistent_tool" in result.error
+
+
+def test_tool_default_permission_tier_is_low() -> None:
+    from sebastian.core import tool as tool_module
+    from sebastian.core.tool import tool
+    from sebastian.core.types import ToolResult
+    from sebastian.permissions.types import PermissionTier
+
+    tool_module._tools.clear()
+
+    @tool(name="default_tier_tool", description="test")
+    async def my_tool(x: str) -> ToolResult:
+        return ToolResult(ok=True, output=x)
+
+    spec, _ = tool_module._tools["default_tier_tool"]
+    assert spec.permission_tier == PermissionTier.LOW
+
+
+def test_tool_explicit_permission_tier() -> None:
+    from sebastian.core import tool as tool_module
+    from sebastian.core.tool import tool
+    from sebastian.core.types import ToolResult
+    from sebastian.permissions.types import PermissionTier
+
+    tool_module._tools.clear()
+
+    @tool(
+        name="risky_tool",
+        description="test",
+        permission_tier=PermissionTier.HIGH_RISK,
+    )
+    async def risky(cmd: str) -> ToolResult:
+        return ToolResult(ok=True, output=cmd)
+
+    spec, _ = tool_module._tools["risky_tool"]
+    assert spec.permission_tier == PermissionTier.HIGH_RISK
+
+
+def test_tool_spec_no_requires_approval_field() -> None:
+    """旧字段 requires_approval / permission_level 已移除。"""
+    from sebastian.core import tool as tool_module
+    from sebastian.core.tool import tool
+    from sebastian.core.types import ToolResult
+
+    tool_module._tools.clear()
+
+    @tool(name="check_slots", description="test")
+    async def check(x: str) -> ToolResult:
+        return ToolResult(ok=True, output=x)
+
+    spec, _ = tool_module._tools["check_slots"]
+    assert not hasattr(spec, "requires_approval")
+    assert not hasattr(spec, "permission_level")

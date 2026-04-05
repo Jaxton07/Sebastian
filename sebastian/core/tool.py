@@ -1,3 +1,4 @@
+# sebastian/core/tool.py
 from __future__ import annotations
 
 import functools
@@ -7,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, get_type_hints
 
 from sebastian.core.types import ToolResult
+from sebastian.permissions.types import PermissionTier
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +25,19 @@ _TYPE_MAP: dict[type, str] = {
 class ToolSpec:
     """Specification and metadata for a registered tool."""
 
-    __slots__ = ("name", "description", "parameters", "requires_approval", "permission_level")
+    __slots__ = ("name", "description", "parameters", "permission_tier")
 
     def __init__(
         self,
         name: str,
         description: str,
         parameters: dict[str, Any],
-        requires_approval: bool = False,
-        permission_level: str = "owner",
+        permission_tier: PermissionTier = PermissionTier.LOW,
     ) -> None:
         self.name = name
         self.description = description
         self.parameters = parameters
-        self.requires_approval = requires_approval
-        self.permission_level = permission_level
+        self.permission_tier = permission_tier
 
 
 # Module-level registry: tool name → (spec, async callable)
@@ -47,9 +47,7 @@ _tools: dict[str, tuple[ToolSpec, ToolFn]] = {}
 def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     """Infer JSON schema from function signature."""
     sig = inspect.signature(fn)
-    # Use get_type_hints to resolve string annotations from "from __future__ import annotations"
     try:
-        # Include builtins and common types in localns
         hints = get_type_hints(
             fn,
             localns={
@@ -66,13 +64,11 @@ def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
             fn.__name__,
             e,
         )
-        # Fall back to raw annotations if hints cannot be resolved
         hints = {}
 
     properties: dict[str, Any] = {}
     required: list[str] = []
     for param_name, param in sig.parameters.items():
-        # Prefer resolved type hint over raw annotation
         ann = hints.get(param_name, param.annotation)
         json_type = _TYPE_MAP.get(ann, "string")
         properties[param_name] = {"type": json_type}
@@ -84,8 +80,7 @@ def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
 def tool(
     name: str,
     description: str,
-    requires_approval: bool = False,
-    permission_level: str = "owner",
+    permission_tier: PermissionTier = PermissionTier.LOW,
 ) -> Callable[[ToolFn], ToolFn]:
     """Decorator that registers an async function as a callable tool."""
 
@@ -94,8 +89,7 @@ def tool(
             name=name,
             description=description,
             parameters=_infer_json_schema(fn),
-            requires_approval=requires_approval,
-            permission_level=permission_level,
+            permission_tier=permission_tier,
         )
 
         @functools.wraps(fn)
