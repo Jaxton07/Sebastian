@@ -47,19 +47,22 @@ class Settings(BaseSettings):
     sebastian_log_sse: bool = False
 
     @property
+    def data_dir(self) -> Path:
+        return Path(self.sebastian_data_dir).expanduser().resolve()
+
+    @property
     def database_url(self) -> str:
         if self.sebastian_db_url:
             return self.sebastian_db_url
-        data_path = Path(self.sebastian_data_dir)
-        return f"sqlite+aiosqlite:///{data_path}/sebastian.db"
+        return f"sqlite+aiosqlite:///{self.data_dir}/sebastian.db"
 
     @property
     def sessions_dir(self) -> Path:
-        return Path(self.sebastian_data_dir) / "sessions"
+        return self.data_dir / "sessions"
 
     @property
     def extensions_dir(self) -> Path:
-        return Path(self.sebastian_data_dir) / "extensions"
+        return self.data_dir / "extensions"
 
     @property
     def skills_extensions_dir(self) -> Path:
@@ -75,7 +78,7 @@ settings = Settings()
 
 def ensure_data_dir() -> None:
     """Create the data directory and sessions subdirectories."""
-    data = Path(settings.sebastian_data_dir)
+    data = settings.data_dir
     data.mkdir(parents=True, exist_ok=True)
     (data / "sessions").mkdir(exist_ok=True)
     (data / "sessions" / "sebastian").mkdir(exist_ok=True)
