@@ -54,12 +54,18 @@
       "Bash(python -m ruff:*)",
       "Bash(python -c:*)",
       "Bash(python3 -c:*)",
+      "Bash(python3 -c :*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb devices:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb:*)",
       "mcp__pycharm__list_directory_tree",
       "WebSearch",
       "Bash(git -C /Users/ericw/work/code/ai/sebastian status --short)",
-      "Bash(git -C /Users/ericw/work/code/ai/sebastian commit -m ':*)"
+      "Bash(git -C /Users/ericw/work/code/ai/sebastian commit -m ':*)",
+      "Bash(grep \"\\\\.ts$\")",
+      "Bash(python3)",
+      "Bash(grep -l \"isolated_registry\" /Users/ericw/work/code/ai/sebastian/tests/unit/*.py)",
+      "mcp__pycharm__search_in_files_by_regex",
+      "Bash(git stash:*)"
     ]
   }
 }
