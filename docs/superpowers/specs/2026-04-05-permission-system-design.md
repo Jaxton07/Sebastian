@@ -370,21 +370,92 @@ class ApprovalRecord(Base):
 
 ---
 
-## 11. 实施顺序
+## 11. Tool 目录结构重组
+
+当前 `capabilities/tools/` 为平铺 `.py` 文件，随着工具增多和多文件需求，改为**目录-per-tool**结构。
+
+### 新目录结构
+
+```
+capabilities/tools/
+    _loader.py          # 扫描逻辑（更新）
+    file_ops/
+        __init__.py     # 原 file_ops.py 内容移入，@tool 装饰器即元数据
+        _helpers.py     # 可选辅助文件（_ 开头，loader 不直接扫描）
+    shell/
+        __init__.py     # 原 shell.py 内容移入
+    web_search/
+        __init__.py     # 原 web_search.py 内容移入
+```
+
+**设计原则**：
+- 无独立元数据文件。`name / description / permission_tier` 全在 `@tool` 装饰器里，代码即元数据，避免两处维护
+- 辅助模块以 `_` 开头，loader 跳过直接扫描，只加载 `__init__.py`
+- 向后兼容：`_loader.py` 同时支持平铺 `.py` 文件和子目录包，迁移期间不破坏现有工具
+
+### _loader.py 更新逻辑
+
+```python
+def load_tools() -> None:
+    tools_dir = Path(__file__).parent
+    # 1. 平铺 .py 文件（跳过 _ 开头）
+    for path in sorted(tools_dir.glob("*.py")):
+        if not path.stem.startswith("_"):
+            importlib.import_module(f"sebastian.capabilities.tools.{path.stem}")
+    # 2. 子目录包（含 __init__.py，跳过 _ 开头目录）
+    for entry in sorted(tools_dir.iterdir()):
+        if entry.is_dir() and not entry.name.startswith("_") and (entry / "__init__.py").exists():
+            importlib.import_module(f"sebastian.capabilities.tools.{entry.name}")
+```
+
+---
+
+## 12. Tool 系统文档
+
+### capabilities/tools/README.md（新建）
+
+覆盖以下内容：
+
+1. **概述**：tool 系统角色、`@tool` 自动注册机制
+2. **ToolResult**：`ok / output / error` 字段含义与用法
+3. **@tool 装饰器参数**：`name`、`description`、`permission_tier`
+4. **三档权限详解**：语义、选择指南、MODEL_DECIDES 的 `reason` 注入机制（工具函数无需定义 `reason` 参数）
+5. **创建新 tool 完整步骤**：新建目录 → 写 `__init__.py` → 选档位 → 重启自动注册
+6. **代码示例**：LOW 和 MODEL_DECIDES 各一个完整可运行示例
+7. **类型注解规范**：支持的参数类型（str/int/float/bool）
+8. **常见错误**：不要手动定义 `reason` 参数、函数必须 async、目录名 `_` 开头会被跳过
+
+### capabilities/README.md（更新）
+
+在"常见任务入口"部分末尾追加：
+
+```markdown
+## 详细文档
+
+- **Tool 系统完整指南**：[`capabilities/tools/README.md`](tools/README.md)
+  — 权限档位选择、创建流程、代码示例
+```
+
+---
+
+## 13. 完整实施顺序
 
 1. `core/protocols.py` — `ApprovalManagerProtocol`
 2. `permissions/types.py` — `PermissionTier`、`ToolCallContext`、`ReviewDecision`
 3. `core/tool.py` — 替换 `ToolSpec` 字段，更新 `@tool` 装饰器
-4. 更新现有工具文件（`file_ops.py`、`shell.py`、`web_search.py`）档位
-5. `permissions/reviewer.py` — `PermissionReviewer`
-6. `permissions/gate.py` — `PolicyGate`
-7. `core/base_agent.py` — 接收 `gate`，传递 context，调用 `gate.call()`
-8. `orchestrator/conversation.py` — 移除超时，新增 `reason` 参数
-9. `store/models.py` + migration — `ApprovalRecord.reason` 字段
-10. `gateway/app.py` — 创建 `PolicyGate`，接线
-11. `orchestrator/sebas.py` — 构造器改用 `gate`
-12. 单元测试 + 集成测试
+4. `capabilities/tools/_loader.py` — 支持子目录扫描
+5. 现有工具迁移至目录结构（`file_ops/`、`shell/`、`web_search/`），同步更新 `permission_tier`
+6. `permissions/reviewer.py` — `PermissionReviewer`
+7. `permissions/gate.py` — `PolicyGate`
+8. `core/base_agent.py` — 接收 `gate`，传递 context，调用 `gate.call()`
+9. `orchestrator/conversation.py` — 移除超时，新增 `reason` 参数
+10. `store/models.py` + migration — `ApprovalRecord.reason` 字段
+11. `gateway/app.py` — 创建 `PolicyGate`，接线
+12. `orchestrator/sebas.py` — 构造器改用 `gate`
+13. `capabilities/tools/README.md` — 新建文档
+14. `capabilities/README.md` — 添加链接
+15. 单元测试 + 集成测试
 
 ---
 
-*本文档 v1.0，覆盖权限系统完整设计，对应架构文档 Tool Permission 章节。*
+*本文档 v1.0，覆盖权限系统完整设计 + tool 目录重组 + 文档化，对应架构文档 Tool Permission 章节。*
