@@ -4,8 +4,9 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import types
 from collections.abc import Awaitable, Callable
-from typing import Any, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
@@ -44,6 +45,17 @@ class ToolSpec:
 _tools: dict[str, tuple[ToolSpec, ToolFn]] = {}
 
 
+def _unwrap_optional(hint: Any) -> Any:
+    """X | None → X。非 Optional 类型原样返回。"""
+    origin = get_origin(hint)
+    # Handle both typing.Union and types.UnionType (for Python 3.10+ | syntax)
+    if origin is Union or origin is types.UnionType:
+        args = [a for a in get_args(hint) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return hint
+
+
 def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     """Infer JSON schema from function signature."""
     sig = inspect.signature(fn)
@@ -70,11 +82,55 @@ def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     required: list[str] = []
     for param_name, param in sig.parameters.items():
         ann = hints.get(param_name, param.annotation)
-        json_type = _TYPE_MAP.get(ann, "string")
+        effective_ann = _unwrap_optional(ann)
+        json_type = _TYPE_MAP.get(effective_ann, "string")
         properties[param_name] = {"type": json_type}
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
     return {"type": "object", "properties": properties, "required": required}
+
+
+def _coerce_args(fn: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """
+    根据函数签名的类型注解对传入参数做宽松类型转换。
+    将字符串 "2" → int 2，"3.14" → float 3.14，"true"/"1"/"yes" → bool True。
+    转换失败时保留原值。支持 X | None（Optional）类型。
+    """
+    try:
+        hints = get_type_hints(
+            inspect.unwrap(fn),
+            localns={
+                "int": int,
+                "str": str,
+                "float": float,
+                "bool": bool,
+                "ToolResult": ToolResult,
+            },
+        )
+    except Exception:
+        return kwargs
+
+    result = dict(kwargs)
+    for name, value in kwargs.items():
+        if not isinstance(value, str):
+            continue
+        hint = hints.get(name)
+        if hint is None:
+            continue
+        target = _unwrap_optional(hint)
+        if target is int:
+            try:
+                result[name] = int(value)
+            except (ValueError, TypeError):
+                pass
+        elif target is float:
+            try:
+                result[name] = float(value)
+            except (ValueError, TypeError):
+                pass
+        elif target is bool:
+            result[name] = value.lower() in ("true", "1", "yes")
+    return result
 
 
 def tool(
@@ -119,4 +175,5 @@ async def call_tool(name: str, **kwargs: Any) -> ToolResult:
     if entry is None:
         return ToolResult(ok=False, error=f"Tool not found: {name}")
     _, fn = entry
-    return await fn(**kwargs)
+    coerced = _coerce_args(fn, kwargs)
+    return await fn(**coerced)
