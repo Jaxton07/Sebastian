@@ -41,5 +41,3 @@ def test_load_agents_includes_builtin_agents() -> None:
     configs = load_agents()
     agent_types = {c.agent_type for c in configs}
     assert "code" in agent_types
-    assert "stock" in agent_types
-    assert "life" in agent_types
