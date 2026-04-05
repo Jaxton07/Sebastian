@@ -22,6 +22,8 @@ _TYPE_MAP: dict[type, str] = {
     bool: "boolean",
 }
 
+_NoneType = type(None)
+
 
 class ToolSpec:
     """Specification and metadata for a registered tool."""
@@ -50,7 +52,7 @@ def _unwrap_optional(hint: Any) -> Any:
     origin = get_origin(hint)
     # Handle both typing.Union and types.UnionType (for Python 3.10+ | syntax)
     if origin is Union or origin is types.UnionType:
-        args = [a for a in get_args(hint) if a is not type(None)]
+        args = [a for a in get_args(hint) if a is not _NoneType]
         if len(args) == 1:
             return args[0]
     return hint
