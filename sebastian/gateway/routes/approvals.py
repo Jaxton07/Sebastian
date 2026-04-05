@@ -31,6 +31,7 @@ async def list_approvals(_auth: dict[str, Any] = Depends(require_auth)) -> dict[
                 "session_id": r.session_id,
                 "tool_name": r.tool_name,
                 "tool_input": r.tool_input,
+                "reason": r.reason,
                 "description": _approval_description(r.tool_name, r.tool_input),
                 "status": r.status,
                 "created_at": r.created_at.isoformat(),

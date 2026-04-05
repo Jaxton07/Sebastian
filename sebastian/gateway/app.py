@@ -179,10 +179,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
 
+    import anthropic as _anthropic
+
     from sebastian.permissions.gate import PolicyGate
     from sebastian.permissions.reviewer import PermissionReviewer
 
-    reviewer = PermissionReviewer()
+    _reviewer_client = _anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    reviewer = PermissionReviewer(client=_reviewer_client)
     gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=conversation)
 
     agent_configs = load_agents()

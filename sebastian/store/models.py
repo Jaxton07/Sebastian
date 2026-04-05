@@ -27,6 +27,7 @@ class ApprovalRecord(Base):
     session_id: Mapped[str] = mapped_column(String, index=True, default="")
     tool_name: Mapped[str] = mapped_column(String(100))
     tool_input: Mapped[dict[str, Any]] = mapped_column(JSON)
+    reason: Mapped[str] = mapped_column(String, default="")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

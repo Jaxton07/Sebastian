@@ -25,9 +25,9 @@ class ConversationManager:
         task_id: str,
         tool_name: str,
         tool_input: dict[str, Any],
-        timeout: float = 300.0,
+        reason: str,
     ) -> bool:
-        """Suspend execution until the user approves or denies, or timeout (→ deny)."""
+        """Suspend execution until the user approves or denies. No timeout."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[bool] = loop.create_future()
         self._pending[approval_id] = future
@@ -40,16 +40,12 @@ class ConversationManager:
                     "task_id": task_id,
                     "tool_name": tool_name,
                     "tool_input": tool_input,
+                    "reason": reason,
                 },
             )
         )
 
-        try:
-            return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
-        except TimeoutError:
-            logger.warning("Approval %s timed out", approval_id)
-            self._pending.pop(approval_id, None)
-            return False
+        return await future
 
     async def resolve_approval(self, approval_id: str, granted: bool) -> None:
         """Called by the approval API endpoint to resolve a pending request."""
