@@ -90,10 +90,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const paused = Object.entries(s.sessions).filter(
         ([id, sess]) => id !== sessionId && sess.status === 'paused',
       );
-      const toEvict = paused.slice(MAX_PAUSED - 1);
+      const toEvictIds = new Set(paused.slice(MAX_PAUSED - 1).map(([id]) => id));
       const next = updateSession(s.sessions, sessionId, { status: 'paused' });
-      for (const [id] of toEvict) delete next[id];
-      return { sessions: next };
+      const final = Object.fromEntries(
+        Object.entries(next).filter(([id]) => !toEvictIds.has(id)),
+      );
+      return { sessions: final };
     });
   },
 
