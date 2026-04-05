@@ -9,6 +9,19 @@ import type { ConvMessage, SSEEvent } from '../types';
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
+/** Map raw API message list to ConvMessage array. */
+function mapMessages(
+  sessionId: string,
+  messages: Array<{ role: string; content: string; ts?: string }>,
+): ConvMessage[] {
+  return messages.map((m, i) => ({
+    id: `${sessionId}-${i}`,
+    role: m.role as ConvMessage['role'],
+    content: m.content,
+    createdAt: m.ts ?? '',
+  }));
+}
+
 /** 管理单个 session 的 hydrate + per-session SSE 生命周期。
  *  在 ConversationView mount 时调用，unmount 时自动 pause。 */
 export function useConversation(sessionId: string | null): void {
@@ -16,56 +29,62 @@ export function useConversation(sessionId: string | null): void {
   const queryClient = useQueryClient();
   const store = useConversationStore;
   const disconnectRef = useRef<(() => void) | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryRef = useRef(0);
   const lastEventIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!sessionId || !jwtToken) return;
 
+    // Capture sessionId so all closures use the same stable reference
+    const sid = sessionId;
+
     const { getOrInit, setStatus, setMessages } = store.getState();
 
     // Already live — nothing to do
-    if (getOrInit(sessionId).status === 'live') return;
+    if (getOrInit(sid).status === 'live') return;
 
-    setStatus(sessionId, 'loading');
+    setStatus(sid, 'loading');
+
+    // Cancellation flag shared across all async callbacks in this effect run
+    let cancelled = false;
 
     // 1. Hydrate historical messages
-    getSessionDetail(sessionId)
+    getSessionDetail(sid)
       .then((detail) => {
-        const messages: ConvMessage[] = detail.messages.map((m, i) => ({
-          id: `${sessionId}-${i}`,
-          role: m.role,
-          content: m.content,
-          createdAt: m.ts ?? '',
-        }));
-        setMessages(sessionId, messages);
+        if (cancelled) return;
+        setMessages(sid, mapMessages(sid, detail.messages));
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn(`[useConversation] Hydration failed for ${sid}:`, err);
         // Non-fatal — render with empty history, SSE fills live content
       });
 
     // 2. Connect per-session SSE
     function connect(): void {
+      // Reset retry count on every fresh connect attempt (handles re-mount)
+      retryRef.current = 0;
+
       disconnectRef.current?.();
 
       disconnectRef.current = createSessionSSEConnection(
-        sessionId!,
+        sid,
         (event: SSEEvent) => {
           retryRef.current = 0;
           handleEvent(event);
         },
         (err) => {
-          console.warn(`[useConversation] SSE error for ${sessionId}:`, err);
+          console.warn(`[useConversation] SSE error for ${sid}:`, err);
           if (retryRef.current < MAX_RETRIES) {
             const delay = BASE_DELAY_MS * 2 ** retryRef.current;
             retryRef.current += 1;
-            setTimeout(connect, delay);
+            retryTimerRef.current = setTimeout(connect, delay);
           }
         },
         lastEventIdRef.current,
       );
 
-      store.getState().setStatus(sessionId!, 'live');
+      store.getState().setStatus(sid, 'live');
     }
 
     function handleEvent(event: SSEEvent): void {
@@ -77,38 +96,38 @@ export function useConversation(sessionId: string | null): void {
       switch (event.type) {
         case 'thinking_block.start': {
           const d = event.data as { block_id: string };
-          s.onThinkingBlockStart(sessionId!, d.block_id);
+          s.onThinkingBlockStart(sid, d.block_id);
           break;
         }
         case 'turn.thinking_delta': {
           const d = event.data as { block_id: string; delta: string };
-          s.onThinkingDelta(sessionId!, d.block_id, d.delta);
+          s.onThinkingDelta(sid, d.block_id, d.delta);
           break;
         }
         case 'thinking_block.stop': {
           const d = event.data as { block_id: string };
-          s.onThinkingBlockStop(sessionId!, d.block_id);
+          s.onThinkingBlockStop(sid, d.block_id);
           break;
         }
         case 'text_block.start': {
           const d = event.data as { block_id: string };
-          s.onTextBlockStart(sessionId!, d.block_id);
+          s.onTextBlockStart(sid, d.block_id);
           break;
         }
         case 'turn.delta': {
           const d = event.data as { block_id: string; delta: string };
-          s.onTextDelta(sessionId!, d.block_id, d.delta);
+          s.onTextDelta(sid, d.block_id, d.delta);
           break;
         }
         case 'text_block.stop': {
           const d = event.data as { block_id: string };
-          s.onTextBlockStop(sessionId!, d.block_id);
+          s.onTextBlockStop(sid, d.block_id);
           break;
         }
         case 'tool.running': {
           const d = event.data as { tool_id: string; name: string; input?: unknown };
           s.onToolRunning(
-            sessionId!,
+            sid,
             d.tool_id,
             d.name,
             typeof d.input === 'string' ? d.input : JSON.stringify(d.input ?? ''),
@@ -117,26 +136,21 @@ export function useConversation(sessionId: string | null): void {
         }
         case 'tool.executed': {
           const d = event.data as { tool_id: string; result_summary?: string };
-          s.onToolExecuted(sessionId!, d.tool_id, d.result_summary ?? '');
+          s.onToolExecuted(sid, d.tool_id, d.result_summary ?? '');
           break;
         }
         case 'tool.failed': {
           const d = event.data as { tool_id: string; error?: string };
-          s.onToolFailed(sessionId!, d.tool_id, d.error ?? 'failed');
+          s.onToolFailed(sid, d.tool_id, d.error ?? 'failed');
           break;
         }
         case 'turn.response': {
-          s.onTurnComplete(sessionId!);
-          getSessionDetail(sessionId!).then((detail) => {
-            const messages: ConvMessage[] = detail.messages.map((m, i) => ({
-              id: `${sessionId}-${i}`,
-              role: m.role,
-              content: m.content,
-              createdAt: m.ts ?? '',
-            }));
-            store.getState().setMessages(sessionId!, messages);
+          s.onTurnComplete(sid);
+          getSessionDetail(sid).then((detail) => {
+            if (cancelled) return;
+            store.getState().setMessages(sid, mapMessages(sid, detail.messages));
           });
-          queryClient.invalidateQueries({ queryKey: ['session-detail', sessionId] });
+          queryClient.invalidateQueries({ queryKey: ['session-detail', sid] });
           break;
         }
         default:
@@ -147,9 +161,14 @@ export function useConversation(sessionId: string | null): void {
     connect();
 
     return () => {
+      cancelled = true;
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       disconnectRef.current?.();
       disconnectRef.current = null;
-      store.getState().pauseSession(sessionId!);
+      store.getState().pauseSession(sid);
     };
   }, [sessionId, jwtToken]);
 }
