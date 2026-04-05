@@ -86,7 +86,7 @@ async def grep(
     context_lines: int | None = None,
     head_limit: int | None = None,
 ) -> ToolResult:
-    search_path = path if path is not None else settings.sebastian_data_dir
+    search_path = path if path is not None else str(settings.data_dir)
     effective_limit = head_limit if head_limit is not None else _DEFAULT_HEAD_LIMIT
     use_rg = _check_rg()
 

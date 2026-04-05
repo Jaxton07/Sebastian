@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     ensure_data_dir()
     setup_logging(
-        data_dir=Path(settings.sebastian_data_dir),
+        data_dir=settings.data_dir,
         llm_stream=settings.sebastian_log_llm_stream,
         sse=settings.sebastian_log_sse,
     )
