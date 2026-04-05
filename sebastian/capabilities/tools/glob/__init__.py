@@ -3,6 +3,7 @@ from __future__ import annotations
 import glob as glob_module
 import os
 
+from sebastian.config import settings
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
@@ -19,7 +20,7 @@ _MAX_RESULTS = 100
     permission_tier=PermissionTier.LOW,
 )
 async def glob(pattern: str, path: str | None = None) -> ToolResult:
-    search_root = path if path is not None else os.getcwd()
+    search_root = path if path is not None else settings.sebastian_data_dir
 
     if not os.path.isdir(search_root):
         return ToolResult(ok=False, error=f"Path is not a directory: {search_root}")

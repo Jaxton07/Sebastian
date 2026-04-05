@@ -154,7 +154,7 @@ python3 -c "from sebastian.gateway.auth import hash_password; print(hash_passwor
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
 SEBASTIAN_OWNER_NAME=Eric
-SEBASTIAN_DATA_DIR=./data
+# SEBASTIAN_DATA_DIR 默认 ~/.sebastian，本地开发通常无需设置
 SEBASTIAN_JWT_SECRET=local-dev-secret
 SEBASTIAN_OWNER_PASSWORD_HASH=<用上面命令生成>
 SEBASTIAN_GATEWAY_HOST=127.0.0.1

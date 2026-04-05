@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Sebastian core
     sebastian_owner_name: str = "Owner"
-    sebastian_data_dir: str = "./data"
+    sebastian_data_dir: str = str(Path.home() / ".sebastian")
     sebastian_sandbox_enabled: bool = False
 
     # Gateway
