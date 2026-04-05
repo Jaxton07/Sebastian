@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def _make_mock_gate() -> MagicMock:
+    gate = MagicMock()
+    gate.get_tool_specs.return_value = []
+    gate.get_skill_specs.return_value = []
+    gate.get_all_tool_specs.return_value = []
+    return gate
 
 
 @pytest.mark.asyncio
 async def test_chat_uses_run_streaming_without_duplicate_turn_events(
     tmp_path: Path,
 ) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.task_manager import TaskManager
     from sebastian.core.types import Session
     from sebastian.orchestrator.conversation import ConversationManager
@@ -43,16 +50,14 @@ async def test_chat_uses_run_streaming_without_duplicate_turn_events(
 
     bus.subscribe(capture)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = Sebastian(
-            registry=CapabilityRegistry(),
-            session_store=store,
-            index_store=index_store,
-            task_manager=task_manager,
-            conversation=conversation,
-            event_bus=bus,
-        )
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        index_store=index_store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
 
     async def fake_run_streaming(user_message: str, session_id: str) -> str:
         await bus.publish(
@@ -84,7 +89,6 @@ async def test_chat_uses_run_streaming_without_duplicate_turn_events(
 async def test_get_or_create_session_creates_sebastian_worker_session(
     tmp_path: Path,
 ) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.task_manager import TaskManager
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
@@ -99,16 +103,14 @@ async def test_get_or_create_session_creates_sebastian_worker_session(
     conversation = ConversationManager(bus)
     task_manager = TaskManager(store, bus, index_store=index_store)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = Sebastian(
-            registry=CapabilityRegistry(),
-            session_store=store,
-            index_store=index_store,
-            task_manager=task_manager,
-            conversation=conversation,
-            event_bus=bus,
-        )
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        index_store=index_store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
 
     session = await agent.get_or_create_session(None, "hello from sebastian")
 
@@ -125,7 +127,6 @@ async def test_get_or_create_session_creates_sebastian_worker_session(
 async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
     tmp_path: Path,
 ) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.task_manager import TaskManager
     from sebastian.core.types import Session
     from sebastian.orchestrator.conversation import ConversationManager
@@ -149,16 +150,14 @@ async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
     )
     await store.create_session(existing_session)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = Sebastian(
-            registry=CapabilityRegistry(),
-            session_store=store,
-            index_store=index_store,
-            task_manager=task_manager,
-            conversation=conversation,
-            event_bus=bus,
-        )
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        index_store=index_store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
 
     loaded = await agent.get_or_create_session("existing-session", "ignored")
 
@@ -170,7 +169,6 @@ async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
 
 @pytest.mark.asyncio
 async def test_intervene_forwards_agent_name_to_run(tmp_path: Path) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.task_manager import TaskManager
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
@@ -185,16 +183,14 @@ async def test_intervene_forwards_agent_name_to_run(tmp_path: Path) -> None:
     conversation = ConversationManager(bus)
     task_manager = TaskManager(store, bus, index_store=index_store)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = Sebastian(
-            registry=CapabilityRegistry(),
-            session_store=store,
-            index_store=index_store,
-            task_manager=task_manager,
-            conversation=conversation,
-            event_bus=bus,
-        )
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        index_store=index_store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
 
     agent.run = AsyncMock(return_value="done")  # type: ignore[method-assign]
     response = await agent.intervene("stock", "session-123", "revise this")

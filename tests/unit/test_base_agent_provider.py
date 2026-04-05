@@ -16,7 +16,6 @@ from tests.unit.test_agent_loop import MockLLMProvider
 @pytest.mark.asyncio
 async def test_base_agent_uses_injected_provider() -> None:
     """BaseAgent passes the injected LLMProvider to AgentLoop."""
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.store.session_store import SessionStore
 
@@ -43,7 +42,7 @@ async def test_base_agent_uses_injected_provider() -> None:
     episodic_mock.add_turn = AsyncMock()
 
     agent = TestAgent(
-        registry=CapabilityRegistry(),
+        gate=MagicMock(),
         session_store=session_store,
         provider=provider,
     )

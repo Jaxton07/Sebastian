@@ -15,7 +15,6 @@ from tests.unit.test_agent_loop import MockLLMProvider
 
 @pytest.mark.asyncio
 async def test_execute_delegated_task_returns_task_result() -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.memory.episodic_memory import EpisodicMemory
     from sebastian.protocol.a2a.types import DelegateTask
@@ -43,7 +42,7 @@ async def test_execute_delegated_task_returns_task_result() -> None:
     episodic_mock.add_turn = AsyncMock()
 
     agent = TestAgent(
-        registry=CapabilityRegistry(),
+        gate=MagicMock(),
         session_store=session_store,
         provider=provider,
     )
@@ -59,7 +58,6 @@ async def test_execute_delegated_task_returns_task_result() -> None:
 
 @pytest.mark.asyncio
 async def test_execute_delegated_task_captures_exception() -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.memory.episodic_memory import EpisodicMemory
     from sebastian.protocol.a2a.types import DelegateTask
@@ -81,7 +79,7 @@ async def test_execute_delegated_task_captures_exception() -> None:
     episodic_mock.add_turn = AsyncMock()
 
     agent = TestAgent(
-        registry=CapabilityRegistry(),
+        gate=MagicMock(),
         session_store=session_store,
         provider=provider,
     )

@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from sebastian.protocol.a2a.types import DelegateTask
     from sebastian.protocol.a2a.types import TaskResult as A2ATaskResult
 
-from sebastian.capabilities.registry import CapabilityRegistry
+from sebastian.permissions.gate import PolicyGate
+from sebastian.permissions.types import ToolCallContext
 from sebastian.config import settings
 from sebastian.core.agent_loop import AgentLoop
 from sebastian.core.stream_events import (
@@ -62,7 +63,7 @@ class BaseAgent(ABC):
 
     def __init__(
         self,
-        registry: CapabilityRegistry,
+        gate: PolicyGate,
         session_store: SessionStore,
         event_bus: EventBus | None = None,
         provider: LLMProvider | None = None,
@@ -70,7 +71,8 @@ class BaseAgent(ABC):
         allowed_tools: list[str] | None = None,
         allowed_skills: list[str] | None = None,
     ) -> None:
-        self._registry = registry
+        self._gate = gate
+        self._current_task_goal: str = ""
         self._session_store = session_store
         self._event_bus = event_bus
         self._episodic = EpisodicMemory(session_store)
@@ -91,23 +93,19 @@ class BaseAgent(ABC):
 
             provider = AnthropicProvider(api_key=settings.anthropic_api_key)
 
-        _allowed_tools_set = set(self.allowed_tools) if self.allowed_tools is not None else None
-        _allowed_skills_set = set(self.allowed_skills) if self.allowed_skills is not None else None
         self._loop = AgentLoop(
             provider,
-            registry,
+            gate,
             resolved_model,
-            allowed_tools=_allowed_tools_set,
-            allowed_skills=_allowed_skills_set,
         )
-        self.system_prompt = self.build_system_prompt(registry)
+        self.system_prompt = self.build_system_prompt(gate)
 
     def _persona_section(self) -> str:
         return self.persona.replace("{owner_name}", settings.sebastian_owner_name)
 
-    def _tools_section(self, registry: CapabilityRegistry) -> str:
+    def _tools_section(self, gate: PolicyGate) -> str:
         allowed = set(self.allowed_tools) if self.allowed_tools is not None else None
-        specs = registry.get_tool_specs(allowed)
+        specs = gate.get_tool_specs(allowed)
         if not specs:
             return ""
         lines = ["## Available Tools", ""]
@@ -115,9 +113,9 @@ class BaseAgent(ABC):
             lines.append(f"- **{spec['name']}**: {spec['description']}")
         return "\n".join(lines)
 
-    def _skills_section(self, registry: CapabilityRegistry) -> str:
+    def _skills_section(self, gate: PolicyGate) -> str:
         allowed = set(self.allowed_skills) if self.allowed_skills is not None else None
-        specs = registry.get_skill_specs(allowed)
+        specs = gate.get_skill_specs(allowed)
         if not specs:
             return ""
         lines = ["## Available Skills", ""]
@@ -130,13 +128,13 @@ class BaseAgent(ABC):
 
     def build_system_prompt(
         self,
-        registry: CapabilityRegistry,
+        gate: PolicyGate,
         agent_registry: dict[str, object] | None = None,
     ) -> str:
         sections = [
             self._persona_section(),
-            self._tools_section(registry),
-            self._skills_section(registry),
+            self._tools_section(gate),
+            self._skills_section(gate),
             self._agents_section(agent_registry),
         ]
         return "\n\n".join(s for s in sections if s)
@@ -162,6 +160,8 @@ class BaseAgent(ABC):
         task_id: str | None = None,
         agent_name: str | None = None,
     ) -> str:
+        self._current_task_goal = user_message
+
         if not self._provider_injected:
             try:
                 import sebastian.gateway.state as _state
@@ -272,7 +272,12 @@ class BaseAgent(ABC):
                         },
                     )
                     try:
-                        result = await self._registry.call(event.name, **event.inputs)
+                        context = ToolCallContext(
+                            task_goal=self._current_task_goal,
+                            session_id=session_id,
+                            task_id=task_id,
+                        )
+                        result = await self._gate.call(event.name, event.inputs, context)
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:  # pragma: no cover - exercised via async failure paths

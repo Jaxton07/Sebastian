@@ -10,7 +10,6 @@ from fastapi import FastAPI
 
 if TYPE_CHECKING:
     from sebastian.agents._loader import AgentConfig
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.agent_pool import AgentPool
     from sebastian.llm.base import LLMProvider
     from sebastian.protocol.a2a.dispatcher import A2ADispatcher
@@ -26,7 +25,7 @@ def _initialize_a2a_and_pools(
     dispatcher: A2ADispatcher,
     default_provider: LLMProvider,
     session_store: SessionStore,
-    registry: CapabilityRegistry,
+    gate: Any,
     event_bus: EventBus,
 ) -> tuple[dict[str, AgentPool], dict[str, str | None]]:
     """Create AgentPool + agent instances + worker loops for each sub-agent config."""
@@ -48,7 +47,7 @@ def _initialize_a2a_and_pools(
         agent_instances: dict[str, Any] = {}
         for worker_id in pool.status():
             agent = cfg.agent_class(
-                registry=registry,
+                gate=gate,
                 session_store=session_store,
                 event_bus=event_bus,
                 provider=default_provider,
@@ -180,12 +179,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
 
+    from sebastian.permissions.gate import PolicyGate
+    from sebastian.permissions.reviewer import PermissionReviewer
+
+    reviewer = PermissionReviewer()
+    gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=conversation)
+
     agent_configs = load_agents()
     agent_registry = {cfg.agent_type: cfg for cfg in agent_configs}
     dispatcher = A2ADispatcher()
 
     sebastian_agent = Sebastian(
-        registry=registry,
+        gate=gate,
         session_store=session_store,
         index_store=index_store,
         task_manager=task_manager,
@@ -200,7 +205,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         dispatcher=dispatcher,
         default_provider=default_provider,
         session_store=session_store,
-        registry=registry,
+        gate=gate,
         event_bus=event_bus,
     )
 

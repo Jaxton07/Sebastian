@@ -41,6 +41,14 @@ class PolicyGate:
         self._reviewer = reviewer
         self._approval_manager = approval_manager
 
+    def get_tool_specs(self, allowed: set[str] | None = None) -> list[dict[str, Any]]:
+        """Delegate to registry for native + MCP tool specs (excluding skills)."""
+        return self._registry.get_tool_specs(allowed)
+
+    def get_skill_specs(self, allowed: set[str] | None = None) -> list[dict[str, Any]]:
+        """Delegate to registry for skill specs."""
+        return self._registry.get_skill_specs(allowed)
+
     def get_all_tool_specs(self) -> list[dict[str, Any]]:
         """Return tool specs in Anthropic API format.
 

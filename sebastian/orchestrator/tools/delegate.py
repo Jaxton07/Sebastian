@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
+from sebastian.permissions.types import PermissionTier
 
 if TYPE_CHECKING:
     from sebastian.protocol.a2a.dispatcher import A2ADispatcher
@@ -22,8 +23,7 @@ def _get_dispatcher() -> A2ADispatcher:
         "Delegate a task to a specialized sub-agent. Use this when a user request requires "
         "capabilities of a specific agent type. Returns the agent's output summary."
     ),
-    requires_approval=False,
-    permission_level="owner",
+    permission_tier=PermissionTier.LOW,
 )
 async def delegate_to_agent(agent_type: str, goal: str, context: str = "") -> ToolResult:
     """

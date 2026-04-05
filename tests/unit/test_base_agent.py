@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 
 @pytest.mark.asyncio
 async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: Path) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.core.types import Session
     from sebastian.store.session_store import SessionStore
@@ -28,9 +27,7 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
         )
     )
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = TestAgent(CapabilityRegistry(), store)
+    agent = TestAgent(MagicMock(), store)
 
     async def failing_stream(*args, **kwargs):
         if False:
@@ -49,7 +46,6 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
 
 @pytest.mark.asyncio
 async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: Path) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.core.types import Session
     from sebastian.store.session_store import SessionStore
@@ -68,9 +64,7 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
         )
     )
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = TestAgent(CapabilityRegistry(), store)
+    agent = TestAgent(MagicMock(), store)
 
     async def successful_stream(*args, **kwargs):
         from sebastian.core.stream_events import TurnDone
@@ -102,7 +96,6 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
 
 @pytest.mark.asyncio
 async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.core.stream_events import TurnDone
     from sebastian.core.types import Session
@@ -132,9 +125,7 @@ async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
 
     bus.subscribe(capture)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = TestAgent(CapabilityRegistry(), store, bus)
+    agent = TestAgent(MagicMock(), store, bus)
 
     async def fake_stream(*args, **kwargs):
         yield TurnDone(full_text="response text")
@@ -164,7 +155,6 @@ async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_run_streaming_interrupt_publishes_interrupted(tmp_path: Path) -> None:
-    from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.core.base_agent import BaseAgent
     from sebastian.core.stream_events import TextBlockStart, TextDelta
     from sebastian.core.types import Session
@@ -194,9 +184,7 @@ async def test_run_streaming_interrupt_publishes_interrupted(tmp_path: Path) -> 
 
     bus.subscribe(capture)
 
-    mock_client = MagicMock()
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        agent = TestAgent(CapabilityRegistry(), store, bus)
+    agent = TestAgent(MagicMock(), store, bus)
 
     async def slow_stream(*args, **kwargs):
         yield TextBlockStart(block_id="b0_0")

@@ -4,8 +4,8 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sebastian.capabilities.registry import CapabilityRegistry
 from sebastian.core.base_agent import BaseAgent
+from sebastian.permissions.gate import PolicyGate
 from sebastian.core.task_manager import TaskManager
 from sebastian.core.types import Session, Task
 from sebastian.orchestrator.conversation import ConversationManager
@@ -68,7 +68,7 @@ class Sebastian(BaseAgent):
 
     def __init__(
         self,
-        registry: CapabilityRegistry,
+        gate: PolicyGate,
         session_store: SessionStore,
         index_store: IndexStore,
         task_manager: TaskManager,
@@ -77,13 +77,13 @@ class Sebastian(BaseAgent):
         provider: LLMProvider | None = None,
         agent_registry: dict[str, AgentConfig] | None = None,
     ) -> None:
-        super().__init__(registry, session_store, event_bus=event_bus, provider=provider)
+        super().__init__(gate, session_store, event_bus=event_bus, provider=provider)
         self._index = index_store
         self._task_manager = task_manager
         self._conversation = conversation
         self._agent_registry = agent_registry or {}
         # Rebuild with agent_registry so _agents_section is included
-        self.system_prompt = self.build_system_prompt(registry, self._agent_registry)
+        self.system_prompt = self.build_system_prompt(gate, self._agent_registry)
 
     def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:
         from sebastian.agents._loader import AgentConfig

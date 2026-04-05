@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
-from sebastian.capabilities.registry import CapabilityRegistry
+from sebastian.core.protocols import ToolSpecProvider
 from sebastian.core.stream_events import (
     LLMStreamEvent,
     ProviderCallEnd,
@@ -54,14 +54,12 @@ class AgentLoop:
     def __init__(
         self,
         provider: LLMProvider,
-        registry: CapabilityRegistry,
+        tool_provider: ToolSpecProvider,
         model: str = "claude-opus-4-6",
         max_tokens: int | None = None,
-        allowed_tools: set[str] | None = None,
-        allowed_skills: set[str] | None = None,
     ) -> None:
         self._provider = provider
-        self._registry = registry
+        self._registry = tool_provider
         self._model = model
         if max_tokens is not None:
             self._max_tokens = max_tokens
@@ -69,8 +67,6 @@ class AgentLoop:
             from sebastian.config import settings
 
             self._max_tokens = settings.llm_max_tokens
-        self._allowed_tools = allowed_tools
-        self._allowed_skills = allowed_skills
 
     async def stream(
         self,
@@ -80,10 +76,7 @@ class AgentLoop:
     ) -> AsyncGenerator[LLMStreamEvent, ToolResult | None]:
         """Yield LLM stream events; accept tool results injected via asend()."""
         working = list(messages)
-        tools = self._registry.get_callable_specs(
-            allowed_tools=self._allowed_tools,
-            allowed_skills=self._allowed_skills,
-        )
+        tools = self._registry.get_all_tool_specs()
         full_text_parts: list[str] = []
         is_openai = self._provider.message_format == "openai"
 
