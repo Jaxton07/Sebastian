@@ -3,6 +3,15 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def restore_tool_registry():
+    from sebastian.core import tool as tool_module
+    saved = dict(tool_module._tools)
+    yield
+    tool_module._tools.clear()
+    tool_module._tools.update(saved)
+
+
 def test_coerce_str_to_int():
     from sebastian.core.tool import _coerce_args
     from sebastian.core.types import ToolResult

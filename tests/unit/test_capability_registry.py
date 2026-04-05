@@ -3,6 +3,15 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def restore_tool_registry():
+    from sebastian.core import tool as tool_module
+    saved = dict(tool_module._tools)
+    yield
+    tool_module._tools.clear()
+    tool_module._tools.update(saved)
+
+
 @pytest.mark.asyncio
 async def test_registry_wraps_native_tool() -> None:
     from sebastian.capabilities.registry import CapabilityRegistry
