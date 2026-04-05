@@ -19,10 +19,12 @@ def isolated_registry():
 
 @pytest.mark.asyncio
 async def test_edit_replaces_unique_match(tmp_path):
+    from sebastian.capabilities.tools._file_state import record_read
     from sebastian.core.tool import call_tool
 
     f = tmp_path / "code.py"
     f.write_text("def foo():\n    return 1\n")
+    record_read(str(f))
 
     result = await call_tool(
         "Edit",
@@ -37,10 +39,12 @@ async def test_edit_replaces_unique_match(tmp_path):
 
 @pytest.mark.asyncio
 async def test_edit_fails_when_not_found(tmp_path):
+    from sebastian.capabilities.tools._file_state import record_read
     from sebastian.core.tool import call_tool
 
     f = tmp_path / "f.txt"
     f.write_text("hello world")
+    record_read(str(f))
 
     result = await call_tool(
         "Edit", file_path=str(f), old_string="xyz", new_string="abc"
@@ -51,10 +55,12 @@ async def test_edit_fails_when_not_found(tmp_path):
 
 @pytest.mark.asyncio
 async def test_edit_fails_on_multiple_matches(tmp_path):
+    from sebastian.capabilities.tools._file_state import record_read
     from sebastian.core.tool import call_tool
 
     f = tmp_path / "dup.txt"
     f.write_text("foo\nfoo\nbar\n")
+    record_read(str(f))
 
     result = await call_tool(
         "Edit", file_path=str(f), old_string="foo", new_string="baz"
@@ -65,10 +71,12 @@ async def test_edit_fails_on_multiple_matches(tmp_path):
 
 @pytest.mark.asyncio
 async def test_edit_replace_all_replaces_all_occurrences(tmp_path):
+    from sebastian.capabilities.tools._file_state import record_read
     from sebastian.core.tool import call_tool
 
     f = tmp_path / "multi.txt"
     f.write_text("foo\nfoo\nfoo\n")
+    record_read(str(f))
 
     result = await call_tool(
         "Edit",
@@ -103,6 +111,51 @@ async def test_edit_updates_file_state(tmp_path):
 
     f = tmp_path / "state.txt"
     f.write_text("hello world")
+    _file_state.record_read(str(f))
 
     await call_tool("Edit", file_path=str(f), old_string="world", new_string="there")
     assert str(f) in _file_state._file_mtimes
+
+
+@pytest.mark.asyncio
+async def test_edit_existing_file_requires_read_first(tmp_path, isolated_registry) -> None:
+    """未 Read 过的现有文件，直接 Edit 应被拒绝。"""
+    from sebastian.capabilities.tools._file_state import _file_mtimes
+    from sebastian.core.tool import call_tool
+
+    target = tmp_path / "code.py"
+    target.write_text("def hello():\n    return 'world'\n")
+
+    # Ensure path is not in mtime cache
+    _file_mtimes.pop(str(target), None)
+
+    result = await call_tool(
+        "Edit",
+        file_path=str(target),
+        old_string="return 'world'",
+        new_string="return 'hacked'",
+    )
+    assert not result.ok
+    assert "Read" in result.error
+
+
+@pytest.mark.asyncio
+async def test_edit_after_read_succeeds(tmp_path, isolated_registry) -> None:
+    """Read 过之后，即使 mtime 未变化，Edit 应该成功。"""
+    from sebastian.capabilities.tools._file_state import record_read
+    from sebastian.core.tool import call_tool
+
+    target = tmp_path / "code.py"
+    target.write_text("def hello():\n    return 'world'\n")
+
+    # Simulate having read the file
+    record_read(str(target))
+
+    result = await call_tool(
+        "Edit",
+        file_path=str(target),
+        old_string="return 'world'",
+        new_string="return 'sebastian'",
+    )
+    assert result.ok
+    assert result.output["replacements"] == 1

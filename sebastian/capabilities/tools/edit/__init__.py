@@ -26,6 +26,10 @@ async def edit(
     replace_all: bool = False,
 ) -> ToolResult:
     path = os.path.abspath(file_path)
+    try:
+        _file_state.require_read(path)
+    except ValueError as e:
+        return ToolResult(ok=False, error=str(e))
     if not os.path.exists(path):
         return ToolResult(ok=False, error=f"File not found: {path}")
     try:
