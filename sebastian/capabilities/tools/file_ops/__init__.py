@@ -1,5 +1,4 @@
 # mypy: disable-error-code=import-untyped
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,13 +7,13 @@ import aiofiles
 
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
+from sebastian.permissions.types import PermissionTier
 
 
 @tool(
     name="file_read",
     description="Read the full contents of a file at the given path.",
-    requires_approval=False,
-    permission_level="owner",
+    permission_tier=PermissionTier.LOW,
 )
 async def file_read(path: str) -> ToolResult:
     try:
@@ -28,8 +27,7 @@ async def file_read(path: str) -> ToolResult:
 @tool(
     name="file_write",
     description="Write text content to a file, creating parent directories as needed.",
-    requires_approval=True,
-    permission_level="owner",
+    permission_tier=PermissionTier.MODEL_DECIDES,
 )
 async def file_write(path: str, content: str) -> ToolResult:
     try:

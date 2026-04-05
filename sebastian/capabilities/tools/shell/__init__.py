@@ -4,13 +4,16 @@ import asyncio
 
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
+from sebastian.permissions.types import PermissionTier
 
 
 @tool(
     name="shell",
-    description="Execute a shell command. Returns stdout, stderr, and return code.",
-    requires_approval=True,
-    permission_level="owner",
+    description=(
+        "Execute a shell command. Returns stdout, stderr, and return code. "
+        "Use reason to explain why this specific command is safe for the current task."
+    ),
+    permission_tier=PermissionTier.MODEL_DECIDES,
 )
 async def shell(command: str) -> ToolResult:
     proc = await asyncio.create_subprocess_shell(
