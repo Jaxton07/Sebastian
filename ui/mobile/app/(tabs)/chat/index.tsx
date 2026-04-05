@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionStore } from '../../../src/store/session';
-import { useMessages } from '../../../src/hooks/useMessages';
 import { useSessions } from '../../../src/hooks/useSessions';
 import { sendTurn, cancelTurn } from '../../../src/api/turns';
 import { deleteSession } from '../../../src/api/sessions';
@@ -10,17 +9,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../../../src/components/common/Sidebar';
 import { EmptyState } from '../../../src/components/common/EmptyState';
 import { ChatSidebar } from '../../../src/components/chat/ChatSidebar';
-import { MessageList } from '../../../src/components/chat/MessageList';
 import { MessageInput } from '../../../src/components/chat/MessageInput';
+import { ConversationView } from '../../../src/components/conversation';
+import { useConversationStore } from '../../../src/store/conversation';
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentSessionId, draftSession, streamingMessage, setCurrentSession, startDraft, persistSession } = useSessionStore();
+  const { currentSessionId, draftSession, setCurrentSession, startDraft, persistSession } = useSessionStore();
   const { data: sessions = [] } = useSessions();
-  const { data: messages = [] } = useMessages(currentSessionId);
-  const isWorking = !!streamingMessage;
+  const isWorking = useConversationStore(
+    (s) => !!(currentSessionId && s.sessions[currentSessionId]?.activeTurn),
+  );
 
   async function handleSend(text: string) {
     try {
@@ -79,7 +80,7 @@ export default function ChatScreen() {
       {isEmpty ? (
         <EmptyState message="向 Sebastian 发送消息开始对话" />
       ) : (
-        <MessageList messages={messages} streamingContent={streamingMessage} />
+        <ConversationView sessionId={currentSessionId} />
       )}
       <MessageInput isWorking={isWorking} onSend={handleSend} onStop={handleStop} />
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)}>

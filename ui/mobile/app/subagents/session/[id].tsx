@@ -9,7 +9,7 @@ import {
   sendTurnToSession,
 } from '../../../src/api/sessions';
 import { MessageInput } from '../../../src/components/chat/MessageInput';
-import { MessageList } from '../../../src/components/chat/MessageList';
+import { ConversationView } from '../../../src/components/conversation';
 import { SessionDetailView } from '../../../src/components/subagents/SessionDetailView';
 import type { TaskDetail } from '../../../src/types';
 
@@ -139,15 +139,6 @@ export default function SessionDetailScreen() {
     [agentName, isMockSession, queryClient, sessionId],
   );
 
-  const messages =
-    detail?.messages.map((message, index) => ({
-      id: `${sessionId}-${index}`,
-      sessionId,
-      role: message.role,
-      content: message.content,
-      createdAt: message.ts ?? '',
-    })) ?? [];
-
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
@@ -180,7 +171,7 @@ export default function SessionDetailScreen() {
       </View>
       <View style={styles.body}>
         {tab === 'messages' ? (
-          <MessageList messages={messages} streamingContent="" />
+          <ConversationView sessionId={isMockSession ? null : sessionId} />
         ) : (
           <SessionDetailView tasks={tasks} />
         )}
