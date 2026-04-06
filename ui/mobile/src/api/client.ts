@@ -19,7 +19,7 @@ apiClient.interceptors.response.use(
   async (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       await useSettingsStore.getState().setJwtToken(null);
-      router.push('/(tabs)/settings');
+      router.push('/settings');
     }
     return Promise.reject(error);
   },
