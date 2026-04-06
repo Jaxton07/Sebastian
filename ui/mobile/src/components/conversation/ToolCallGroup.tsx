@@ -11,19 +11,29 @@ interface Props {
 
 export function ToolCallGroup({ tools }: Props) {
   const colors = useTheme();
+
+  if (tools.length === 0) return null;
+
   return (
     <View style={styles.container}>
-      {tools.map((tool, index) => (
-        <View key={tool.toolId}>
-          <ToolCallRow
-            name={tool.name}
-            input={tool.input}
-            status={tool.status}
-            result={tool.result}
-          />
-          {/* Vertical connector between consecutive tool calls */}
-          {index < tools.length - 1 && <View style={{ ...styles.connector, backgroundColor: colors.border }} />}
-        </View>
+      {/* Continuous vertical line — absolute positioned behind the dots */}
+      {tools.length > 1 && (
+        <View
+          style={[
+            styles.verticalLine,
+            { backgroundColor: colors.border },
+          ]}
+        />
+      )}
+
+      {tools.map((tool) => (
+        <ToolCallRow
+          key={tool.toolId}
+          name={tool.name}
+          input={tool.input}
+          status={tool.status}
+          result={tool.result}
+        />
       ))}
     </View>
   );
@@ -31,12 +41,16 @@ export function ToolCallGroup({ tools }: Props) {
 
 const styles = StyleSheet.create({
   container: {
+    position: 'relative',
     paddingVertical: 2,
     paddingLeft: 4,
   },
-  connector: {
+  verticalLine: {
+    position: 'absolute',
+    left: 7,        // center of 8px dot at paddingLeft:4 → 4 + 3 = 7
+    top: 8,         // vertically aligned with center of first dot (paddingVertical:4 + dot radius 4)
+    bottom: 8,      // aligned with center of last dot
     width: 1,
-    height: 10,
-    marginLeft: 3,   // aligns with center of the 8px dot
+    zIndex: 0,
   },
 });

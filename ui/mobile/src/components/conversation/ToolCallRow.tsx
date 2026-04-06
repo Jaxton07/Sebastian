@@ -164,6 +164,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     flexShrink: 0,
+    zIndex: 1,
   },
   name: {
     fontSize: 13,
