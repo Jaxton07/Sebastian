@@ -11,6 +11,7 @@ import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useApprovalStore } from '@/src/store/approval';
 import { useSettingsStore } from '@/src/store/settings';
+import { ThemeProvider } from '@/src/theme/ThemeContext';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30_000 } },
@@ -87,10 +88,10 @@ function AppInit({ children }: { children: ReactNode }) {
   }, [jwtToken]);
 
   return (
-    <>
+    <ThemeProvider>
       {children}
       <ApprovalModal approval={pending} onGrant={grant} onDeny={deny} />
-    </>
+    </ThemeProvider>
   );
 }
 
