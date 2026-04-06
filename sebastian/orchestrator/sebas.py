@@ -114,8 +114,7 @@ class Sebastian(BaseAgent):
         )
         await self._session_store.create_session(session)
 
-        import sebastian.gateway.state as _state
-        await _state.index_store.upsert(session)
+        await self._index.upsert(session)
 
         return session
 
