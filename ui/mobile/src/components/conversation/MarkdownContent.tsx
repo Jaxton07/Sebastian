@@ -1,5 +1,5 @@
 import Markdown from 'react-native-markdown-display';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, useIsDark } from '../../theme/ThemeContext';
 
 interface Props {
   content: string;
@@ -9,6 +9,7 @@ interface Props {
 
 export function MarkdownContent({ content }: Props) {
   const colors = useTheme();
+  const isDark = useIsDark();
 
   const mdStyles = {
     body: { color: colors.text, fontSize: 15, lineHeight: 22 },
@@ -17,10 +18,10 @@ export function MarkdownContent({ content }: Props) {
     heading3: { color: colors.text, fontSize: 15, fontWeight: '600' as const, marginBottom: 4 },
     strong: { color: colors.text, fontWeight: '700' as const },
     em: { fontStyle: 'italic' as const },
-    // 代码块保留暗色风格，日间夜间不变
+    // 行内代码：跟随主题；多行代码块始终保留暗色
     code_inline: {
-      backgroundColor: '#1e1e2e',
-      color: '#a8d8a8',
+      backgroundColor: isDark ? '#2a2a3e' : '#EFEFEF',
+      color: isDark ? '#a8d8a8' : '#333333',
       fontFamily: 'monospace',
       fontSize: 13,
       paddingHorizontal: 4,
