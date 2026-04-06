@@ -74,9 +74,9 @@ function AppInit({ children }: { children: ReactNode }) {
           data?.type === 'approval.required' ||
           data?.type === 'user.approval_requested'
         ) {
-          router.push('/(tabs)/chat');
+          router.push('/');
         } else if (data?.type?.startsWith('task.')) {
-          router.push('/(tabs)/subagents');
+          router.push('/subagents');
         }
       },
     );
