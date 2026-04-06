@@ -48,12 +48,10 @@ def test_session_defaults() -> None:
 
     session = Session(
         agent_type="sebastian",
-        agent_id="sebastian_01",
         title="Test",
     )
     assert session.status == SessionStatus.ACTIVE
     assert session.agent_type == "sebastian"
-    assert session.agent_id == "sebastian_01"
     assert "/" not in session.id
 
 
@@ -64,11 +62,11 @@ def test_task_has_session_id() -> None:
     assert task.session_id == "abc"
 
 
-def test_session_has_agent_type_and_agent_id() -> None:
+def test_session_has_agent_type() -> None:
     from sebastian.core.types import Session
 
-    session = Session(agent_type="stock", agent_id="stock_01", title="test")
+    session = Session(agent_type="stock", title="test")
 
     assert session.agent_type == "stock"
-    assert session.agent_id == "stock_01"
+    assert not hasattr(session, "agent_id")
     assert not hasattr(session, "agent")

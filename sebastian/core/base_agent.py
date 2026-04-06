@@ -213,7 +213,7 @@ class BaseAgent(ABC):
             session_id,
             EventType.TURN_RECEIVED,
             {
-                "agent_id": worker_session.agent_id,
+                "agent_type": worker_session.agent_type,
                 "message": user_message[:200],
             },
         )

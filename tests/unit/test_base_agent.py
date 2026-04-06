@@ -22,7 +22,6 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
         Session(
             id="failure-path",
             agent_type="sebastian",
-            agent_id="sebastian_01",
             title="Failure path",
         )
     )
@@ -38,7 +37,7 @@ async def test_base_agent_persists_user_turn_before_inference_failure(tmp_path: 
         agent._loop.stream = failing_stream  # type: ignore[attr-defined]
         await agent.run("Hello", "failure-path")
 
-    messages = await store.get_messages("failure-path", "sebastian", "sebastian_01")
+    messages = await store.get_messages("failure-path", "sebastian")
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "Hello"
@@ -59,7 +58,6 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
         Session(
             id="subagent-session",
             agent_type="stock",
-            agent_id="stock_01",
             title="Stock session",
         )
     )
@@ -82,14 +80,12 @@ async def test_base_agent_writes_messages_to_overridden_agent_context(tmp_path: 
     stock_messages = await store.get_messages(
         "subagent-session",
         agent_type="stock",
-        agent_id="stock_01",
     )
     assert [message["role"] for message in stock_messages] == ["user", "assistant"]
     assert stock_messages[0]["content"] == "Check this thesis"
     sebastian_messages = await store.get_messages(
         "subagent-session",
         agent_type="sebastian",
-        agent_id="sebastian_01",
     )
     assert sebastian_messages == []
 
@@ -112,7 +108,6 @@ async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
         Session(
             id="stream-session",
             agent_type="sebastian",
-            agent_id="sebastian_01",
             title="Stream session",
         )
     )
@@ -141,14 +136,14 @@ async def test_run_streaming_publishes_turn_events(tmp_path: Path) -> None:
 
     received = next(event for event in collected_events if event.type == EventType.TURN_RECEIVED)
     assert received.data["session_id"] == "stream-session"
-    assert received.data["agent_id"] == "sebastian_01"
+    assert received.data["agent_type"] == "sebastian"
 
     response = next(event for event in collected_events if event.type == EventType.TURN_RESPONSE)
     assert response.data["session_id"] == "stream-session"
     assert response.data["content"] == "response text"
     assert response.data["interrupted"] is False
 
-    messages = await store.get_messages("stream-session", "sebastian", "sebastian_01")
+    messages = await store.get_messages("stream-session", "sebastian")
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["content"] == "response text"
 
@@ -171,7 +166,6 @@ async def test_run_streaming_interrupt_publishes_interrupted(tmp_path: Path) -> 
         Session(
             id="interrupt-session",
             agent_type="sebastian",
-            agent_id="sebastian_01",
             title="Interrupt session",
         )
     )
@@ -208,7 +202,7 @@ async def test_run_streaming_interrupt_publishes_interrupted(tmp_path: Path) -> 
     assert interrupted.data["session_id"] == "interrupt-session"
     assert interrupted.data["partial_content"] == "partial"
 
-    messages = await store.get_messages("interrupt-session", "sebastian", "sebastian_01")
+    messages = await store.get_messages("interrupt-session", "sebastian")
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["content"] == "partial"
 
