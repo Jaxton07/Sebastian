@@ -289,6 +289,7 @@ class BaseAgent(ABC):
                         {
                             "tool_id": event.tool_id,
                             "name": event.name,
+                            "input": event.inputs,
                         },
                     )
                     record: dict[str, Any] = {

@@ -36,6 +36,7 @@ function mapMessages(sessionId: string, messages: ApiMessage[]): ConvMessage[] {
     };
     if (m.role === 'assistant' && m.blocks?.length) {
       const renderBlocks: import('../types').RenderBlock[] = [];
+      // Tools appear before the final text response (natural execution order)
       for (const b of m.blocks) {
         if (b.type === 'tool') {
           renderBlocks.push({
@@ -43,7 +44,7 @@ function mapMessages(sessionId: string, messages: ApiMessage[]): ConvMessage[] {
             toolId: b.tool_id,
             name: b.name,
             input: b.input,
-            status: b.status,
+            status: (b.status === 'done' || b.status === 'failed') ? b.status : 'done',
             result: b.result,
           });
         }
