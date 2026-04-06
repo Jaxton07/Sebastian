@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  createAgentSession,
   getSessionDetail,
   getSessionTasks,
   sendTurnToSession,
@@ -94,43 +95,60 @@ export default function SessionDetailScreen() {
   const sessionId = (Array.isArray(id) ? id[0] : id) ?? '';
   const agentName = (Array.isArray(agent) ? agent[0] : agent) ?? 'sebastian';
   const isMockSession = sessionId.startsWith('mock-');
+  const isNewSession = sessionId === 'new';
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('messages');
   const [sending, setSending] = useState(false);
+  const [realSessionId, setRealSessionId] = useState<string | null>(null);
+  const effectiveSessionId = realSessionId || (isNewSession ? null : sessionId);
 
   const { data: remoteDetail } = useQuery({
-    queryKey: ['session-detail', sessionId, agentName],
-    queryFn: () => getSessionDetail(sessionId, agentName),
-    enabled: !!sessionId && !isMockSession,
+    queryKey: ['session-detail', effectiveSessionId, agentName],
+    queryFn: () => getSessionDetail(effectiveSessionId!, agentName),
+    enabled: !!effectiveSessionId && !isMockSession,
   });
 
   const { data: remoteTasks = [] } = useQuery({
-    queryKey: ['session-tasks', sessionId, agentName],
-    queryFn: () => getSessionTasks(sessionId, agentName),
-    enabled: !!sessionId && !isMockSession,
+    queryKey: ['session-tasks', effectiveSessionId, agentName],
+    queryFn: () => getSessionTasks(effectiveSessionId!, agentName),
+    enabled: !!effectiveSessionId && !isMockSession,
   });
 
   const detail = useMemo(
     () => (isMockSession ? buildMockDetail(sessionId, agentName) : remoteDetail),
     [agentName, isMockSession, remoteDetail, sessionId],
   );
+  const displayTitle = isNewSession && !realSessionId ? '新对话' : (detail?.session.title ?? '会话详情');
   const tasks = isMockSession ? MOCK_TASKS : remoteTasks;
 
   const handleSend = useCallback(
     async (text: string) => {
-      if (!sessionId) return;
       if (isMockSession) {
         Alert.alert('模拟会话', '这是用于导航测试的假数据页面。');
         return;
       }
+      if (isNewSession && !realSessionId) {
+        setSending(true);
+        try {
+          const { sessionId: newId } = await createAgentSession(agentName, text);
+          setRealSessionId(newId);
+          router.replace(`/subagents/session/${newId}?agent=${agentName}`);
+        } catch {
+          Alert.alert('创建会话失败，请重试');
+        } finally {
+          setSending(false);
+        }
+        return;
+      }
+      if (!effectiveSessionId) return;
       setSending(true);
       try {
-        await sendTurnToSession(sessionId, text, agentName);
-        useConversationStore.getState().appendUserMessage(sessionId, text);
+        await sendTurnToSession(effectiveSessionId, text, agentName);
+        useConversationStore.getState().appendUserMessage(effectiveSessionId, text);
         queryClient.invalidateQueries({
-          queryKey: ['session-detail', sessionId, agentName],
+          queryKey: ['session-detail', effectiveSessionId, agentName],
         });
       } catch {
         Alert.alert('发送失败，请重试');
@@ -138,7 +156,7 @@ export default function SessionDetailScreen() {
         setSending(false);
       }
     },
-    [agentName, isMockSession, queryClient, sessionId],
+    [agentName, effectiveSessionId, isMockSession, isNewSession, queryClient, realSessionId, router],
   );
 
   return (
@@ -148,7 +166,7 @@ export default function SessionDetailScreen() {
           <Text style={styles.backText}>‹ 返回</Text>
         </TouchableOpacity>
         <Text style={styles.title} numberOfLines={1}>
-          {detail?.session.title ?? '会话详情'}
+          {displayTitle}
         </Text>
       </View>
       <View style={styles.tabs}>
@@ -173,7 +191,7 @@ export default function SessionDetailScreen() {
       </View>
       <View style={styles.body}>
         {tab === 'messages' ? (
-          <ConversationView sessionId={isMockSession ? null : sessionId} />
+          <ConversationView sessionId={isMockSession ? null : effectiveSessionId} />
         ) : (
           <SessionDetailView tasks={tasks} />
         )}
