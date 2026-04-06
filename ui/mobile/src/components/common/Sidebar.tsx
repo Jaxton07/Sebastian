@@ -49,6 +49,7 @@ export function Sidebar({ visible, onOpen, onClose, children }: Props) {
       {/* 侧边栏面板：左滑关闭 */}
       <PanGestureHandler onHandlerStateChange={handleSidebarGesture} enabled={visible}>
         <Animated.View
+          collapsable={false}
           style={[styles.sidebar, { transform: [{ translateX }] }]}
           pointerEvents={visible ? 'auto' : 'none'}
         >
