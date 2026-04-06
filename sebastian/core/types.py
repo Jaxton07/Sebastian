@@ -39,6 +39,7 @@ class ToolResult(BaseModel):
     ok: bool
     output: Any = None
     error: str | None = None
+    empty_hint: str | None = None
 
 
 class Checkpoint(BaseModel):

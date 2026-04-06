@@ -54,6 +54,12 @@ async def bash(command: str, timeout: int | None = None) -> ToolResult:
         stderr = stderr[:_MAX_OUTPUT_CHARS] + "\n...[truncated]"
         truncated = True
 
+    empty_hint = (
+        f"Command exited with code {proc.returncode}, no output"
+        if not stdout and not stderr
+        else None
+    )
+
     return ToolResult(
         ok=True,
         output={
@@ -62,4 +68,5 @@ async def bash(command: str, timeout: int | None = None) -> ToolResult:
             "returncode": proc.returncode,
             "truncated": truncated,
         },
+        empty_hint=empty_hint,
     )

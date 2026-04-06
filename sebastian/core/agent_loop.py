@@ -27,10 +27,23 @@ _llm_stream_logger = logging.getLogger("sebastian.llm.stream")
 MAX_ITERATIONS = 20
 
 
+def _is_empty_output(output: Any) -> bool:
+    """Check if tool output is semantically empty."""
+    if output is None:
+        return True
+    if isinstance(output, (str, list, dict)) and not output:
+        return True
+    return False
+
+
 def _tool_result_content(result: ToolResult) -> str:
-    if result.ok:
-        return str(result.output)
-    return f"Error: {result.error}"
+    if not result.ok:
+        return f"Error: {result.error}"
+    if result.empty_hint:
+        return result.empty_hint
+    if _is_empty_output(result.output):
+        return "<empty output>"
+    return str(result.output)
 
 
 def _validate_injected_tool_result(

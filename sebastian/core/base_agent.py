@@ -358,6 +358,7 @@ class BaseAgent(ABC):
                             ok=result.ok,
                             output=result.output,
                             error=result.error,
+                            empty_hint=result.empty_hint,
                         )
                     continue
 

@@ -41,14 +41,18 @@ async def read(
 
         _file_state.record_read(path)
 
+        content = "".join(selected)
+        empty_hint = f"File exists but is empty (0 lines): {path}" if not content and total_lines == 0 else None
+
         return ToolResult(
             ok=True,
             output={
-                "content": "".join(selected),
+                "content": content,
                 "total_lines": total_lines,
                 "lines_read": len(selected),
                 "truncated": (start + max_lines) < total_lines,
             },
+            empty_hint=empty_hint,
         )
     except Exception as e:
         return ToolResult(ok=False, error=str(e))

@@ -60,6 +60,7 @@ class ToolResult:
     ok: bool
     output: Any
     error: str | None
+    empty_hint: str | None = None
 
 
 @dataclass
