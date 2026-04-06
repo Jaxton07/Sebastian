@@ -30,6 +30,10 @@ class SessionStatus(StrEnum):
 
     ACTIVE = "active"
     IDLE = "idle"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    STALLED = "stalled"
+    CANCELLED = "cancelled"
     ARCHIVED = "archived"
 
 
@@ -92,9 +96,11 @@ class Session(BaseModel):
         )
     )
     agent_type: str
-    agent_id: str
     title: str
     status: SessionStatus = SessionStatus.ACTIVE
+    depth: int = 1
+    parent_session_id: str | None = None
+    last_activity_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     task_count: int = 0
