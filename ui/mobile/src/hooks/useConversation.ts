@@ -49,17 +49,6 @@ export function useConversation(sessionId: string | null): void {
     // Cancellation flag shared across all async callbacks in this effect run
     let cancelled = false;
 
-    // 1. Hydrate historical messages
-    getSessionDetail(sid)
-      .then((detail) => {
-        if (cancelled) return;
-        setMessages(sid, mapMessages(sid, detail.messages));
-      })
-      .catch((err) => {
-        console.warn(`[useConversation] Hydration failed for ${sid}:`, err);
-        // Non-fatal — render with empty history, SSE fills live content
-      });
-
     // 2. Connect per-session SSE
     function connect(): void {
       disconnectRef.current?.();
@@ -78,6 +67,9 @@ export function useConversation(sessionId: string | null): void {
             retryTimerRef.current = setTimeout(connect, delay);
           }
         },
+        // undefined  → 不带 Last-Event-ID（已完成会话，只订阅新事件）
+        // '0'        → 全量回放（turn 进行中，补回已错过的流式事件）
+        // 'N'        → 断线重连，从 N 之后续接
         lastEventIdRef.current,
       );
 
@@ -151,8 +143,32 @@ export function useConversation(sessionId: string | null): void {
       }
     }
 
-    retryRef.current = 0;
-    connect();
+    // 1. Hydrate historical messages, then connect SSE
+    // We wait for hydration before connecting so we can decide whether to replay:
+    // - Turn in progress (last msg is 'user') or fresh session → replay from 0 to catch missed events
+    // - Completed session (last msg is 'assistant') → no replay, just subscribe to live events
+    getSessionDetail(sid)
+      .then((detail) => {
+        if (cancelled) return;
+        setMessages(sid, mapMessages(sid, detail.messages));
+        const lastRole = detail.messages[detail.messages.length - 1]?.role;
+        const needsReplay = detail.messages.length === 0 || lastRole === 'user';
+        if (needsReplay && lastEventIdRef.current === undefined) {
+          lastEventIdRef.current = '0';
+        }
+        retryRef.current = 0;
+        connect();
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn(`[useConversation] Hydration failed for ${sid}:`, err);
+        // Conservative fallback: replay to avoid missing an active turn
+        if (lastEventIdRef.current === undefined) {
+          lastEventIdRef.current = '0';
+        }
+        retryRef.current = 0;
+        connect();
+      });
 
     return () => {
       cancelled = true;

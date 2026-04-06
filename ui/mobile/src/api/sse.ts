@@ -55,7 +55,12 @@ export function createSessionSSEConnection(
     if (!e.data) return;
     try {
       const parsed = JSON.parse(e.data) as SSEEvent & { event?: string };
-      onEvent({ type: parsed.type ?? parsed.event, data: parsed.data } as SSEEvent);
+      const evt: SSEEvent & { id?: string } = {
+        type: parsed.type ?? parsed.event,
+        data: parsed.data,
+      } as SSEEvent & { id?: string };
+      if (e.lastEventId) evt.id = e.lastEventId;
+      onEvent(evt);
     } catch { /* skip malformed */ }
   });
 

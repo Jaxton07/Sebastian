@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from sebastian.config import settings
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
@@ -26,6 +27,7 @@ async def bash(command: str, timeout: int | None = None) -> ToolResult:
         command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=str(settings.workspace_dir),
     )
 
     try:

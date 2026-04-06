@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     def agents_extensions_dir(self) -> Path:
         return self.extensions_dir / "agents"
 
+    @property
+    def workspace_dir(self) -> Path:
+        return self.data_dir / "workspace"
+
 
 settings = Settings()
 
@@ -86,6 +90,7 @@ def ensure_data_dir() -> None:
     (data / "extensions").mkdir(exist_ok=True)
     (data / "extensions" / "skills").mkdir(exist_ok=True)
     (data / "extensions" / "agents").mkdir(exist_ok=True)
+    (data / "workspace").mkdir(exist_ok=True)
 
 
 __all__ = ["Settings", "settings", "ensure_data_dir"]

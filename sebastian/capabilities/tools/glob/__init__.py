@@ -20,7 +20,7 @@ _MAX_RESULTS = 100
     permission_tier=PermissionTier.LOW,
 )
 async def glob(pattern: str, path: str | None = None) -> ToolResult:
-    search_root = path if path is not None else str(settings.data_dir)
+    search_root = path if path is not None else str(settings.workspace_dir)
 
     if not os.path.isdir(search_root):
         return ToolResult(ok=False, error=f"Path is not a directory: {search_root}")
