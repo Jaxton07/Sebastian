@@ -9,13 +9,22 @@ interface Props {
   input: string;
   status: 'running' | 'done' | 'failed';
   result?: string;
+  isFirst?: boolean;
+  isLast?: boolean;
+  showLine?: boolean;
 }
 
 const DOT_COLOR: Record<Props['status'], string> = {
   running: '#f5a623',
-  done: '#4caf50',
+  done: '#66bb6a',
   failed: '#f44336',
 };
+
+const DOT_SIZE = 8;
+const DOT_RADIUS = DOT_SIZE / 2;
+const HEADER_MIN_HEIGHT = 24;
+/** Space above the dot so its center aligns with header text center. */
+const GUTTER_TOP = (HEADER_MIN_HEIGHT - DOT_SIZE) / 2;
 
 /** Priority-ordered param keys to extract per tool name. */
 const KEY_PRIORITY: Record<string, string[]> = {
@@ -79,7 +88,6 @@ function extractKeyParams(name: string, input: string): string {
     }
   }
 
-  // If no priority keys matched, try all string values
   if (lines.length === 0) {
     for (const [key, val] of Object.entries(parsed)) {
       if (typeof val === 'string' && val.trim()) {
@@ -91,80 +99,113 @@ function extractKeyParams(name: string, input: string): string {
   return lines.join('\n');
 }
 
-export function ToolCallRow({ name, input, status, result }: Props) {
+export function ToolCallRow({ name, input, status, result, isFirst, isLast, showLine }: Props) {
   const colors = useTheme();
   const [expanded, setExpanded] = useState(false);
   const inputSummary = extractInputSummary(name, input);
 
   const hasResult = result != null && result.trim().length > 0;
   const showOutput = status === 'running' || hasResult;
+  const lineColor = colors.border;
 
   return (
-    <View>
-      {/* Header row — always visible */}
-      <Pressable
-        style={styles.headerRow}
-        onPress={() => setExpanded((prev) => !prev)}
-        hitSlop={4}
-      >
+    <View style={styles.row}>
+      {/* Timeline gutter: top line segment → dot → bottom line segment */}
+      <View style={styles.gutter}>
+        <View
+          style={[
+            styles.gutterTop,
+            showLine && !isFirst && { backgroundColor: lineColor },
+          ]}
+        />
         <View style={[styles.dot, { backgroundColor: DOT_COLOR[status] }]} />
-        <Text style={[styles.name, { color: colors.textSecondary }]}>{name}</Text>
-        {inputSummary ? (
-          <Text style={[styles.summary, { color: colors.textMuted }]} numberOfLines={1}>
-            {inputSummary}
-          </Text>
-        ) : null}
-        {expanded && (
-          <RightArrowIcon
-            size={12}
-            color={colors.textMuted}
-            style={{ transform: [{ rotate: '90deg' }] }}
-          />
-        )}
-      </Pressable>
+        <View
+          style={[
+            styles.gutterBottom,
+            showLine && !isLast && { backgroundColor: lineColor },
+          ]}
+        />
+      </View>
 
-      {/* Expanded detail area */}
-      {expanded && (
-        <View style={styles.detailArea}>
-          {/* Parameters section */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>参数</Text>
-            <CollapsibleContent content={extractKeyParams(name, input)} />
-          </View>
-
-          {/* Output section */}
-          {showOutput && (
-            <View style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>输出</Text>
-              {status === 'running' ? (
-                <View style={styles.loadingRow}>
-                  <Text style={{ color: DOT_COLOR.running, fontSize: 12 }}>●</Text>
-                  <Text style={[styles.loadingText, { color: colors.textMuted }]}>执行中…</Text>
-                </View>
-              ) : (
-                <CollapsibleContent content={result ?? ''} />
-              )}
-            </View>
+      {/* Content column */}
+      <View style={styles.content}>
+        <Pressable
+          style={styles.headerRow}
+          onPress={() => setExpanded((prev) => !prev)}
+          hitSlop={4}
+        >
+          <Text style={[styles.name, { color: colors.textSecondary }]}>{name}</Text>
+          {inputSummary ? (
+            <Text style={[styles.summary, { color: colors.textMuted }]} numberOfLines={1}>
+              {inputSummary}
+            </Text>
+          ) : null}
+          {expanded && (
+            <RightArrowIcon
+              size={12}
+              color={colors.textMuted}
+              style={{ transform: [{ rotate: '90deg' }] }}
+            />
           )}
-        </View>
-      )}
+        </Pressable>
+
+        {expanded && (
+          <View style={styles.detailArea}>
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>参数</Text>
+              <CollapsibleContent content={extractKeyParams(name, input)} />
+            </View>
+
+            {showOutput && (
+              <View style={styles.section}>
+                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>输出</Text>
+                {status === 'running' ? (
+                  <View style={styles.loadingRow}>
+                    <Text style={{ color: DOT_COLOR.running, fontSize: 12 }}>●</Text>
+                    <Text style={[styles.loadingText, { color: colors.textMuted }]}>执行中…</Text>
+                  </View>
+                ) : (
+                  <CollapsibleContent content={result ?? ''} />
+                )}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+  },
+  gutter: {
+    width: DOT_SIZE,
+    alignItems: 'center',
+  },
+  gutterTop: {
+    height: GUTTER_TOP,
+    width: 1,
+  },
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_RADIUS,
+  },
+  gutterBottom: {
+    flex: 1,
+    width: 1,
+  },
+  content: {
+    flex: 1,
+    marginLeft: 8,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
+    minHeight: HEADER_MIN_HEIGHT,
     gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    flexShrink: 0,
-    zIndex: 1,
   },
   name: {
     fontSize: 13,
@@ -176,7 +217,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   detailArea: {
-    paddingLeft: 16,
     paddingBottom: 4,
   },
   section: {
