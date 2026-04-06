@@ -133,10 +133,9 @@ export default function SessionDetailScreen() {
         setSending(true);
         try {
           const { sessionId: newId } = await createAgentSession(agentName, text);
-          setRealSessionId(newId);
           router.replace(`/subagents/session/${newId}?agent=${agentName}`);
         } catch {
-          Alert.alert('创建会话失败，请重试');
+          Alert.alert('错误', '创建会话失败，请重试');
         } finally {
           setSending(false);
         }
