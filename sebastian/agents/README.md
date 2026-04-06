@@ -4,7 +4,7 @@
 
 ## 模块职责
 
-存放各领域 Sub-Agent 实现。每个 Agent 是一个独立子目录，继承 `BaseAgent`，聚焦单一领域能力。Sebastian 主管家通过 A2A 协议委派任务给它们。`_loader.py` 在服务启动时自动扫描所有包含 `manifest.toml` 的子目录并完成注册，无需修改任何注册代码。
+存放各领域 Sub-Agent 实现。每个 Agent 是一个独立子目录，继承 `BaseAgent`，聚焦单一领域能力。Sebastian 主管家通过 `delegate_to_agent` 工具将任务委派给它们（异步 `asyncio.create_task`）。`_loader.py` 在服务启动时自动扫描所有包含 `manifest.toml` 的子目录并完成注册，无需修改任何注册代码。
 
 ## 目录结构
 
@@ -28,6 +28,7 @@ agents/
 | 新增 Sub-Agent | 本目录新建子目录 + `__init__.py` + `manifest.toml` |
 | 修改 Agent 人设（persona） | `<agent_name>/__init__.py` 的 `persona` 字段 |
 | 修改 Agent 工具权限 | `<agent_name>/manifest.toml` 的 `allowed_tools` |
+| 修改最大并发子任务数 | `<agent_name>/manifest.toml` 的 `max_children` |
 | 新增 Agent 私有工具 | `<agent_name>/tools/` 下新建 `__init__.py` + `@tool` 装饰器 |
 | 修改 Agent 自动发现逻辑 | [_loader.py](_loader.py) |
 | 代码编写 Agent | [code/](code/__init__.py) |
@@ -57,11 +58,12 @@ class MyAgent(BaseAgent):
 
 ```toml
 [agent]
-name = "My Agent"                          # 显示名称
+name = "My Agent"                          # 用户侧显示名称（display_name）
 description = "做什么用的一句话描述"
-worker_count = 3                           # 并发 worker 数
 class_name = "MyAgent"                     # __init__.py 中的类名（必须精确匹配）
-allowed_tools = ["Read", "Bash", "Glob"]  # 允许使用的工具名列表，null 表示不限制
+max_children = 5                           # 最大并发 depth=3 子任务数（默认 5）
+stalled_threshold_minutes = 5             # 多少分钟无活动判定为 stalled（默认 5）
+allowed_tools = ["Read", "Bash", "Glob"]  # 允许使用的工具名列表；不写则不限制
 allowed_skills = []                        # 允许使用的 skill 列表
 ```
 

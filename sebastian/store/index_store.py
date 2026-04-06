@@ -93,13 +93,19 @@ class IndexStore:
         ]
 
     async def update_activity(self, session_id: str) -> None:
-        """Update last_activity_at for a session (for stalled detection)."""
+        """Update last_activity_at for a session.
+
+        Also transitions stalled sessions back to active — if a stalled session
+        receives a tool call it means it's no longer stuck.
+        """
         async with self._lock:
             sessions = await self._read()
             now = datetime.now(UTC).isoformat()
             for entry in sessions:
                 if entry["id"] == session_id:
                     entry["last_activity_at"] = now
+                    if entry.get("status") == "stalled":
+                        entry["status"] = "active"
                     break
             await self._write(sessions)
 

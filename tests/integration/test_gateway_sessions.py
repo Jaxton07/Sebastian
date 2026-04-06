@@ -233,7 +233,6 @@ def test_session_task_routes_resolve_stored_agent_metadata(client):
 @pytest.mark.parametrize(
     ("method", "route_suffix", "result_key"),
     [
-        ("post", "pause", "paused"),
         ("delete", "", "cancelled"),
     ],
 )
@@ -277,7 +276,6 @@ def test_task_mutation_routes_require_task_to_belong_to_resolved_session(
 @pytest.mark.parametrize(
     ("method", "route_suffix"),
     [
-        ("post", "pause"),
         ("delete", ""),
     ],
 )

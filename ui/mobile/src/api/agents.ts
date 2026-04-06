@@ -31,10 +31,3 @@ export async function getAgents(): Promise<Agent[]> {
     .map(mapAgentSummary);
 }
 
-export async function sendAgentCommand(agentId: string, content: string): Promise<void> {
-  await apiClient.post(`/api/v1/agents/${agentId}/command`, { content });
-}
-
-export async function cancelAgent(agentId: string): Promise<void> {
-  await apiClient.post(`/api/v1/agents/${agentId}/cancel`);
-}

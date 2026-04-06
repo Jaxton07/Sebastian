@@ -45,7 +45,7 @@ export interface Task {
   id: string;
   goal: string;
   status: TaskStatus;
-  agentId: string | null;
+  assigned_agent: string;
   createdAt: string;
   completedAt: string | null;
 }

@@ -25,13 +25,10 @@ store/
 
 ```
 SEBASTIAN_DATA_DIR/sessions/
-  sebastian/<session_id>/
-    session.json              # Session 元数据
-    tasks/<task_id>.json      # Task 数据（每个 task 独立文件）
-  subagents/<agent_type>/<agent_id>/<session_id>/
-    session.json
-    tasks/<task_id>.json
-  index.json                  # 全局 session 元数据索引（由 IndexStore 维护）
+  <agent_type>/<session_id>/   # agent_type 例如 sebastian、code
+    session.json               # Session 元数据
+    tasks/<task_id>.json       # Task 数据（每个 task 独立文件）
+  index.json                   # 全局 session 元数据索引（由 IndexStore 维护）
 ```
 
 ## 修改导航
@@ -54,9 +51,15 @@ from sebastian.store.session_store import SessionStore
 
 store = SessionStore(data_dir=Path("./data"))
 session = await store.create_session(session)
-task = await store.create_task(task, agent_type, agent_id)
-await store.update_task_status(task_id, session_id, agent_type, agent_id, TaskStatus.RUNNING)
-sessions = await store.list_sessions(agent_type="sebastian", status="active")
+task = await store.create_task(task, agent_type)
+await store.update_task_status(task_id, session_id, agent_type, TaskStatus.RUNNING)
+
+# IndexStore — 快速元数据查询（无需遍历目录）
+from sebastian.store.index_store import IndexStore
+index = IndexStore(sessions_dir=Path("./data/sessions"))
+await index.upsert(session)
+sessions = await index.list_by_agent_type("code")
+children = await index.list_active_children("code", parent_session_id="...")
 
 # EventLog（在 SQLAlchemy session 上下文内使用）
 from sebastian.store.event_log import EventLog

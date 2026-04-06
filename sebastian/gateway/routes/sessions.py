@@ -251,18 +251,6 @@ async def get_session_task(
     return {"task": task.model_dump(mode="json")}
 
 
-@router.post("/sessions/{session_id}/tasks/{task_id}/pause")
-async def pause_task(
-    session_id: str,
-    task_id: str,
-    _auth: AuthPayload = Depends(require_auth),
-) -> JSONDict:
-    import sebastian.gateway.state as state
-
-    await _resolve_session_task(state, session_id, task_id)
-    cancelled = await state.sebastian._task_manager.cancel(task_id)
-    return {"task_id": task_id, "paused": cancelled}
-
 
 @router.delete("/sessions/{session_id}/tasks/{task_id}")
 async def cancel_task(

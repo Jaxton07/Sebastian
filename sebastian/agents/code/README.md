@@ -4,7 +4,7 @@
 
 ## 目录职责
 
-Code Agent 是负责编程任务的 Sub-Agent，能够编写、运行和调试 Python 及 Shell 脚本。由 `manifest.toml` 驱动自动注册，支持 3 个并发 Worker 处理任务。
+Code Agent 是负责编程任务的 Sub-Agent，能够编写、运行和调试 Python 及 Shell 脚本。由 `manifest.toml` 驱动自动注册，可由 Sebastian 通过 `delegate_to_agent` 工具委派任务，亦可通过 `spawn_sub_agent` 分派最多 5 个并发子任务（depth=3）。
 
 ## 目录结构
 
@@ -22,17 +22,19 @@ code/
 
 ```toml
 [agent]
-name         = "Code Agent"
-description  = "Executes code tasks: writes, runs, and debugs Python and shell scripts"
-worker_count = 3
-class_name   = "CodeAgent"
-allowed_tools  = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
-allowed_skills = []
+name                      = "Solution Architect Narberal"  # 用户侧显示名称
+description               = "编写代码、调试问题、构建工具"
+class_name                = "CodeAgent"                    # 必须精确匹配类名
+max_children              = 5                              # 最大并发 depth=3 子任务数
+stalled_threshold_minutes = 5                              # 多少分钟无活动判定为 stalled
+allowed_tools             = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+allowed_skills            = []
 ```
 
-- `worker_count`：并发处理任务的 Worker 数量
-- `allowed_tools`：Agent 可调用的基础工具白名单
-- `class_name`：对应 `sebastian/core/` 中实际的 Agent 类名
+- `max_children`：允许同时运行的 depth=3 子任务上限
+- `stalled_threshold_minutes`：超过此时长无 tool 调用则被 watchdog 标记为 stalled
+- `allowed_tools`：Agent 可调用的基础工具白名单（不写则不限制）
+- `class_name`：对应 `__init__.py` 中实际的 Agent 类名
 
 ## knowledge/ 目录
 
@@ -42,7 +44,7 @@ allowed_skills = []
 
 | 如果要修改… | 看这里 |
 |------------|--------|
-| Agent 基本声明（名称、并发数、工具权限） | [manifest.toml](manifest.toml) |
+| Agent 基本声明（名称、子任务上限、工具权限） | [manifest.toml](manifest.toml) |
 | Agent 专属工具（扩展代码执行能力） | [tools/\_\_init\_\_.py](tools/__init__.py) |
 | Agent 工程规范知识注入 | [knowledge/engineering_guidelines.md](knowledge/engineering_guidelines.md) |
 
