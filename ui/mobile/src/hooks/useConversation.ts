@@ -77,8 +77,12 @@ export function useConversation(sessionId: string | null): void {
 
     const { getOrInit, setStatus, setMessages } = store.getState();
 
-    // Already live — nothing to do
-    if (getOrInit(sid).status === 'live') return;
+    // Already connecting or live — nothing to do
+    const currentStatus = getOrInit(sid).status;
+    if (currentStatus === 'live' || currentStatus === 'loading') return;
+
+    // Reset lastEventId for this fresh mount cycle so hydration logic is clean
+    lastEventIdRef.current = undefined;
 
     setStatus(sid, 'loading');
 

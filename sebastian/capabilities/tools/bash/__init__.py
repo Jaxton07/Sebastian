@@ -23,11 +23,14 @@ _DEFAULT_TIMEOUT = 600
 async def bash(command: str, timeout: int | None = None) -> ToolResult:
     effective_timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
 
+    workspace = settings.workspace_dir
+    workspace.mkdir(parents=True, exist_ok=True)
+
     proc = await asyncio.create_subprocess_shell(
         command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        cwd=str(settings.workspace_dir),
+        cwd=str(workspace),
     )
 
     try:
