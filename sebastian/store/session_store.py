@@ -34,7 +34,7 @@ def _session_dir(sessions_dir: Path, session: Session) -> Path:
     if session.agent_type == "sebastian":
         directory = sessions_dir / "sebastian" / session.id
     else:
-        directory = sessions_dir / "subagents" / session.agent_type / session.agent_id / session.id
+        directory = sessions_dir / session.agent_type / session.id
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "tasks").mkdir(exist_ok=True)
     return directory
@@ -44,11 +44,10 @@ def _session_dir_by_id(
     sessions_dir: Path,
     session_id: str,
     agent_type: str,
-    agent_id: str,
 ) -> Path:
     if agent_type == "sebastian":
         return sessions_dir / "sebastian" / session_id
-    return sessions_dir / "subagents" / agent_type / agent_id / session_id
+    return sessions_dir / agent_type / session_id
 
 
 class SessionStore:
@@ -59,7 +58,7 @@ class SessionStore:
 
     async def create_session(self, session: Session) -> Session:
         _session_dir(self._dir, session)
-        async with self._session_lock(session.id, session.agent_type, session.agent_id):
+        async with self._session_lock(session.id, session.agent_type):
             await self._write_session_meta(session)
         return session
 
@@ -67,9 +66,8 @@ class SessionStore:
         self,
         session_id: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> Session | None:
-        directory = _session_dir_by_id(self._dir, session_id, agent_type, agent_id)
+        directory = _session_dir_by_id(self._dir, session_id, agent_type)
         meta_path = directory / "meta.json"
         if not meta_path.exists():
             return None
@@ -82,27 +80,15 @@ class SessionStore:
         session_id: str,
         agent_type: str,
     ) -> Session | None:
-        if agent_type == "sebastian":
-            return await self.get_session(session_id, "sebastian", "sebastian_01")
-
-        matches = sorted((self._dir / "subagents" / agent_type).glob(f"*/{session_id}/meta.json"))
-        if not matches:
-            return None
-        if len(matches) > 1:
-            raise RuntimeError(
-                f"Multiple sessions found for session_id={session_id!r}, agent_type={agent_type!r}"
-            )
-
-        async with aiofiles.open(matches[0]) as file:
-            raw = await file.read()
-        return Session(**json.loads(raw))
+        """Look up a session by id and agent_type."""
+        return await self.get_session(session_id, agent_type)
 
     async def update_session(self, session: Session) -> None:
-        async with self._session_lock(session.id, session.agent_type, session.agent_id):
+        async with self._session_lock(session.id, session.agent_type):
             await self._write_session_meta(session)
 
     async def delete_session(self, session: Session) -> None:
-        directory = _session_dir_by_id(self._dir, session.id, session.agent_type, session.agent_id)
+        directory = _session_dir_by_id(self._dir, session.id, session.agent_type)
         if directory.exists():
             await asyncio.to_thread(shutil.rmtree, directory)
 
@@ -112,14 +98,12 @@ class SessionStore:
         role: str,
         content: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
         blocks: list[dict[str, Any]] | None = None,
     ) -> None:
         directory = _session_dir_by_id(
             self._dir,
             session_id,
             agent_type,
-            agent_id,
         )
         entry: dict[str, Any] = {
             "role": role,
@@ -136,10 +120,9 @@ class SessionStore:
         self,
         session_id: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        directory = _session_dir_by_id(self._dir, session_id, agent_type, agent_id)
+        directory = _session_dir_by_id(self._dir, session_id, agent_type)
         path = directory / "messages.jsonl"
         if not path.exists():
             return []
@@ -152,17 +135,16 @@ class SessionStore:
         self,
         task: Task,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> Task:
-        async with self._session_lock(task.session_id, agent_type, agent_id):
-            directory = _session_dir_by_id(self._dir, task.session_id, agent_type, agent_id)
+        async with self._session_lock(task.session_id, agent_type):
+            directory = _session_dir_by_id(self._dir, task.session_id, agent_type)
             tasks_dir = directory / "tasks"
             tasks_dir.mkdir(parents=True, exist_ok=True)
             await self._atomic_write_text(
                 tasks_dir / f"{task.id}.json",
                 task.model_dump_json(),
             )
-            await self._refresh_session_counts_locked(task.session_id, agent_type, agent_id)
+            await self._refresh_session_counts_locked(task.session_id, agent_type)
         return task
 
     async def get_task(
@@ -170,13 +152,11 @@ class SessionStore:
         session_id: str,
         task_id: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> Task | None:
         directory = _session_dir_by_id(
             self._dir,
             session_id,
             agent_type,
-            agent_id,
         )
         path = directory / "tasks" / f"{task_id}.json"
         if not path.exists():
@@ -189,13 +169,11 @@ class SessionStore:
         self,
         session_id: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> list[Task]:
         directory = _session_dir_by_id(
             self._dir,
             session_id,
             agent_type,
-            agent_id,
         )
         tasks_dir = directory / "tasks"
         if not tasks_dir.exists():
@@ -213,10 +191,9 @@ class SessionStore:
         task_id: str,
         status: TaskStatus,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> None:
-        async with self._session_lock(session_id, agent_type, agent_id):
-            task = await self.get_task(session_id, task_id, agent_type, agent_id)
+        async with self._session_lock(session_id, agent_type):
+            task = await self.get_task(session_id, task_id, agent_type)
             if task is None:
                 return
             task.status = status
@@ -231,7 +208,6 @@ class SessionStore:
                 self._dir,
                 session_id,
                 agent_type,
-                agent_id,
             )
             await self._atomic_write_text(
                 directory / "tasks" / f"{task_id}.json",
@@ -240,7 +216,6 @@ class SessionStore:
             await self._refresh_session_counts_locked(
                 session_id,
                 agent_type,
-                agent_id,
             )
 
     async def append_checkpoint(
@@ -248,13 +223,11 @@ class SessionStore:
         session_id: str,
         checkpoint: Checkpoint,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> None:
         directory = _session_dir_by_id(
             self._dir,
             session_id,
             agent_type,
-            agent_id,
         )
         path = directory / "tasks" / f"{checkpoint.task_id}.jsonl"
         line = json.dumps(checkpoint.model_dump(mode="json"))
@@ -266,13 +239,11 @@ class SessionStore:
         session_id: str,
         task_id: str,
         agent_type: str = "sebastian",
-        agent_id: str = "sebastian_01",
     ) -> list[Checkpoint]:
         directory = _session_dir_by_id(
             self._dir,
             session_id,
             agent_type,
-            agent_id,
         )
         path = directory / "tasks" / f"{task_id}.jsonl"
         if not path.exists():
@@ -292,10 +263,9 @@ class SessionStore:
         self,
         session_id: str,
         agent_type: str,
-        agent_id: str,
     ) -> asyncio.Lock:
         meta_path = (
-            _session_dir_by_id(self._dir, session_id, agent_type, agent_id) / "meta.json"
+            _session_dir_by_id(self._dir, session_id, agent_type) / "meta.json"
         ).resolve()
         lock = _SESSION_LOCKS_BY_PATH.get(meta_path)
         if lock is None:
@@ -308,7 +278,6 @@ class SessionStore:
             self._dir,
             session.id,
             session.agent_type,
-            session.agent_id,
         )
         await self._atomic_write_text(directory / "meta.json", session.model_dump_json())
 
@@ -316,12 +285,11 @@ class SessionStore:
         self,
         session_id: str,
         agent_type: str,
-        agent_id: str,
     ) -> None:
-        session = await self.get_session(session_id, agent_type, agent_id)
+        session = await self.get_session(session_id, agent_type)
         if session is None:
             return
-        tasks = await self.list_tasks(session_id, agent_type, agent_id)
+        tasks = await self.list_tasks(session_id, agent_type)
         terminal_statuses = {
             TaskStatus.COMPLETED,
             TaskStatus.FAILED,
