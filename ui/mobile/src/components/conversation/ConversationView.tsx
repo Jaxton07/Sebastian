@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { FlatList, View, StyleSheet } from 'react-native';
 import { useConversation } from '../../hooks/useConversation';
 import { useConversationStore } from '../../store/conversation';
+import { useTheme } from '../../theme/ThemeContext';
 import { UserBubble } from './UserBubble';
 import { AssistantMessage } from './AssistantMessage';
 import type { ConvMessage, RenderBlock } from '../../types';
@@ -16,6 +17,7 @@ type ListItem =
 
 export function ConversationView({ sessionId }: Props) {
   useConversation(sessionId);
+  const colors = useTheme();
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -55,7 +57,7 @@ export function ConversationView({ sessionId }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
         ref={flatListRef}
         data={items}
@@ -73,6 +75,6 @@ export function ConversationView({ sessionId }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffff' },
+  container: { flex: 1 },
   content: { paddingTop: 12, paddingBottom: 100 },
 });
