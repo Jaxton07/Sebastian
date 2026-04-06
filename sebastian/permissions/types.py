@@ -17,6 +17,8 @@ class ToolCallContext:
     task_goal: str
     session_id: str
     task_id: str | None
+    agent_type: str = ""
+    depth: int = 1
 
 
 @dataclass

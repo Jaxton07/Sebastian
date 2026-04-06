@@ -307,6 +307,8 @@ class BaseAgent(ABC):
                             task_goal=self._current_task_goals.get(session_id, ""),
                             session_id=session_id,
                             task_id=task_id,
+                            agent_type=agent_context,
+                            depth=getattr(self, '_current_depth', {}).get(session_id, 1),
                         )
                         result = await self._gate.call(event.name, event.inputs, context)
                     except asyncio.CancelledError:
