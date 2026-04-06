@@ -9,7 +9,7 @@ def test_load_agents_returns_configs_for_manifest_dirs(tmp_path) -> None:
         "[agent]\n"
         'name = "Test Agent"\n'
         'description = "Does testing"\n'
-        "worker_count = 2\n"
+        "max_children = 2\n"
         'class_name = "TestAgent"\n'
     )
     (agent_dir / "manifest.toml").write_text(manifest_content)
@@ -30,9 +30,9 @@ def test_load_agents_returns_configs_for_manifest_dirs(tmp_path) -> None:
 
     test_cfg = next((c for c in configs if c.agent_type == "testagent"), None)
     assert test_cfg is not None
-    assert test_cfg.name == "Test Agent"
+    assert test_cfg.display_name == "Test Agent"
     assert test_cfg.description == "Does testing"
-    assert test_cfg.worker_count == 2
+    assert test_cfg.max_children == 2
 
 
 def test_load_agents_includes_builtin_agents() -> None:

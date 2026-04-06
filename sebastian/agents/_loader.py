@@ -13,9 +13,11 @@ if TYPE_CHECKING:
 @dataclass
 class AgentConfig:
     agent_type: str
-    name: str
+    name: str                              # agent class name (e.g. "CodeAgent")
+    display_name: str                      # user-facing name (e.g. "铁匠")
     description: str
-    worker_count: int
+    max_children: int                      # max concurrent depth=3 sessions
+    stalled_threshold_minutes: int         # stalled detection threshold in minutes
     agent_class: type[BaseAgent]
     allowed_tools: list[str] | None = None
     allowed_skills: list[str] | None = None
@@ -75,9 +77,11 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
 
             configs[agent_type] = AgentConfig(
                 agent_type=agent_type,
-                name=agent_section.get("name", agent_type),
+                name=agent_section.get("class_name", agent_type),
+                display_name=agent_section.get("name", agent_section.get("class_name", agent_type)),
                 description=agent_section.get("description", ""),
-                worker_count=int(agent_section.get("worker_count", 3)),
+                max_children=int(agent_section.get("max_children", 5)),
+                stalled_threshold_minutes=int(agent_section.get("stalled_threshold_minutes", 5)),
                 agent_class=agent_class,
                 allowed_tools=list(raw_tools) if raw_tools is not None else None,
                 allowed_skills=list(raw_skills) if raw_skills is not None else None,
