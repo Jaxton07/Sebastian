@@ -51,7 +51,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       serverUrl: serverUrl ?? '',
       jwtToken: jwtToken ?? null,
       llmProvider,
-      themeMode: (themeMode as 'system' | 'light' | 'dark') ?? 'system',
+      themeMode: (themeMode === 'light' || themeMode === 'dark' ? themeMode : 'system'),
       isLoaded: true,
     });
   },
