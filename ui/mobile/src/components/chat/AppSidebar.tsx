@@ -15,9 +15,9 @@ interface Props {
 }
 
 const FEATURE_ITEMS = [
-  { key: 'subagents', icon: '🤖', label: 'Sub-Agents', path: '/subagents', disabled: false },
-  { key: 'settings',  icon: '⚙️', label: '设置',       path: '/settings',  disabled: false },
-  { key: 'overview',  icon: '📊', label: '系统总览',   path: null,          disabled: true  },
+  { key: 'subagents', label: 'Sub-Agents', path: '/subagents', disabled: false },
+  { key: 'settings',  label: '设置',       path: '/settings',  disabled: false },
+  { key: 'overview',  label: '系统总览',   path: null,          disabled: true  },
 ] as const;
 
 export function AppSidebar({
@@ -50,7 +50,6 @@ export function AppSidebar({
             disabled={item.disabled}
             activeOpacity={0.7}
           >
-            <Text style={styles.featureIcon}>{item.icon}</Text>
             <Text style={[styles.featureLabel, item.disabled && styles.featureLabelDisabled]}>
               {item.label}
             </Text>
@@ -106,7 +105,7 @@ export function AppSidebar({
           disabled={draftSession}
           activeOpacity={0.85}
         >
-          <Text style={styles.newChatBtnText}>✏️  新对话</Text>
+          <Text style={styles.newChatBtnText}>新对话</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -121,7 +120,6 @@ const styles = StyleSheet.create({
   featureSection:         { padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
   featureItem:            { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: '#efefef' },
   featureItemDisabled:    { borderStyle: 'dashed', borderColor: '#e0e0e0' },
-  featureIcon:            { fontSize: 16, marginRight: 10 },
   featureLabel:           { flex: 1, fontSize: 14, fontWeight: '500', color: '#111' },
   featureLabelDisabled:   { color: '#bbb' },
   chevron:                { fontSize: 18, color: '#ccc' },
