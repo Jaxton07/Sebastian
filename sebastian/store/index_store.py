@@ -83,7 +83,7 @@ class IndexStore:
         agent_type: str,
         parent_session_id: str,
     ) -> list[dict[str, Any]]:
-        """List active child sessions (depth=3) for a given parent session."""
+        """List active child sessions for a given parent session."""
         return [
             s for s in await self._read()
             if s.get("agent_type") == agent_type

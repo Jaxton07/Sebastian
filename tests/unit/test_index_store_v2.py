@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from sebastian.core.types import Session
+from sebastian.core.types import Session, SessionStatus
 from sebastian.store.index_store import IndexStore
 
 
@@ -33,3 +33,18 @@ async def test_list_active_children(tmp_path: Path):
     await store.upsert(child2)
     children = await store.list_active_children("code", "parent1")
     assert len(children) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_active_children_excludes_inactive(tmp_path: Path):
+    store = IndexStore(tmp_path)
+    # Active child
+    active_child = Session(id="child_active", agent_type="code", title="active", depth=3, parent_session_id="parent1")
+    await store.upsert(active_child)
+    # Completed child — should be excluded
+    completed_child = Session(id="child_done", agent_type="code", title="done", depth=3, parent_session_id="parent1")
+    completed_child = completed_child.model_copy(update={"status": SessionStatus.COMPLETED})
+    await store.upsert(completed_child)
+    children = await store.list_active_children("code", "parent1")
+    assert len(children) == 1
+    assert children[0]["id"] == "child_active"
