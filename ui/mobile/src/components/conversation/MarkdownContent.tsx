@@ -24,8 +24,9 @@ export function MarkdownContent({ content }: Props) {
       color: isDark ? '#a8d8a8' : '#333333',
       fontFamily: 'monospace',
       fontSize: 13,
-      paddingHorizontal: 4,
-      borderRadius: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 10,
     },
     fence: {
       backgroundColor: '#111120',
