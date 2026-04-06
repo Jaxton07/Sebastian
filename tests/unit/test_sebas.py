@@ -38,7 +38,6 @@ async def test_chat_uses_run_streaming_without_duplicate_turn_events(
         Session(
             id="chat-session",
             agent_type="sebastian",
-            agent_id="sebastian_01",
             title="Chat session",
         )
     )
@@ -86,9 +85,11 @@ async def test_chat_uses_run_streaming_without_duplicate_turn_events(
 
 
 @pytest.mark.asyncio
-async def test_get_or_create_session_creates_sebastian_worker_session(
+async def test_get_or_create_session_creates_sebastian_session(
     tmp_path: Path,
 ) -> None:
+    import unittest.mock as mock
+
     from sebastian.core.task_manager import TaskManager
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
@@ -112,19 +113,22 @@ async def test_get_or_create_session_creates_sebastian_worker_session(
         event_bus=bus,
     )
 
+    import sebastian.gateway.state as _state
+    _state.index_store = index_store
+
     session = await agent.get_or_create_session(None, "hello from sebastian")
 
     assert session.agent_type == "sebastian"
-    assert session.agent_id == "sebastian_01"
+    assert session.depth == 1
     assert session.title == "hello from sebastian"
 
-    loaded = await store.get_session(session.id, "sebastian", "sebastian_01")
+    loaded = await store.get_session(session.id, "sebastian")
     assert loaded is not None
     assert loaded.id == session.id
 
 
 @pytest.mark.asyncio
-async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
+async def test_get_or_create_session_reloads_existing_sebastian_session(
     tmp_path: Path,
 ) -> None:
     from sebastian.core.task_manager import TaskManager
@@ -145,7 +149,6 @@ async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
     existing_session = Session(
         id="existing-session",
         agent_type="sebastian",
-        agent_id="sebastian_01",
         title="Persisted title",
     )
     await store.create_session(existing_session)
@@ -163,41 +166,6 @@ async def test_get_or_create_session_reloads_existing_sebastian_worker_session(
 
     assert loaded.id == "existing-session"
     assert loaded.agent_type == "sebastian"
-    assert loaded.agent_id == "sebastian_01"
     assert loaded.title == "Persisted title"
 
 
-@pytest.mark.asyncio
-async def test_intervene_forwards_agent_name_to_run(tmp_path: Path) -> None:
-    from sebastian.core.task_manager import TaskManager
-    from sebastian.orchestrator.conversation import ConversationManager
-    from sebastian.orchestrator.sebas import Sebastian
-    from sebastian.protocol.events.bus import EventBus
-    from sebastian.store.index_store import IndexStore
-    from sebastian.store.session_store import SessionStore
-
-    sessions_dir = tmp_path / "sessions"
-    store = SessionStore(sessions_dir)
-    index_store = IndexStore(sessions_dir)
-    bus = EventBus()
-    conversation = ConversationManager(bus)
-    task_manager = TaskManager(store, bus, index_store=index_store)
-
-    agent = Sebastian(
-        gate=_make_mock_gate(),
-        session_store=store,
-        index_store=index_store,
-        task_manager=task_manager,
-        conversation=conversation,
-        event_bus=bus,
-    )
-
-    agent.run = AsyncMock(return_value="done")  # type: ignore[method-assign]
-    response = await agent.intervene("stock", "session-123", "revise this")
-
-    assert response == "done"
-    agent.run.assert_awaited_once_with(
-        "revise this",
-        "session-123",
-        agent_name="stock",
-    )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sebastian.core.base_agent import BaseAgent
@@ -9,11 +8,8 @@ from sebastian.permissions.gate import PolicyGate
 from sebastian.core.task_manager import TaskManager
 from sebastian.core.types import Session, Task
 from sebastian.orchestrator.conversation import ConversationManager
-from sebastian.orchestrator.tools import (
-    delegate as _delegate_tools,  # noqa: F401  # registers delegate_to_agent tool
-)
+from sebastian.capabilities.tools import delegate_to_agent as _delegate_tools  # noqa: F401  # registers delegate_to_agent tool
 from sebastian.protocol.events.bus import EventBus
-from sebastian.protocol.events.types import EventType
 from sebastian.store.index_store import IndexStore
 from sebastian.store.session_store import SessionStore
 
@@ -77,65 +73,51 @@ class Sebastian(BaseAgent):
         provider: LLMProvider | None = None,
         agent_registry: dict[str, AgentConfig] | None = None,
     ) -> None:
+        self._agent_registry: dict[str, AgentConfig] = agent_registry or {}
         super().__init__(gate, session_store, event_bus=event_bus, provider=provider)
         self._index = index_store
         self._task_manager = task_manager
         self._conversation = conversation
-        self._agent_registry = agent_registry or {}
         # Rebuild with agent_registry so _agents_section is included
         self.system_prompt = self.build_system_prompt(gate, self._agent_registry)
 
     def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:
-        from sebastian.agents._loader import AgentConfig
-
-        if not agent_registry:
+        registry = agent_registry or self._agent_registry
+        if not registry:
             return ""
         lines = ["## Available Sub-Agents", ""]
-        for config in agent_registry.values():
-            if isinstance(config, AgentConfig):
-                lines.append(f"- **{config.agent_type}** ({config.name}): {config.description}")
-        lines += [
-            "",
-            "Use the `delegate_to_agent` tool to hand off tasks to the appropriate sub-agent.",
-        ]
+        for config in registry.values():
+            display = getattr(config, "display_name", config.agent_type)
+            desc = getattr(config, "description", "")
+            lines.append(f"- **{config.agent_type}** ({display}): {desc}")
+        lines.append("")
+        lines.append("Use the `delegate_to_agent` tool to assign tasks to these agents.")
         return "\n".join(lines)
 
     async def chat(self, user_message: str, session_id: str) -> str:
         return await self.run_streaming(user_message, session_id)
 
-    async def get_or_create_session(self, session_id: str | None, first_message: str) -> Session:
+    async def get_or_create_session(
+        self,
+        session_id: str | None = None,
+        first_message: str = "",
+    ) -> Session:
         if session_id:
-            existing = await self._session_store.get_session(
-                session_id,
-                agent_type="sebastian",
-                agent_id="sebastian_01",
-            )
-            if existing is not None:
-                existing.updated_at = datetime.now(timezone.utc)  # noqa: UP017
-                await self._session_store.update_session(existing)
-                await self._index.upsert(existing)
-                return existing
+            session = await self._session_store.get_session(session_id, "sebastian")
+            if session:
+                return session
 
         session = Session(
             agent_type="sebastian",
-            agent_id="sebastian_01",
-            title=first_message[:40],
+            title=first_message[:40] or "新对话",
+            depth=1,
         )
         await self._session_store.create_session(session)
-        await self._index.upsert(session)
-        return session
 
-    async def intervene(self, agent_name: str, session_id: str, message: str) -> str:
-        response = await self.run(message, session_id, agent_name=agent_name)
-        await self._publish(
-            session_id,
-            EventType.USER_INTERVENED,
-            {
-                "agent": agent_name,
-                "message": message[:200],
-            },
-        )
-        return response
+        import sebastian.gateway.state as _state
+        await _state.index_store.upsert(session)
+
+        return session
 
     async def submit_background_task(self, goal: str, session_id: str) -> Task:
         task = Task(goal=goal, session_id=session_id, assigned_agent=self.name)
