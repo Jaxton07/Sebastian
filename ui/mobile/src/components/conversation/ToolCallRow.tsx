@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface Props {
   name: string;
@@ -57,13 +58,14 @@ function extractInputSummary(name: string, input: string): string {
 }
 
 export function ToolCallRow({ name, input, status }: Props) {
+  const colors = useTheme();
   const inputPreview = extractInputSummary(name, input);
 
   return (
     <View style={styles.row}>
       <View style={[styles.dot, { backgroundColor: DOT_COLOR[status] }]} />
-      <Text style={styles.name}>{name}</Text>
-      {inputPreview ? <Text style={styles.input}>{inputPreview}</Text> : null}
+      <Text style={[styles.name, { color: colors.textSecondary }]}>{name}</Text>
+      {inputPreview ? <Text style={[styles.input, { color: colors.textMuted }]}>{inputPreview}</Text> : null}
     </View>
   );
 }
@@ -82,13 +84,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   name: {
-    color: '#8888aa',
     fontSize: 13,
     fontWeight: '500',
     flexShrink: 0,
   },
   input: {
-    color: '#555566',
     fontSize: 13,
     flex: 1,
   },
