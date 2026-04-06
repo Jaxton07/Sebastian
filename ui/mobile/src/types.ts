@@ -12,20 +12,24 @@ export interface SessionMeta {
   id: string;
   agent: string;
   title: string;
-  status: 'active' | 'idle' | 'archived';
+  status: 'active' | 'idle' | 'completed' | 'failed' | 'stalled' | 'cancelled' | 'archived';
   updated_at: string;
   task_count: number;
   active_task_count: number;
+  depth: number;
+  parent_session_id: string | null;
+  last_activity_at: string;
 }
 
-export type AgentStatus = 'idle' | 'working' | 'waiting_approval' | 'completed' | 'failed';
+export type AgentStatus = 'idle' | 'working';
 
 export interface Agent {
   id: string;
   name: string;
+  description: string;
   status: AgentStatus;
-  goal: string;
-  createdAt: string;
+  active_session_count: number;
+  max_children: number;
 }
 
 export type TaskStatus =
@@ -96,7 +100,10 @@ export type SSEEventType =
   | 'tool.registered'
   | 'tool.running'
   | 'tool.executed'
-  | 'tool.failed';
+  | 'tool.failed'
+  | 'session.completed'
+  | 'session.failed'
+  | 'session.stalled';
 
 export interface SSEEvent<T = unknown> {
   type: SSEEventType;

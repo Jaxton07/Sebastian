@@ -1,19 +1,12 @@
 import { apiClient } from './client';
 import type { Agent } from '../types';
 
-interface BackendAgentWorker {
-  agent_id: string;
-  status: 'idle' | 'busy';
-  session_id: string | null;
-  current_goal: string | null;
-}
-
 interface BackendAgentSummary {
   agent_type: string;
   name: string;
   description: string;
-  workers: BackendAgentWorker[];
-  queue_depth: number;
+  active_session_count: number;
+  max_children: number;
 }
 
 interface BackendAgentsResponse {
@@ -21,19 +14,13 @@ interface BackendAgentsResponse {
 }
 
 function mapAgentSummary(agent: BackendAgentSummary): Agent {
-  const busyWorker = agent.workers.find((w) => w.status === 'busy' && w.current_goal);
-  const busyCount = agent.workers.filter((w) => w.status === 'busy').length;
-  const hasQueuedWork = agent.queue_depth > 0;
-  const status = busyCount > 0 || hasQueuedWork ? 'working' : 'idle';
-  const queueSuffix = hasQueuedWork ? `，队列 ${agent.queue_depth}` : '';
-  const goalText = busyWorker?.current_goal ?? '';
-
   return {
     id: agent.agent_type,
     name: agent.name || agent.agent_type,
-    status,
-    goal: goalText || `${agent.workers.length} 个 worker，${busyCount} 个忙碌${queueSuffix}`,
-    createdAt: '1970-01-01T00:00:00.000Z',
+    description: agent.description,
+    status: agent.active_session_count > 0 ? 'working' : 'idle',
+    active_session_count: agent.active_session_count,
+    max_children: agent.max_children,
   };
 }
 

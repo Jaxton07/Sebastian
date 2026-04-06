@@ -10,12 +10,14 @@ export interface SessionMessage {
 interface BackendSessionMeta {
   id: string;
   agent_type: string;
-  agent_id: string;
   title: string;
   status: SessionMeta['status'];
   updated_at: string;
   task_count: number;
   active_task_count: number;
+  depth: number;
+  parent_session_id: string | null;
+  last_activity_at: string;
 }
 
 export interface SessionDetail {
@@ -46,6 +48,9 @@ function mapSessionMeta(session: BackendSessionMeta): SessionMeta {
     updated_at: session.updated_at,
     task_count: session.task_count,
     active_task_count: session.active_task_count,
+    depth: session.depth,
+    parent_session_id: session.parent_session_id,
+    last_activity_at: session.last_activity_at,
   };
 }
 
@@ -93,4 +98,15 @@ export async function getSessionTasks(
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await apiClient.delete(`/api/v1/sessions/${sessionId}`);
+}
+
+export async function createAgentSession(
+  agent: string,
+  content: string,
+): Promise<{ sessionId: string; ts: string }> {
+  const { data } = await apiClient.post<{ session_id: string; ts: string }>(
+    `/api/v1/agents/${agent}/sessions`,
+    { content },
+  );
+  return { sessionId: data.session_id, ts: data.ts };
 }
