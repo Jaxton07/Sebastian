@@ -12,8 +12,10 @@ import { AppSidebar } from '@/src/components/chat/AppSidebar';
 import { MessageInput } from '@/src/components/chat/MessageInput';
 import { ConversationView } from '@/src/components/conversation';
 import { useConversationStore } from '@/src/store/conversation';
+import { useTheme } from '@/src/theme/ThemeContext';
 
 export default function ChatScreen() {
+  const colors = useTheme();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -76,15 +78,15 @@ export default function ChatScreen() {
   const isEmpty = !currentSessionId && !draftSession;
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight }]}>
         <TouchableOpacity
           style={styles.menuButton}
           onPress={() => setSidebarOpen(true)}
         >
-          <Text style={styles.menuIcon}>☰</Text>
+          <Text style={[styles.menuIcon, { color: colors.text }]}>☰</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Sebastian</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Sebastian</Text>
       </View>
 
       {isEmpty ? (
@@ -115,12 +117,10 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffff' },
+  container: { flex: 1 },
   header: {
     minHeight: 48,
-    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -132,7 +132,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     fontWeight: '600',
-    color: '#111',
     marginRight: 36,
   },
 });
