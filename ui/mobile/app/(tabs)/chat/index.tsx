@@ -84,7 +84,7 @@ export default function ChatScreen() {
         <ConversationView sessionId={currentSessionId} />
       )}
       <MessageInput isWorking={isWorking} onSend={handleSend} onStop={handleStop} />
-      <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+      <Sidebar visible={sidebarOpen} onOpen={() => setSidebarOpen(true)} onClose={() => setSidebarOpen(false)}>
         <ChatSidebar
           sessions={sessions}
           currentSessionId={currentSessionId}
