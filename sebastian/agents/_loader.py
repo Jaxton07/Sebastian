@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import logging
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,8 +58,6 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
             if is_builtin:
                 module_path = f"sebastian.agents.{agent_type}"
             else:
-                import sys
-
                 if str(base_dir) not in sys.path:
                     sys.path.insert(0, str(base_dir))
                 module_path = agent_type
@@ -66,8 +66,6 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
                 mod = importlib.import_module(module_path)
                 agent_class = getattr(mod, class_name)
             except (ImportError, AttributeError) as exc:
-                import logging
-
                 logging.getLogger(__name__).warning("Failed to load agent %r: %s", agent_type, exc)
                 continue
 

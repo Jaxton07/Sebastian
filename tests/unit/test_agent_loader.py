@@ -84,3 +84,40 @@ def test_load_agents_defaults_allowed_to_none_when_not_declared(tmp_path: Path) 
     cfg = next(c for c in configs if c.agent_type == "myagent2")
     assert cfg.allowed_tools is None
     assert cfg.allowed_skills is None
+
+
+def test_load_agents_reads_stalled_threshold_from_manifest(tmp_path: Path) -> None:
+    agent_dir = tmp_path / "myagent3"
+    agent_dir.mkdir()
+    manifest = agent_dir / "manifest.toml"
+    manifest.write_text(
+        '[agent]\nname = "My Agent"\ndescription = "test"\n'
+        'max_children = 1\nclass_name = "MyAgent3"\n'
+        'stalled_threshold_minutes = 10\n'
+    )
+    init = agent_dir / "__init__.py"
+    init.write_text("class MyAgent3: pass\n")
+
+    from sebastian.agents._loader import load_agents
+
+    configs = load_agents(extra_dirs=[tmp_path])
+    cfg = next(c for c in configs if c.agent_type == "myagent3")
+    assert cfg.stalled_threshold_minutes == 10
+
+
+def test_load_agents_defaults_stalled_threshold_to_5(tmp_path: Path) -> None:
+    agent_dir = tmp_path / "myagent4"
+    agent_dir.mkdir()
+    manifest = agent_dir / "manifest.toml"
+    manifest.write_text(
+        '[agent]\nname = "My Agent"\ndescription = "test"\n'
+        'max_children = 1\nclass_name = "MyAgent4"\n'
+    )
+    init = agent_dir / "__init__.py"
+    init.write_text("class MyAgent4: pass\n")
+
+    from sebastian.agents._loader import load_agents
+
+    configs = load_agents(extra_dirs=[tmp_path])
+    cfg = next(c for c in configs if c.agent_type == "myagent4")
+    assert cfg.stalled_threshold_minutes == 5
