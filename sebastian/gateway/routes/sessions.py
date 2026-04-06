@@ -50,20 +50,46 @@ async def list_agent_sessions(
     return {"agent_type": agent_type, "sessions": sessions}
 
 
-@router.get("/agents/{agent_type}/workers/{agent_id}/sessions")
-async def list_worker_sessions(
+@router.post("/agents/{agent_type}/sessions")
+async def create_agent_session(
     agent_type: str,
-    agent_id: str,
+    body: dict,
     _auth: AuthPayload = Depends(require_auth),
 ) -> JSONDict:
+    """Create a new conversation with a sub-agent."""
     import sebastian.gateway.state as state
 
-    sessions = await state.index_store.list_by_worker(agent_type, agent_id)
-    return {
-        "agent_type": agent_type,
-        "agent_id": agent_id,
-        "sessions": sessions,
-    }
+    if agent_type not in state.agent_instances:
+        raise HTTPException(404, f"Agent type not found: {agent_type}")
+
+    content = body.get("content", "")
+    if not content:
+        raise HTTPException(400, "content is required")
+
+    session = Session(
+        agent_type=agent_type,
+        title=content[:40],
+        depth=2,
+    )
+    await state.session_store.create_session(session)
+    await state.index_store.upsert(session)
+
+    agent = state.agent_instances[agent_type]
+
+    from sebastian.core.session_runner import run_agent_session
+
+    asyncio.create_task(
+        run_agent_session(
+            agent=agent,
+            session=session,
+            goal=content,
+            session_store=state.session_store,
+            index_store=state.index_store,
+            event_bus=state.event_bus,
+        )
+    )
+
+    return {"session_id": session.id, "ts": session.created_at.isoformat()}
 
 
 @router.get("/sessions/{session_id}")
@@ -77,7 +103,6 @@ async def get_session(
     messages = await state.session_store.get_messages(
         session_id,
         session.agent_type,
-        session.agent_id,
         limit=50,
     )
     return {"session": session.model_dump(mode="json"), "messages": messages}
@@ -96,18 +121,13 @@ def _log_background_turn_failure(task: asyncio.Task[object]) -> None:
 
 
 async def _resolve_session(state: Any, session_id: str) -> Session:
-    sessions = await state.index_store.list_all()
-    session_meta = next((item for item in sessions if item["id"] == session_id), None)
-    if session_meta is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    session = await state.session_store.get_session(
-        session_id,
-        session_meta.get("agent_type", "sebastian"),
-        session_meta.get("agent_id", "sebastian_01"),
-    )
+    entries = await state.index_store.list_all()
+    entry = next((e for e in entries if e["id"] == session_id), None)
+    if entry is None:
+        raise HTTPException(404, "Session not found")
+    session = await state.session_store.get_session(session_id, entry["agent_type"])
     if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(404, "Session data not found")
     return cast(Session, session)
 
 
@@ -129,21 +149,30 @@ async def _resolve_session_task(
         session_id,
         task_id,
         session.agent_type,
-        session.agent_id,
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return session, task
 
 
-def _schedule_session_turn(state: Any, session: Session, content: str) -> None:
+async def _schedule_session_turn(
+    session: Session,
+    content: str,
+) -> None:
+    """Route a turn to the correct agent instance."""
+    import sebastian.gateway.state as state
+
     if session.agent_type == "sebastian":
-        task = asyncio.create_task(state.sebastian.run_streaming(content, session.id))
-    else:
-        task = asyncio.create_task(
-            state.sebastian.intervene(session.agent_type, session.id, content)
+        asyncio.create_task(
+            state.sebastian.run_streaming(content, session.id)
         )
-    task.add_done_callback(_log_background_turn_failure)
+    else:
+        agent = state.agent_instances.get(session.agent_type)
+        if agent is None:
+            raise ValueError(f"No agent instance for type: {session.agent_type}")
+        asyncio.create_task(
+            agent.run_streaming(content, session.id, agent_name=session.agent_type)
+        )
 
 
 @router.delete("/sessions/{session_id}")
@@ -169,7 +198,7 @@ async def send_turn_to_session(
 
     session = await _resolve_session(state, session_id)
     now = await _touch_session(state, session)
-    _schedule_session_turn(state, session, body.content)
+    await _schedule_session_turn(session, body.content)
 
     return {
         "session_id": session_id,
@@ -187,7 +216,7 @@ async def intervene_session(
 
     session = await _resolve_session(state, session_id)
     now = await _touch_session(state, session)
-    _schedule_session_turn(state, session, body.content)
+    await _schedule_session_turn(session, body.content)
     return {
         "session_id": session_id,
         "ts": now.isoformat(),
@@ -205,7 +234,6 @@ async def list_session_tasks(
     tasks = await state.session_store.list_tasks(
         session_id,
         session.agent_type,
-        session.agent_id,
     )
     return {"tasks": [task.model_dump(mode="json") for task in tasks]}
 
@@ -276,3 +304,25 @@ async def cancel_task_post(
     if not cancelled:
         raise HTTPException(status_code=404, detail="Task not found or not cancellable")
     return {"ok": True}
+
+
+@router.get("/sessions/{session_id}/recent")
+async def get_session_recent(
+    session_id: str,
+    limit: int = 5,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    """HTTP version of inspect_session — returns recent messages + status."""
+    import sebastian.gateway.state as state
+
+    session = await _resolve_session(state, session_id)
+    messages = await state.session_store.get_messages(
+        session_id, session.agent_type, limit=limit,
+    )
+    return {
+        "session_id": session.id,
+        "status": session.status,
+        "title": session.title,
+        "last_activity_at": session.last_activity_at.isoformat(),
+        "messages": messages,
+    }
