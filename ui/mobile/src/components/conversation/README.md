@@ -20,6 +20,17 @@ conversation/
 └── index.ts               # 公共导出汇总
 ```
 
+## ConversationView Props
+
+| Prop | 类型 | 说明 |
+|---|---|---|
+| `sessionId` | `string \| null` | 当前会话 ID |
+| `errorBanner` | `ErrorBannerType \| null` | 错误横幅，显示在列表尾部 |
+| `onBannerAction` | `() => void` | 横幅操作回调（如跳转设置） |
+| `renderScrollComponent` | `(props: ScrollViewProps) => ReactElement` | 可选，注入 `KeyboardChatScrollView` 实现键盘感知滚动 |
+
+`renderScrollComponent` 由页面层传入，允许 ConversationView 在不同上下文中复用（聊天页注入 `KeyboardChatScrollView`，其他场景可省略）。
+
 ## 修改导航
 
 | 如果要修改… | 看这里 |

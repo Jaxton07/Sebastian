@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
   gestureArea: { flex: 1 },
   stickyComposer: {
     position: 'absolute',
+    bottom: 0,
     width: '100%',
   },
 });
