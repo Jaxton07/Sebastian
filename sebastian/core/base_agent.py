@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store.index_store import IndexStore
 
-from sebastian.permissions.gate import PolicyGate
-from sebastian.permissions.types import ToolCallContext
 from sebastian.config import settings
 from sebastian.core.agent_loop import AgentLoop
 from sebastian.core.stream_events import (
@@ -34,6 +32,8 @@ from sebastian.core.stream_events import (
 )
 from sebastian.memory.episodic_memory import EpisodicMemory
 from sebastian.memory.working_memory import WorkingMemory
+from sebastian.permissions.gate import PolicyGate
+from sebastian.permissions.types import ToolCallContext
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event, EventType
 from sebastian.store.session_store import SessionStore
@@ -110,7 +110,8 @@ class BaseAgent(ABC):
         return (
             "## Operation Guidelines\n\n"
             f"- Workspace directory: `{settings.workspace_dir}`. "
-            "Use relative paths for all file operations — they resolve to workspace automatically.\n"
+            "Use relative paths for all file operations — they resolve to "
+            "workspace automatically.\n"
             "- Prefer structured tools over shell commands for file operations:\n"
             "  - Use `Read` instead of `bash cat`\n"
             "  - Use `Write` / `Edit` instead of `bash sed`, `bash tee`, or redirect (`>`)\n"
