@@ -362,7 +362,7 @@ async def cancel_session_post(
     session_id: str,
     _auth: AuthPayload = Depends(require_auth),
 ) -> JSONDict:
-    """Cancel the active streaming turn for a session."""
+    """Cancel the active streaming turn for a session (spec Section 8.1)."""
     import sebastian.gateway.state as state
 
     session = await _resolve_session(state, session_id)
