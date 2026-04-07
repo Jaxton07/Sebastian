@@ -212,3 +212,60 @@ def test_base_agent_has_no_execute_delegated_task():
     from sebastian.core.base_agent import BaseAgent
 
     assert not hasattr(BaseAgent, "execute_delegated_task")
+
+
+def test_build_system_prompt_contains_guidelines_section() -> None:
+    """build_system_prompt() 包含 guidelines section，含 workspace_dir 路径。"""
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+    from sebastian.core.base_agent import BaseAgent
+
+    class TestAgent(BaseAgent):
+        name = "test"
+
+    fake_workspace = Path("/fake/workspace")
+
+    gate = MagicMock()
+    gate.get_tool_specs.return_value = []
+    gate.get_skill_specs.return_value = []
+
+    with patch("sebastian.core.base_agent.settings") as mock_settings:
+        mock_settings.workspace_dir = fake_workspace
+        mock_settings.sebastian_owner_name = "Eric"
+        mock_settings.sebastian_model = "claude-opus-4-6"
+        agent = TestAgent(gate, MagicMock())
+        prompt = agent.system_prompt
+
+    assert "Operation Guidelines" in prompt
+    assert str(fake_workspace) in prompt
+    assert "Read" in prompt
+    assert "Write" in prompt
+    assert "Glob" in prompt
+    assert "Grep" in prompt
+
+
+def test_guidelines_section_appears_before_tools_section() -> None:
+    """guidelines section 必须在 tools section 之前出现。"""
+    from pathlib import Path
+    from unittest.mock import MagicMock, patch
+    from sebastian.core.base_agent import BaseAgent
+
+    class TestAgent(BaseAgent):
+        name = "test"
+
+    gate = MagicMock()
+    gate.get_tool_specs.return_value = [
+        {"name": "Read", "description": "Read a file"}
+    ]
+    gate.get_skill_specs.return_value = []
+
+    with patch("sebastian.core.base_agent.settings") as mock_settings:
+        mock_settings.workspace_dir = Path("/fake/ws")
+        mock_settings.sebastian_owner_name = "Eric"
+        mock_settings.sebastian_model = "claude-opus-4-6"
+        agent = TestAgent(gate, MagicMock())
+        prompt = agent.system_prompt
+
+    guidelines_pos = prompt.index("Operation Guidelines")
+    tools_pos = prompt.index("Available Tools")
+    assert guidelines_pos < tools_pos

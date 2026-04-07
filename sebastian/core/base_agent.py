@@ -106,6 +106,20 @@ class BaseAgent(ABC):
     def _persona_section(self) -> str:
         return self.persona.replace("{owner_name}", settings.sebastian_owner_name)
 
+    def _guidelines_section(self) -> str:
+        return (
+            "## Operation Guidelines\n\n"
+            f"- Workspace directory: `{settings.workspace_dir}`. "
+            "Use relative paths for all file operations — they resolve to workspace automatically.\n"
+            "- Prefer structured tools over shell commands for file operations:\n"
+            "  - Use `Read` instead of `bash cat`\n"
+            "  - Use `Write` / `Edit` instead of `bash sed`, `bash tee`, or redirect (`>`)\n"
+            "  - Use `Glob` instead of `bash find`\n"
+            "  - Use `Grep` instead of `bash grep` / `bash rg`\n"
+            "- Operations outside the workspace directory require user approval. "
+            "Always explain why you need to access a path outside workspace before requesting."
+        )
+
     def _tools_section(self, gate: PolicyGate) -> str:
         allowed = set(self.allowed_tools) if self.allowed_tools is not None else None
         specs = gate.get_tool_specs(allowed)
@@ -151,6 +165,7 @@ class BaseAgent(ABC):
     ) -> str:
         sections = [
             self._persona_section(),
+            self._guidelines_section(),
             self._tools_section(gate),
             self._skills_section(gate),
             self._agents_section(agent_registry),
