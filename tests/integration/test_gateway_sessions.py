@@ -315,3 +315,39 @@ def test_task_mutation_routes_return_404_for_task_outside_resolved_session(
     assert response.status_code == 404, response.text
     assert response.json()["detail"] == "Task not found"
     mock_cancel.assert_not_awaited()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# POST /sessions/{session_id}/cancel
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_post_cancel_unknown_session_returns_404(client) -> None:
+    """Non-existent session returns 404."""
+    http_client, _, _ = client
+    token = _login(http_client)
+
+    resp = http_client.post(
+        "/api/v1/sessions/nonexistent-session/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+
+
+def test_post_cancel_idle_session_returns_404(client) -> None:
+    """Session with no active stream returns 404 (no stream to cancel)."""
+    import sebastian.gateway.state as state
+    from sebastian.core.types import Session
+
+    http_client, _, _ = client
+    token = _login(http_client)
+
+    session = Session(id="idle-cancel", agent_type="sebastian", title="t")
+    asyncio.run(state.session_store.create_session(session))
+    asyncio.run(state.index_store.upsert(session))
+
+    resp = http_client.post(
+        "/api/v1/sessions/idle-cancel/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404

@@ -357,6 +357,23 @@ async def cancel_task_post(
     return {"ok": True}
 
 
+@router.post("/sessions/{session_id}/cancel", response_model=None)
+async def cancel_session_post(
+    session_id: str,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    """Cancel the active streaming turn for a session."""
+    import sebastian.gateway.state as state
+
+    session = await _resolve_session(state, session_id)
+    agent = state.agent_instances.get(session.agent_type)
+    target = agent if agent is not None else state.sebastian
+    cancelled = await target.cancel_session(session_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="No active turn for this session")
+    return {"ok": True}
+
+
 @router.get("/sessions/{session_id}/recent")
 async def get_session_recent(
     session_id: str,
