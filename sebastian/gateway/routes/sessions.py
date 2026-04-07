@@ -312,8 +312,15 @@ async def cancel_task(
 ) -> JSONDict:
     import sebastian.gateway.state as state
 
-    await _resolve_session_task(state, session_id, task_id)
-    cancelled = await state.sebastian._task_manager.cancel(task_id)
+    session, _ = await _resolve_session_task(state, session_id, task_id)
+    if session.agent_type == "sebastian":
+        manager = state.sebastian._task_manager
+    else:
+        agent = state.agent_instances.get(session.agent_type)
+        if agent is None:
+            raise HTTPException(404, f"Agent not found: {session.agent_type}")
+        manager = agent._task_manager
+    cancelled = await manager.cancel(task_id)
     return {"task_id": task_id, "cancelled": cancelled}
 
 
@@ -333,9 +340,16 @@ async def cancel_task_post(
     """
     import sebastian.gateway.state as state
 
-    _, task = await _resolve_session_task(state, session_id, task_id)
+    session, task = await _resolve_session_task(state, session_id, task_id)
+    if session.agent_type == "sebastian":
+        manager = state.sebastian._task_manager
+    else:
+        agent = state.agent_instances.get(session.agent_type)
+        if agent is None:
+            raise HTTPException(404, f"Agent not found: {session.agent_type}")
+        manager = agent._task_manager
     try:
-        cancelled = await state.sebastian._task_manager.cancel(task_id)
+        cancelled = await manager.cancel(task_id)
     except InvalidTaskTransitionError as exc:
         # Placeholder for when TaskManager.cancel() is wired through _transition().
         raise HTTPException(
