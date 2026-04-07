@@ -1,7 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { StyleSheet, Alert } from 'react-native';
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, Alert } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useComposerStore } from '../../store/composer';
 import { InputTextArea } from './InputTextArea';
@@ -15,8 +13,6 @@ export interface ComposerProps {
   isWorking: boolean;
   onSend: (text: string, opts: { thinking: boolean }) => Promise<void>;
   onStop: () => Promise<void>;
-  /** Called whenever the Composer's rendered height changes. */
-  onHeightChange: (height: number) => void;
 }
 
 export function Composer({
@@ -24,13 +20,8 @@ export function Composer({
   isWorking,
   onSend,
   onStop,
-  onHeightChange,
 }: ComposerProps) {
   const colors = useTheme();
-  const insets = useSafeAreaInsets();
-  // keyboard.height is a SharedValue that animates frame-by-frame on the UI thread,
-  // giving smooth keyboard-following behavior with zero JS-bridge delay.
-  const keyboard = useAnimatedKeyboard();
 
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -81,7 +72,6 @@ export function Composer({
       try {
         await onStop();
       } catch {
-        // onStop handles errors; if it throws, recover state
         setIsCancelling(false);
       }
       return;
@@ -93,7 +83,6 @@ export function Composer({
     try {
       await onSend(content, { thinking: thinkActive });
     } catch {
-      // Restore text so user doesn't lose their message
       setText(content);
     } finally {
       setIsSending(false);
@@ -102,26 +91,16 @@ export function Composer({
 
   const isInputDisabled = state === 'sending' || state === 'cancelling';
 
-  // bottom tracks keyboard.height on the UI thread — no JS round-trip on each frame.
-  // insets.bottom is captured as a constant; re-created on orientation change via re-render.
-  const animatedFloatingStyle = useAnimatedStyle(() => ({
-    bottom: keyboard.height.value + insets.bottom + 8,
-  }));
-
   return (
-    <Animated.View
+    <View
       style={[
-        styles.floating,
-        animatedFloatingStyle,
+        styles.container,
         {
           backgroundColor: colors.cardBackground,
           borderColor: colors.borderLight,
           shadowColor: colors.shadowColor,
         },
       ]}
-      onLayout={(e) => {
-        onHeightChange(e.nativeEvent.layout.height);
-      }}
     >
       <InputTextArea
         value={text}
@@ -134,15 +113,14 @@ export function Composer({
         onThinkToggle={() => setThinking(sessionId, !thinkActive)}
         onSendOrStop={handleSendOrStop}
       />
-    </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  floating: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
+  container: {
+    marginHorizontal: 12,
+    marginBottom: 12,
     borderRadius: 24,
     padding: 12,
     borderWidth: 1,
