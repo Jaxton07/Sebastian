@@ -162,11 +162,12 @@ def test_send_turn_to_subagent_session_schedules_background_task(client):
     http_client, _, _ = client
     token = _login(http_client)
 
+    # Register a mock agent instance for "code" (the only agent in test registry)
+    from unittest.mock import AsyncMock as _AsyncMock
+
     import sebastian.gateway.state as state
     from sebastian.core.types import Session
 
-    # Register a mock agent instance for "code" (the only agent in test registry)
-    from unittest.mock import AsyncMock as _AsyncMock
     mock_agent = _AsyncMock()
     mock_agent.run_streaming = _AsyncMock(return_value="Agent reply")
     original_instances = dict(state.agent_instances)

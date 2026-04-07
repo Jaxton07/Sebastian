@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -231,16 +231,12 @@ async def _schedule_session_turn(
     import sebastian.gateway.state as state
 
     if session.agent_type == "sebastian":
-        task = asyncio.create_task(
-            state.sebastian.run_streaming(content, session.id)
-        )
+        task = asyncio.create_task(state.sebastian.run_streaming(content, session.id))
     else:
         agent = state.agent_instances.get(session.agent_type)
         if agent is None:
             raise ValueError(f"No agent instance for type: {session.agent_type}")
-        task = asyncio.create_task(
-            agent.run_streaming(content, session.id)
-        )
+        task = asyncio.create_task(agent.run_streaming(content, session.id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     task.add_done_callback(_log_background_turn_failure)
@@ -307,7 +303,6 @@ async def get_session_task(
 
     _, task = await _resolve_session_task(state, session_id, task_id)
     return {"task": task.model_dump(mode="json")}
-
 
 
 @router.delete("/sessions/{session_id}/tasks/{task_id}")
@@ -385,7 +380,9 @@ async def get_session_recent(
 
     session = await _resolve_session(state, session_id)
     messages = await state.session_store.get_messages(
-        session_id, session.agent_type, limit=limit,
+        session_id,
+        session.agent_type,
+        limit=limit,
     )
     return {
         "session_id": session.id,

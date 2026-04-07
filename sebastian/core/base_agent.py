@@ -77,8 +77,8 @@ class BaseAgent(ABC):
         llm_registry: LLMProviderRegistry | None = None,
     ) -> None:
         self._gate = gate
-        self._current_task_goals: dict[str, str] = {}           # session_id → goal
-        self._current_depth: dict[str, int] = {}               # session_id → depth
+        self._current_task_goals: dict[str, str] = {}  # session_id → goal
+        self._current_depth: dict[str, int] = {}  # session_id → depth
         self._session_store = session_store
         self._event_bus = event_bus
         self._index_store = index_store
@@ -270,7 +270,10 @@ class BaseAgent(ABC):
                     partial += "\n\n[用户中断]"
                     try:
                         await self._episodic.add_turn(
-                            session_id, "assistant", partial, agent=agent_context,
+                            session_id,
+                            "assistant",
+                            partial,
+                            agent=agent_context,
                         )
                     except Exception:
                         logger.warning("Failed to flush partial text on cancel", exc_info=True)
@@ -345,7 +348,7 @@ class BaseAgent(ABC):
                             session_id=session_id,
                             task_id=task_id,
                             agent_type=agent_context,
-                            depth=getattr(self, '_current_depth', {}).get(session_id, 1),
+                            depth=getattr(self, "_current_depth", {}).get(session_id, 1),
                         )
                         result = await self._gate.call(event.name, event.inputs, context)
                     except asyncio.CancelledError:
