@@ -4,9 +4,12 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from sebastian.llm.crypto import encrypt
+
 
 @pytest_asyncio.fixture
-async def registry_with_db():
+async def registry_with_db(monkeypatch):
+    monkeypatch.setattr("sebastian.config.settings.sebastian_jwt_secret", "test-secret")
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store import models  # noqa: F401
     from sebastian.store.database import Base
@@ -35,7 +38,7 @@ async def test_registry_create_and_list(registry_with_db) -> None:
     record = LLMProviderRecord(
         name="My Claude",
         provider_type="anthropic",
-        api_key="sk-ant-abc",
+        api_key_enc=encrypt("sk-ant-abc"),
         model="claude-opus-4-6",
         is_default=True,
     )
@@ -53,7 +56,7 @@ async def test_registry_get_default_uses_db_record(registry_with_db) -> None:
     record = LLMProviderRecord(
         name="DB Claude",
         provider_type="anthropic",
-        api_key="sk-ant-db",
+        api_key_enc=encrypt("sk-ant-db"),
         model="claude-opus-4-6",
         is_default=True,
     )
@@ -70,7 +73,7 @@ async def test_registry_delete(registry_with_db) -> None:
     record = LLMProviderRecord(
         name="To Delete",
         provider_type="anthropic",
-        api_key="sk-ant-del",
+        api_key_enc=encrypt("sk-ant-del"),
         model="claude-opus-4-6",
         is_default=False,
     )

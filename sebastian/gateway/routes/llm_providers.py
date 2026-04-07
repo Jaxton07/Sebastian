@@ -37,7 +37,6 @@ def _record_to_dict(record: Any) -> dict[str, Any]:
         "name": record.name,
         "provider_type": record.provider_type,
         "base_url": record.base_url,
-        "api_key": record.api_key,
         "model": record.model,
         "thinking_format": record.thinking_format,
         "is_default": record.is_default,
@@ -62,12 +61,13 @@ async def create_llm_provider(
     _auth: AuthPayload = Depends(require_auth),
 ) -> dict[str, Any]:
     import sebastian.gateway.state as state
+    from sebastian.llm.crypto import encrypt
     from sebastian.store.models import LLMProviderRecord
 
     record = LLMProviderRecord(
         name=body.name,
         provider_type=body.provider_type,
-        api_key=body.api_key,
+        api_key_enc=encrypt(body.api_key),
         model=body.model,
         base_url=body.base_url,
         thinking_format=body.thinking_format,
@@ -84,8 +84,11 @@ async def update_llm_provider(
     _auth: AuthPayload = Depends(require_auth),
 ) -> dict[str, Any]:
     import sebastian.gateway.state as state
+    from sebastian.llm.crypto import encrypt
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "api_key" in updates:
+        updates["api_key_enc"] = encrypt(updates.pop("api_key"))
     record = await state.llm_registry.update(provider_id, **updates)
     if record is None:
         raise HTTPException(status_code=404, detail="Provider not found")

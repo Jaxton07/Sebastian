@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from sebastian.llm.crypto import decrypt, encrypt
+
 
 @pytest.mark.asyncio
 async def test_llm_provider_record_roundtrip(db_session) -> None:
@@ -13,7 +15,7 @@ async def test_llm_provider_record_roundtrip(db_session) -> None:
         name="Claude Home",
         provider_type="anthropic",
         base_url=None,
-        api_key="sk-ant-test",
+        api_key_enc=encrypt("sk-ant-test"),
         model="claude-opus-4-6",
         thinking_format=None,
         is_default=True,
@@ -24,6 +26,7 @@ async def test_llm_provider_record_roundtrip(db_session) -> None:
     result = await db_session.execute(select(LLMProviderRecord).where(LLMProviderRecord.is_default))
     loaded = result.scalar_one()
     assert loaded.name == "Claude Home"
-    assert loaded.api_key == "sk-ant-test"
+    assert loaded.api_key_enc != "sk-ant-test"   # stored encrypted
+    assert decrypt(loaded.api_key_enc) == "sk-ant-test"  # round-trip works
     assert loaded.provider_type == "anthropic"
     assert loaded.is_default is True

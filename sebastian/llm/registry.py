@@ -86,15 +86,18 @@ class LLMProviderRegistry:
             return True
 
     def _instantiate(self, record: LLMProviderRecord) -> LLMProvider:
+        from sebastian.llm.crypto import decrypt
+
+        plain_key = decrypt(record.api_key_enc)
         if record.provider_type == "anthropic":
             from sebastian.llm.anthropic import AnthropicProvider
 
-            return AnthropicProvider(api_key=record.api_key, base_url=record.base_url)
+            return AnthropicProvider(api_key=plain_key, base_url=record.base_url)
         if record.provider_type == "openai":
             from sebastian.llm.openai_compat import OpenAICompatProvider
 
             return OpenAICompatProvider(
-                api_key=record.api_key,
+                api_key=plain_key,
                 base_url=record.base_url,
                 thinking_format=record.thinking_format,
             )
