@@ -219,7 +219,6 @@ export default function SessionDetailScreen() {
         isWorking={sending}
         onSend={handleSend}
         onStop={async () => {}}
-        bottomInset={insets.bottom}
         onHeightChange={() => {}}
       />
     </View>

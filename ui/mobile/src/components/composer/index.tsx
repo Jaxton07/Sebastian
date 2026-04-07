@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { StyleSheet, Alert } from 'react-native';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/ThemeContext';
 import { useComposerStore } from '../../store/composer';
 import { InputTextArea } from './InputTextArea';
 import { ActionsRow } from './ActionsRow';
-import { COMPOSER_DEFAULT_HEIGHT } from './constants';
 import type { ComposerState } from './types';
 
 export interface ComposerProps {
@@ -14,8 +15,6 @@ export interface ComposerProps {
   isWorking: boolean;
   onSend: (text: string, opts: { thinking: boolean }) => Promise<void>;
   onStop: () => Promise<void>;
-  /** Safe-area bottom inset in pixels. */
-  bottomInset: number;
   /** Called whenever the Composer's rendered height changes. */
   onHeightChange: (height: number) => void;
 }
@@ -25,10 +24,14 @@ export function Composer({
   isWorking,
   onSend,
   onStop,
-  bottomInset,
   onHeightChange,
 }: ComposerProps) {
   const colors = useTheme();
+  const insets = useSafeAreaInsets();
+  // keyboard.height is a SharedValue that animates frame-by-frame on the UI thread,
+  // giving smooth keyboard-following behavior with zero JS-bridge delay.
+  const keyboard = useAnimatedKeyboard();
+
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -99,12 +102,18 @@ export function Composer({
 
   const isInputDisabled = state === 'sending' || state === 'cancelling';
 
+  // bottom tracks keyboard.height on the UI thread — no JS round-trip on each frame.
+  // insets.bottom is captured as a constant; re-created on orientation change via re-render.
+  const animatedFloatingStyle = useAnimatedStyle(() => ({
+    bottom: keyboard.height.value + insets.bottom + 8,
+  }));
+
   return (
-    <View
+    <Animated.View
       style={[
         styles.floating,
+        animatedFloatingStyle,
         {
-          bottom: bottomInset + 8,
           backgroundColor: colors.cardBackground,
           borderColor: colors.borderLight,
           shadowColor: colors.shadowColor,
@@ -125,7 +134,7 @@ export function Composer({
         onThinkToggle={() => setThinking(sessionId, !thinkActive)}
         onSendOrStop={handleSendOrStop}
       />
-    </View>
+    </Animated.View>
   );
 }
 

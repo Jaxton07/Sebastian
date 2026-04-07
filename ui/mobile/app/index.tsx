@@ -49,14 +49,11 @@ export default function ChatScreen() {
     currentSessionId ? (s.sessions[currentSessionId]?.errorBanner ?? null) : s.draftErrorBanner,
   );
 
-  // When keyboard is visible, Composer moves up by keyboardHeight; use that as the
-  // effective bottom anchor. Otherwise fall back to the safe-area inset.
-  const composerBottomInset = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
-
-  // Total space to reserve at the bottom of the conversation list so the last
-  // message is always fully visible above the floating Composer:
-  //   composerHeight + composerBottomInset (anchor) + 8 (Composer offset) + 24 (gap)
-  const bottomPadding = composerHeight + composerBottomInset + 32;
+  // bottomPadding: how much space to reserve at the bottom of the scroll list so
+  // the last message stays above the floating Composer.
+  // Composer sits at `keyboard.height + insets.bottom + 8` from screen bottom (via
+  // Reanimated useAnimatedKeyboard). We mirror that here for the list padding.
+  const bottomPadding = composerHeight + keyboardHeight + insets.bottom + 32;
 
   async function handleSend(text: string, _opts: { thinking: boolean }) {
     // _opts.thinking is captured for future backend wiring (Phase 2)
@@ -163,7 +160,6 @@ export default function ChatScreen() {
           isWorking={isWorking}
           onSend={handleSend}
           onStop={handleStop}
-          bottomInset={composerBottomInset}
           onHeightChange={setComposerHeight}
         />
 
