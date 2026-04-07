@@ -48,9 +48,9 @@ class LogManager:
         logs_dir = self._data_dir / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
 
-        # main.log — 覆盖 sebastian root logger，INFO+，始终开启
+        # main.log — 覆盖 sebastian root logger，DEBUG+，始终开启
         main_handler = _make_rotating_handler(logs_dir / "main.log")
-        main_handler.setLevel(logging.INFO)
+        main_handler.setLevel(logging.DEBUG)
         root = logging.getLogger("sebastian")
         root.setLevel(logging.DEBUG)  # 让子 logger 的 DEBUG 不被 root 截断
         if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):

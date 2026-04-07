@@ -83,7 +83,7 @@ class PermissionReviewer:
                     decision="escalate",
                     explanation="审查响应为空，请人工批准。",
                 )
-            logger.debug("PermissionReviewer raw response: %r", text)
+            logger.info("PermissionReviewer raw response: %r", text)
             data = json.loads(_extract_json(text))
             decision = data.get("decision", "escalate")
             if decision not in ("proceed", "escalate"):
