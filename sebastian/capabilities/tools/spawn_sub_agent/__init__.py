@@ -12,6 +12,15 @@ from sebastian.core.types import Session, ToolResult
 
 logger = logging.getLogger(__name__)
 
+# Per-agent-type lock: prevents concurrent check-then-create from bypassing max_children.
+_SPAWN_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _get_spawn_lock(agent_type: str) -> asyncio.Lock:
+    if agent_type not in _SPAWN_LOCKS:
+        _SPAWN_LOCKS[agent_type] = asyncio.Lock()
+    return _SPAWN_LOCKS[agent_type]
+
 
 def _log_task_failure(task: asyncio.Task) -> None:
     if task.cancelled():
@@ -46,21 +55,22 @@ async def spawn_sub_agent(
     if config is None:
         return ToolResult(ok=False, error=f"未知的 Agent 类型: {agent_type}")
 
-    active = await state.index_store.list_active_children(agent_type, parent_session_id)
-    if len(active) >= config.max_children:
-        return ToolResult(
-            ok=False,
-            error=f"当前已有{len(active)}个组员在工作，已达上限{config.max_children}",
-        )
+    async with _get_spawn_lock(agent_type):
+        active = await state.index_store.list_active_children(agent_type, parent_session_id)
+        if len(active) >= config.max_children:
+            return ToolResult(
+                ok=False,
+                error=f"当前已有{len(active)}个组员在工作，已达上限{config.max_children}",
+            )
 
-    session = Session(
-        agent_type=agent_type,
-        title=goal[:40],
-        depth=3,
-        parent_session_id=parent_session_id,
-    )
-    await state.session_store.create_session(session)
-    await state.index_store.upsert(session)
+        session = Session(
+            agent_type=agent_type,
+            title=goal[:40],
+            depth=3,
+            parent_session_id=parent_session_id,
+        )
+        await state.session_store.create_session(session)
+        await state.index_store.upsert(session)
 
     if agent_type not in state.agent_instances:
         return ToolResult(ok=False, error=f"Agent {agent_type} 尚未初始化")

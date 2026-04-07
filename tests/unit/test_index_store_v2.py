@@ -48,3 +48,50 @@ async def test_list_active_children_excludes_inactive(tmp_path: Path):
     children = await store.list_active_children("code", "parent1")
     assert len(children) == 1
     assert children[0]["id"] == "child_active"
+
+
+@pytest.mark.asyncio
+async def test_list_active_children_includes_stalled(tmp_path: Path):
+    """stalled session 仍应占 max_children 位。"""
+    store = IndexStore(tmp_path)
+    parent = Session(id="parent2", agent_type="code", title="parent", depth=2)
+    await store.upsert(parent)
+
+    active_child = Session(
+        id="child_active2", agent_type="code", title="active",
+        depth=3, parent_session_id="parent2",
+    )
+    stalled_child = Session(
+        id="child_stalled", agent_type="code", title="stalled",
+        depth=3, parent_session_id="parent2", status=SessionStatus.STALLED,
+    )
+    await store.upsert(active_child)
+    await store.upsert(stalled_child)
+
+    children = await store.list_active_children("code", "parent2")
+    assert len(children) == 2  # both active and stalled count
+
+
+@pytest.mark.asyncio
+async def test_list_active_children_concurrent_count_is_bounded(tmp_path: Path):
+    """验证 list_active_children 在并发场景下正确计数，不能因为竞态而少算。"""
+    import asyncio
+    store = IndexStore(tmp_path)
+    parent = Session(id="p_concurrent", agent_type="code", title="parent", depth=2)
+    await store.upsert(parent)
+
+    # 先放一个 stalled child
+    stalled = Session(
+        id="stalled_concurrent", agent_type="code", title="s",
+        depth=3, parent_session_id="p_concurrent", status=SessionStatus.STALLED,
+    )
+    await store.upsert(stalled)
+
+    # 并发查询 5 次，结果应该一致且都包含 stalled session
+    results = await asyncio.gather(*[
+        store.list_active_children("code", "p_concurrent")
+        for _ in range(5)
+    ])
+    for r in results:
+        assert len(r) == 1
+        assert r[0]["status"] == "stalled"
