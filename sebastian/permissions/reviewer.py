@@ -73,10 +73,16 @@ class PermissionReviewer:
                 messages=[{"role": "user", "content": user_content}],
                 tools=[],
                 model=model,
-                max_tokens=256,
+                max_tokens=2048,
             ):
                 if isinstance(event, TextDelta):
                     text += event.delta
+            if not text.strip():
+                logger.warning("PermissionReviewer: LLM returned empty response, defaulting to escalate")
+                return ReviewDecision(
+                    decision="escalate",
+                    explanation="审查响应为空，请人工批准。",
+                )
             data = json.loads(text.strip())
             decision = data.get("decision", "escalate")
             if decision not in ("proceed", "escalate"):
