@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 
 from sebastian.capabilities.tools import _file_state
+from sebastian.capabilities.tools._path_utils import resolve_path
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
@@ -24,10 +25,10 @@ async def read(
     offset: int | None = None,
     limit: int | None = None,
 ) -> ToolResult:
-    path = os.path.abspath(file_path)
-    if not os.path.exists(path):
+    path = str(resolve_path(file_path))
+    if not Path(path).exists():
         return ToolResult(ok=False, error=f"File not found: {path}")
-    if os.path.isdir(path):
+    if Path(path).is_dir():
         return ToolResult(ok=False, error=f"Path is a directory, not a file: {path}")
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
