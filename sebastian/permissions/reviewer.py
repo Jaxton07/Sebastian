@@ -83,7 +83,7 @@ class PermissionReviewer:
                     decision="escalate",
                     explanation="审查响应为空，请人工批准。",
                 )
-            data = json.loads(text.strip())
+            data = json.loads(_extract_json(text))
             decision = data.get("decision", "escalate")
             if decision not in ("proceed", "escalate"):
                 decision = "escalate"
@@ -95,3 +95,12 @@ class PermissionReviewer:
                 decision="escalate",
                 explanation="Permission review failed; manual approval required.",
             )
+
+
+def _extract_json(text: str) -> str:
+    """Extract JSON object from text, stripping markdown code fences if present."""
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start != -1 and end > start:
+        return text[start:end]
+    return text.strip()
