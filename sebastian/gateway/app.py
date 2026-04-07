@@ -75,7 +75,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.llm.registry import LLMProviderRegistry
 
     llm_registry = LLMProviderRegistry(db_factory)
-    default_provider, default_model = await llm_registry.get_default_with_model()
 
     load_tools()
 
@@ -99,7 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.permissions.gate import PolicyGate
     from sebastian.permissions.reviewer import PermissionReviewer
 
-    reviewer = PermissionReviewer(provider=default_provider, model=default_model)
+    reviewer = PermissionReviewer(llm_registry=llm_registry)
     gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=conversation)
 
     from sebastian.agents._loader import load_agents
