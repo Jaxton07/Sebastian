@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, StyleSheet, Alert, TouchableOpacity, Text, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import axios from 'axios';
@@ -25,6 +25,18 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Track keyboard height so the absolute-positioned Composer slides above the keyboard.
+  // On Android (edge-to-edge), the window does NOT shrink when keyboard appears, so we
+  // must move the Composer manually.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const {
     currentSessionId, draftSession,
     setCurrentSession, startDraft, persistSession,
@@ -37,11 +49,14 @@ export default function ChatScreen() {
     currentSessionId ? (s.sessions[currentSessionId]?.errorBanner ?? null) : s.draftErrorBanner,
   );
 
-  // composerHeight: measured height of Composer component
-  // insets.bottom: safe-area bottom (0 on emulator)
-  // +8: the fixed `bottom: insets.bottom + 8` offset in Composer
-  // +24: comfortable gap so last message clears the top edge of Composer
-  const bottomPadding = composerHeight + insets.bottom + 32;
+  // When keyboard is visible, Composer moves up by keyboardHeight; use that as the
+  // effective bottom anchor. Otherwise fall back to the safe-area inset.
+  const composerBottomInset = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
+
+  // Total space to reserve at the bottom of the conversation list so the last
+  // message is always fully visible above the floating Composer:
+  //   composerHeight + composerBottomInset (anchor) + 8 (Composer offset) + 24 (gap)
+  const bottomPadding = composerHeight + composerBottomInset + 32;
 
   async function handleSend(text: string, _opts: { thinking: boolean }) {
     // _opts.thinking is captured for future backend wiring (Phase 2)
@@ -148,7 +163,7 @@ export default function ChatScreen() {
           isWorking={isWorking}
           onSend={handleSend}
           onStop={handleStop}
-          bottomInset={insets.bottom}
+          bottomInset={composerBottomInset}
           onHeightChange={setComposerHeight}
         />
 

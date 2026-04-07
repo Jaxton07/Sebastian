@@ -64,6 +64,7 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction, botto
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
         ref={flatListRef}
+        style={{ flex: 1 }}
         data={items}
         keyExtractor={(item, index) =>
           item.kind === 'message' ? item.message.id : `streaming-${index}`
