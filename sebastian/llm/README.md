@@ -4,7 +4,7 @@
 
 ## 模块职责
 
-将不同 LLM 服务商的 SDK 差异封装在 Provider 内部，向上暴露统一的流式事件接口（`LLMStreamEvent`）。多轮工具调用循环由 `AgentLoop` 驱动，Provider 只负责单次 API 调用。注册表支持运行时从 DB 切换 Provider，无配置时自动回退到环境变量中的 Anthropic。
+将不同 LLM 服务商的 SDK 差异封装在 Provider 内部，向上暴露统一的流式事件接口（`LLMStreamEvent`）。多轮工具调用循环由 `AgentLoop` 驱动，Provider 只负责单次 API 调用。注册表支持运行时从 DB 切换 Provider；无 DB 配置时抛出 `RuntimeError`（不再回退到环境变量），调用方应向用户提示通过 Settings 页面配置 Provider。
 
 ## 目录结构
 
@@ -14,7 +14,7 @@ llm/
 ├── provider.py          # LLMProvider 抽象基类；定义 stream() 接口和 message_format 属性
 ├── anthropic.py         # Anthropic SDK 适配，处理 thinking block、tool_use streaming
 ├── openai_compat.py     # OpenAI /v1/chat/completions 适配，兼容 DeepSeek-R1 等第三方模型
-└── registry.py          # DB 驱动的 Provider 注册表，支持运行时切换；无配置时回退到环境变量 Anthropic
+└── registry.py          # DB 驱动的 Provider 注册表，支持运行时切换；无配置时抛出 RuntimeError
 ```
 
 ## message_format 说明
@@ -55,7 +55,7 @@ llm/
 from sebastian.llm.provider import LLMProvider
 from sebastian.llm.registry import LLMProviderRegistry
 
-# 获取当前默认 Provider（DB 优先，回退 env）
+# 获取当前默认 Provider（DB 必须已配置，否则抛出 RuntimeError）
 provider, model = await registry.get_default_with_model()
 
 # 直接实例化（测试或脚本用）
