@@ -11,7 +11,7 @@ import {
   sendTurnToSession,
 } from '../../../src/api/sessions';
 import { useConversationStore } from '../../../src/store/conversation';
-import { MessageInput } from '../../../src/components/chat/MessageInput';
+import { Composer } from '../../../src/components/composer';
 import { ConversationView } from '../../../src/components/conversation';
 import { SessionDetailView } from '../../../src/components/subagents/SessionDetailView';
 import { ErrorBanner } from '../../../src/components/conversation/ErrorBanner';
@@ -130,7 +130,7 @@ export default function SessionDetailScreen() {
   const tasks = isMockSession ? MOCK_TASKS : remoteTasks;
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, _opts?: { thinking: boolean }) => {
       if (isMockSession) {
         Alert.alert('模拟会话', '这是用于导航测试的假数据页面。');
         return;
@@ -214,7 +214,14 @@ export default function SessionDetailScreen() {
           onAction={() => router.push('/settings')}
         />
       )}
-      <MessageInput isWorking={sending} onSend={handleSend} onStop={() => {}} />
+      <Composer
+        sessionId={effectiveSessionId}
+        isWorking={sending}
+        onSend={handleSend}
+        onStop={async () => {}}
+        bottomInset={insets.bottom}
+        onHeightChange={() => {}}
+      />
     </View>
   );
 }

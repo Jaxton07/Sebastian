@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity, Text, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native';
 import { router } from 'expo-router';
 import axios from 'axios';
 import { useSessionStore } from '@/src/store/session';
@@ -11,17 +12,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '@/src/components/common/Sidebar';
 import { EmptyState } from '@/src/components/common/EmptyState';
 import { AppSidebar } from '@/src/components/chat/AppSidebar';
-import { MessageInput } from '@/src/components/chat/MessageInput';
+import { Composer } from '@/src/components/composer';
 import { ConversationView } from '@/src/components/conversation';
 import { ErrorBanner } from '@/src/components/conversation/ErrorBanner';
 import { useConversationStore } from '@/src/store/conversation';
+import { useComposerStore } from '@/src/store/composer';
 import { useTheme } from '@/src/theme/ThemeContext';
+import { COMPOSER_DEFAULT_HEIGHT } from '@/src/components/composer/constants';
 
 export default function ChatScreen() {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const {
     currentSessionId, draftSession,
     setCurrentSession, startDraft, persistSession,
@@ -34,7 +38,10 @@ export default function ChatScreen() {
     currentSessionId ? (s.sessions[currentSessionId]?.errorBanner ?? null) : s.draftErrorBanner,
   );
 
-  async function handleSend(text: string) {
+  const bottomPadding = composerHeight + 24;
+
+  async function handleSend(text: string, _opts: { thinking: boolean }) {
+    // _opts.thinking is captured for future backend wiring (Phase 2)
     try {
       const { sessionId } = await sendTurn(currentSessionId, text);
       if (!currentSessionId) {
@@ -46,8 +53,11 @@ export default function ChatScreen() {
           updated_at: new Date().toISOString(),
           task_count: 0,
           active_task_count: 0,
+          depth: 0,
+          parent_session_id: null,
+          last_activity_at: new Date().toISOString(),
         });
-        // 新建 session 后立即刷新侧边栏列表
+        useComposerStore.getState().migrateDraftToSession(sessionId);
         queryClient.invalidateQueries({ queryKey: ['sessions'] });
       }
       useConversationStore.getState().appendUserMessage(sessionId, text);
@@ -67,6 +77,7 @@ export default function ChatScreen() {
         }
       }
       Alert.alert('发送失败，请重试');
+      throw err; // re-throw so Composer restores text
     }
   }
 
@@ -84,6 +95,7 @@ export default function ChatScreen() {
           try {
             await deleteSession(id);
             if (currentSessionId === id) setCurrentSession(null);
+            useComposerStore.getState().clearSession(id);
             queryClient.invalidateQueries({ queryKey: ['sessions'] });
             queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
           } catch {
@@ -97,59 +109,73 @@ export default function ChatScreen() {
   const isEmpty = !currentSessionId && !draftSession;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight }]}>
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => setSidebarOpen(true)}
-        >
-          <Text style={[styles.menuIcon, { color: colors.text }]}>☰</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Sebastian</Text>
-      </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight }]}>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => setSidebarOpen(true)}
+          >
+            <Text style={[styles.menuIcon, { color: colors.text }]}>☰</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Sebastian</Text>
+        </View>
 
-      {isEmpty ? (
-        currentBanner ? (
-          <View style={styles.emptyContainer}>
-            <ErrorBanner
-              message={currentBanner.message}
-              onAction={() => router.push('/settings')}
-            />
-          </View>
+        {isEmpty ? (
+          currentBanner ? (
+            <View style={[styles.emptyContainer, { paddingBottom: bottomPadding }]}>
+              <ErrorBanner
+                message={currentBanner.message}
+                onAction={() => router.push('/settings')}
+              />
+            </View>
+          ) : (
+            <EmptyState message="向 Sebastian 发送消息开始对话" />
+          )
         ) : (
-          <EmptyState message="向 Sebastian 发送消息开始对话" />
-        )
-      ) : (
-        <ConversationView
-          sessionId={currentSessionId}
-          errorBanner={currentBanner}
-          onBannerAction={() => router.push('/settings')}
-        />
-      )}
-      <MessageInput isWorking={isWorking} onSend={handleSend} onStop={handleStop} />
+          <ConversationView
+            sessionId={currentSessionId}
+            errorBanner={currentBanner}
+            bottomPadding={bottomPadding}
+            onBannerAction={() => router.push('/settings')}
+          />
+        )}
 
-      <Sidebar
-        visible={sidebarOpen}
-        onOpen={() => setSidebarOpen(true)}
-        onClose={() => setSidebarOpen(false)}
-      >
-        <AppSidebar
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          draftSession={draftSession}
-          onSelect={(id) => { setCurrentSession(id); setSidebarOpen(false); }}
-          onNewChat={() => { startDraft(); setSidebarOpen(false); }}
-          onDelete={handleDeleteSession}
-          onClose={() => setSidebarOpen(false)}
+        <Composer
+          sessionId={currentSessionId}
+          isWorking={isWorking}
+          onSend={handleSend}
+          onStop={handleStop}
+          bottomInset={insets.bottom}
+          onHeightChange={setComposerHeight}
         />
-      </Sidebar>
-    </View>
+
+        <Sidebar
+          visible={sidebarOpen}
+          onOpen={() => setSidebarOpen(true)}
+          onClose={() => setSidebarOpen(false)}
+        >
+          <AppSidebar
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            draftSession={draftSession}
+            onSelect={(id) => { setCurrentSession(id); setSidebarOpen(false); }}
+            onNewChat={() => { startDraft(); setSidebarOpen(false); }}
+            onDelete={handleDeleteSession}
+            onClose={() => setSidebarOpen(false)}
+          />
+        </Sidebar>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  emptyContainer: { flex: 1, paddingBottom: 100 },
+  emptyContainer: { flex: 1 },
   header: {
     minHeight: 48,
     borderBottomWidth: 1,

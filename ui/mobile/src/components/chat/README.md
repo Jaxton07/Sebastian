@@ -14,7 +14,6 @@ chat/
 ├── MessageList.tsx       # 消息列表容器（滚动、历史消息渲染）
 ├── MessageBubble.tsx     # 单条消息气泡（user / assistant，已完成消息）
 ├── StreamingBubble.tsx   # 流式响应气泡（thinking block / text block / 工具调用实时展示）
-└── MessageInput.tsx      # 悬浮输入框（绝对定位，safe area 支持，发送、中断）
 ```
 
 ## 修改导航
@@ -25,7 +24,6 @@ chat/
 | 修改消息列表滚动行为或排列方式 | [MessageList.tsx](MessageList.tsx) |
 | 修改已完成消息气泡样式（user/assistant，主题化颜色） | [MessageBubble.tsx](MessageBubble.tsx) |
 | 修改流式输出渲染（thinking/工具调用/文本，主题化颜色） | [StreamingBubble.tsx](StreamingBubble.tsx) |
-| 修改输入框交互（发送、中断、占位文字） | [MessageInput.tsx](MessageInput.tsx) |
 
 ---
 

@@ -12,13 +12,14 @@ interface Props {
   sessionId: string | null;
   errorBanner?: ErrorBannerType | null;
   onBannerAction?: () => void;
+  bottomPadding?: number;
 }
 
 type ListItem =
   | { kind: 'message'; message: ConvMessage }
   | { kind: 'streaming'; blocks: RenderBlock[] };
 
-export function ConversationView({ sessionId, errorBanner, onBannerAction }: Props) {
+export function ConversationView({ sessionId, errorBanner, onBannerAction, bottomPadding = 100 }: Props) {
   useConversation(sessionId);
   const colors = useTheme();
 
@@ -68,7 +69,7 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction }: Pro
           item.kind === 'message' ? item.message.id : `streaming-${index}`
         }
         renderItem={renderItem}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: bottomPadding }}
         onContentSizeChange={() =>
           flatListRef.current?.scrollToEnd({ animated: true })
         }
@@ -84,5 +85,4 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction }: Pro
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingTop: 12, paddingBottom: 100 },
 });
