@@ -158,3 +158,42 @@ async def test_reviewer_passes_context_to_llm() -> None:
     assert "pwd" in user_content
     assert "Check working directory" in user_content
     assert "Debug file path issue" in user_content
+
+
+@pytest.mark.asyncio
+async def test_reviewer_handles_markdown_wrapped_json() -> None:
+    """Model wraps JSON in ```json code fences — should still parse correctly."""
+    from sebastian.permissions.reviewer import PermissionReviewer
+
+    wrapped = '```json\n{\n  "decision": "proceed",\n  "explanation": ""\n}\n```'
+    provider = _make_provider(wrapped)
+    registry = _make_registry(provider)
+
+    reviewer = PermissionReviewer(llm_registry=registry)
+    decision = await reviewer.review(
+        tool_name="bash",
+        tool_input={"command": "pwd"},
+        reason="Check working directory",
+        task_goal="查看当前工作目录",
+    )
+
+    assert decision.decision == "proceed"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_escalates_on_empty_response() -> None:
+    """Empty stream response escalates safely without raising an exception."""
+    from sebastian.permissions.reviewer import PermissionReviewer
+
+    provider = _make_provider("")
+    registry = _make_registry(provider)
+
+    reviewer = PermissionReviewer(llm_registry=registry)
+    decision = await reviewer.review(
+        tool_name="bash",
+        tool_input={"command": "ls"},
+        reason="List files",
+        task_goal="Find config",
+    )
+
+    assert decision.decision == "escalate"
