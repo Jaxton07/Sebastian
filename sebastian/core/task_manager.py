@@ -53,8 +53,7 @@ class TaskManager:
         self._tasks: dict[str, Task] = {}
 
     async def submit(self, task: Task, fn: TaskFn) -> None:
-        agent_type = self._resolve_agent_path(task.assigned_agent)
-        await self._store.create_task(task, agent_type)
+        await self._store.create_task(task, task.assigned_agent)
         await self._sync_index(task.session_id, task.assigned_agent)
         self._tasks[task.id] = task
         await self._bus.publish(
@@ -112,8 +111,6 @@ class TaskManager:
                 f"Cannot transition task {task.id} from {task.status} to {new_status}"
             )
 
-        agent_type = self._resolve_agent_path(task.assigned_agent)
-
         # Update in-memory state first; roll back if the store write fails (M4).
         old_status = task.status
         old_updated_at = task.updated_at
@@ -130,7 +127,7 @@ class TaskManager:
                 task.session_id,
                 task.id,
                 new_status,
-                agent_type,
+                task.assigned_agent,
             )
         except Exception:
             # Roll back in-memory state so callers see consistent data (M4).
@@ -153,16 +150,9 @@ class TaskManager:
             data["error"] = error
         await self._bus.publish(Event(type=event_type, data=data))
 
-    def _resolve_agent_path(self, assigned_agent: str) -> str:
-        agent_type, separator, suffix = assigned_agent.rpartition("_")
-        if separator and suffix.isdigit():
-            return agent_type
-        return assigned_agent
-
     async def _sync_index(self, session_id: str, agent: str) -> None:
         if self._index is None:
             return
-        agent_type = self._resolve_agent_path(agent)
-        session = await self._store.get_session(session_id, agent_type)
+        session = await self._store.get_session(session_id, agent)
         if session is not None:
             await self._index.upsert(session)

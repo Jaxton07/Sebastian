@@ -116,7 +116,7 @@ async def test_transition_persists_and_publishes_events_in_order(
 
 
 @pytest.mark.asyncio
-async def test_submit_runs_to_completion_and_resolves_worker_id(
+async def test_submit_runs_to_completion(
     manager_context: tuple[TaskManager, SessionStore, EventBus, IndexStore],
 ) -> None:
     manager, store, bus, index_store = manager_context
@@ -135,7 +135,7 @@ async def test_submit_runs_to_completion_and_resolves_worker_id(
     async def fn(task: Task) -> None:
         seen_statuses.append(task.status)
 
-    task = Task(session_id=session.id, goal="worker task", assigned_agent="stock_02")
+    task = Task(session_id=session.id, goal="worker task", assigned_agent="stock")
     await manager.submit(task, fn)
     await _await_background_task(manager, task.id)
 
@@ -155,7 +155,7 @@ async def test_submit_runs_to_completion_and_resolves_worker_id(
         EventType.TASK_STARTED,
         EventType.TASK_COMPLETED,
     ]
-    assert received[0].data["assigned_agent"] == "stock_02"
+    assert received[0].data["assigned_agent"] == "stock"
 
 
 @pytest.mark.asyncio
@@ -220,7 +220,7 @@ async def test_submit_cancels_running_task_with_legal_transition(
         started.set()
         await asyncio.Future()
 
-    task = Task(session_id=session.id, goal="cancel task", assigned_agent="sebastian_01")
+    task = Task(session_id=session.id, goal="cancel task", assigned_agent="sebastian")
     await manager.submit(task, fn)
 
     await started.wait()
@@ -239,6 +239,29 @@ async def test_submit_cancels_running_task_with_legal_transition(
         EventType.TASK_STARTED,
         EventType.TASK_CANCELLED,
     ]
+
+
+@pytest.mark.asyncio
+async def test_task_manager_uses_agent_type_directly(
+    manager_context: tuple[TaskManager, SessionStore, EventBus, IndexStore],
+) -> None:
+    """assigned_agent 直接作为 agent_type，不剥离数字后缀。"""
+    manager, store, _, _ = manager_context
+    session = Session(agent_type="agent_v2", title="test")
+    await store.create_session(session)
+
+    async def fn(task: Task) -> None:
+        pass
+
+    task = Task(goal="test goal", session_id=session.id, assigned_agent="agent_v2")
+    await manager.submit(task, fn)
+    await _await_background_task(manager, task.id)
+
+    # With the bug (_resolve_agent_path using rpartition), "agent_v2" → "agent_v"
+    # After fix, "agent_v2" must be stored as-is
+    loaded = await store.get_task(session.id, task.id, "agent_v2")
+    assert loaded is not None, "Task should be stored under agent_type 'agent_v2', not 'agent_v'"
+    assert loaded.status == TaskStatus.COMPLETED
 
 
 @pytest.mark.asyncio
