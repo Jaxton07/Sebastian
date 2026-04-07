@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,7 +10,7 @@ import pytest
 from sebastian.core.stream_events import TextDelta
 
 
-async def _async_iter(items: list[Any]):
+async def _async_iter(items: list[Any]) -> AsyncGenerator[Any, None]:
     for item in items:
         yield item
 

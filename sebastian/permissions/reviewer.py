@@ -4,6 +4,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from sebastian.core.stream_events import TextDelta
 from sebastian.permissions.types import ReviewDecision
 
 if TYPE_CHECKING:
@@ -48,8 +49,6 @@ class PermissionReviewer:
         task_goal: str,
     ) -> ReviewDecision:
         """Return a proceed/escalate decision for the given tool call."""
-        from sebastian.core.stream_events import TextDelta
-
         try:
             provider, model = await self._llm_registry.get_default_with_model()
         except RuntimeError:
