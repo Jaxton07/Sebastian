@@ -29,10 +29,9 @@
 1. `pyproject.toml`：dependencies 加 `cryptography>=42.0`
 2. 新建 `sebastian/llm/crypto.py`：
    - `encrypt(plain: str) -> str` / `decrypt(enc: str) -> str`
-   - 使用 `cryptography.fernet.Fernet`，密钥从 `SEBASTIAN_ENCRYPTION_KEY` 环境变量读取
-   - 密钥缺失时启动报错（`ValueError`），不静默
-3. `sebastian/config.py`：加 `encryption_key: str` 字段（从 env 读取）
-4. `store/models.py`：
+   - 使用 `cryptography.fernet.Fernet`，密钥从 `SEBASTIAN_JWT_SECRET` 派生（`base64.urlsafe_b64encode(hashlib.sha256(jwt_secret.encode()).digest())`）
+   - 无需新增 env var，JWT secret 已是必填项
+3. `store/models.py`：
    - `api_key: Mapped[str]` → `api_key_enc: Mapped[str]`
    - `created_at` / `updated_at` 的 `default=datetime.utcnow` → `default=lambda: datetime.now(UTC)`（顺带修 M5）
 5. `llm/registry.py`：

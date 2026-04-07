@@ -446,6 +446,8 @@ steps = ["web_search", "content_extract", "summarize", "write_report"]
 
 **设计原则**：provider 配置持久化在 SQLite，Agent 启动时通过 `LLMProviderRegistry` 获取对应 provider 实例，`AgentLoop` 依赖注入 `LLMProvider` 抽象，不直接 import 任何 SDK。
 
+**加密方案**：`api_key_enc` 使用 Fernet（AES-128-CBC + HMAC）加密存储。加密密钥从 `SEBASTIAN_JWT_SECRET` 派生（`SHA-256(jwt_secret)` → 32 字节 → Base64 编码），无需额外 env var。实现位于 `sebastian/llm/crypto.py`，对外暴露 `encrypt(plain) -> str` / `decrypt(enc) -> str` 两个函数。GET 接口不返回 `api_key_enc` 字段。
+
 **SQLite 数据模型**：
 
 ```python
@@ -456,7 +458,7 @@ class LLMProviderRecord(Base):
     name: str             # 用户命名，如 "Claude Opus 家用"
     provider_type: str    # "anthropic" | "openai"（决定请求格式）
     base_url: str | None  # 自定义 base URL（本地模型/代理；None 则用 SDK 默认）
-    api_key_enc: str      # AES 加密存储，启动时解密
+    api_key_enc: str      # Fernet 加密存储，密钥从 SEBASTIAN_JWT_SECRET 派生，启动时解密
     model: str            # "claude-opus-4-5" / "gpt-4o" 等
     is_default: bool      # 全局默认 provider
     created_at: datetime
