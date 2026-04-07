@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { FlatList, View, StyleSheet } from 'react-native';
 import { useConversation } from '../../hooks/useConversation';
 import { useConversationStore } from '../../store/conversation';
@@ -6,20 +6,32 @@ import { useTheme } from '../../theme/ThemeContext';
 import { UserBubble } from './UserBubble';
 import { AssistantMessage } from './AssistantMessage';
 import { ErrorBanner } from './ErrorBanner';
+import { COMPOSER_DEFAULT_HEIGHT } from '../composer/constants';
 import type { ConvMessage, ErrorBanner as ErrorBannerType, RenderBlock } from '../../types';
+
+// Static bottom padding: space for the Composer at rest.
+// KeyboardChatScrollView automatically adds keyboard height on top of this.
+const LIST_BOTTOM_PADDING = COMPOSER_DEFAULT_HEIGHT + 12;
 
 interface Props {
   sessionId: string | null;
   errorBanner?: ErrorBannerType | null;
   onBannerAction?: () => void;
-  bottomPadding?: number;
+  // Pass KeyboardChatScrollView as renderScrollComponent for keyboard-aware scrolling.
+  // If omitted, FlatList uses its built-in ScrollView (e.g. in non-chat contexts).
+  renderScrollComponent?: (props: object) => React.ReactElement;
 }
 
 type ListItem =
   | { kind: 'message'; message: ConvMessage }
   | { kind: 'streaming'; blocks: RenderBlock[] };
 
-export function ConversationView({ sessionId, errorBanner, onBannerAction, bottomPadding = 100 }: Props) {
+export function ConversationView({
+  sessionId,
+  errorBanner,
+  onBannerAction,
+  renderScrollComponent,
+}: Props) {
   useConversation(sessionId);
   const colors = useTheme();
 
@@ -39,13 +51,12 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction, botto
       : []),
   ];
 
-  function renderItem({ item }: { item: ListItem }) {
+  const renderItem = useCallback(({ item }: { item: ListItem }) => {
     if (item.kind === 'message') {
       const { message } = item;
       if (message.role === 'user') {
         return <UserBubble content={message.content} />;
       }
-      // Assistant messages: use persisted blocks if available, else fall back to plain text
       return (
         <AssistantMessage
           blocks={
@@ -56,9 +67,8 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction, botto
         />
       );
     }
-    // Streaming turn
     return <AssistantMessage blocks={item.blocks} />;
-  }
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -70,7 +80,8 @@ export function ConversationView({ sessionId, errorBanner, onBannerAction, botto
           item.kind === 'message' ? item.message.id : `streaming-${index}`
         }
         renderItem={renderItem}
-        contentContainerStyle={{ paddingTop: 12, paddingBottom: bottomPadding }}
+        renderScrollComponent={renderScrollComponent}
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: LIST_BOTTOM_PADDING }}
         onContentSizeChange={() =>
           flatListRef.current?.scrollToEnd({ animated: true })
         }
