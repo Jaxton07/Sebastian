@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from sebastian.permissions.types import ToolCallContext
-
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
@@ -23,7 +18,6 @@ def _get_state():
 async def inspect_session(
     session_id: str,
     recent_n: int = 5,
-    _ctx: ToolCallContext | None = None,
 ) -> ToolResult:
     state = _get_state()
 

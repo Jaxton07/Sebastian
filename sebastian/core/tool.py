@@ -83,6 +83,8 @@ def _infer_json_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
     for param_name, param in sig.parameters.items():
+        if param_name == "_ctx":  # framework-injected, not exposed to LLM
+            continue
         ann = hints.get(param_name, param.annotation)
         effective_ann = _unwrap_optional(ann)
         json_type = _TYPE_MAP.get(effective_ann, "string")

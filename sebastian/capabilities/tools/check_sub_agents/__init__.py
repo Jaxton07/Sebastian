@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from sebastian.permissions.types import ToolCallContext
-
 from sebastian.core.tool import tool
+from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
 
@@ -20,16 +16,15 @@ def _get_state():
     description="查看下属 Agent 的任务执行状态摘要。",
     permission_tier=PermissionTier.LOW,
 )
-async def check_sub_agents(
-    _ctx: ToolCallContext | None = None,
-) -> ToolResult:
-    if _ctx is None:
+async def check_sub_agents() -> ToolResult:
+    ctx = get_tool_context()
+    if ctx is None:
         return ToolResult(ok=False, error="缺少调用上下文")
 
     state = _get_state()
     all_sessions = await state.index_store.list_all()
 
-    if _ctx.depth == 1:
+    if ctx.depth == 1:
         # Sebastian: show all depth=2 sessions
         sessions = [s for s in all_sessions if s.get("depth") == 2]
     else:
@@ -37,8 +32,8 @@ async def check_sub_agents(
         sessions = [
             s for s in all_sessions
             if s.get("depth") == 3
-            and s.get("agent_type") == _ctx.agent_type
-            and s.get("parent_session_id") == _ctx.session_id
+            and s.get("agent_type") == ctx.agent_type
+            and s.get("parent_session_id") == ctx.session_id
         ]
 
     if not sessions:

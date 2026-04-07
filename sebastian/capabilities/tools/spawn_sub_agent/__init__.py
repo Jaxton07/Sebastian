@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from sebastian.permissions.types import ToolCallContext
 
 from sebastian.core.tool import tool
+from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import Session, ToolResult
 from sebastian.permissions.types import PermissionTier
 
@@ -44,14 +41,14 @@ def _get_state():
 async def spawn_sub_agent(
     goal: str,
     context: str = "",
-    _ctx: ToolCallContext | None = None,
 ) -> ToolResult:
-    if _ctx is None:
+    ctx = get_tool_context()
+    if ctx is None:
         return ToolResult(ok=False, error="缺少调用上下文")
 
     state = _get_state()
-    agent_type = _ctx.agent_type
-    parent_session_id = _ctx.session_id
+    agent_type = ctx.agent_type
+    parent_session_id = ctx.session_id
 
     config = state.agent_registry.get(agent_type)
     if config is None:

@@ -222,6 +222,37 @@ def test_get_all_tool_specs_injects_reason_for_model_decides() -> None:
     assert "reason" not in file_spec["input_schema"]["properties"]
 
 
+@pytest.mark.asyncio
+async def test_low_tier_sets_and_resets_tool_context() -> None:
+    """ContextVar is set during tool execution and reset to None after."""
+    from sebastian.permissions.gate import PolicyGate
+    from sebastian.core.tool_context import _current_tool_ctx
+
+    captured: list = []
+
+    async def _capturing_call(tool_name: str, **kwargs):
+        captured.append(_current_tool_ctx.get())
+        return ToolResult(ok=True, output="ok")
+
+    registry = MagicMock()
+    registry.call = _capturing_call
+
+    gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
+    ctx = _make_context("verify context injection")
+
+    with patch("sebastian.permissions.gate.get_tool") as mock_get_tool:
+        mock_spec = MagicMock()
+        mock_spec.permission_tier = PermissionTier.LOW
+        mock_get_tool.return_value = (mock_spec, MagicMock())
+
+        await gate.call("file_read", {"path": "/tmp/f.txt"}, ctx)
+
+    # ContextVar was set to ctx during the call
+    assert captured[0] is ctx
+    # ContextVar is reset to None after the call
+    assert _current_tool_ctx.get() is None
+
+
 def test_get_all_tool_specs_unknown_tool_defaults_to_model_decides() -> None:
     """MCP tools not in native registry default to MODEL_DECIDES."""
     from sebastian.permissions.gate import PolicyGate

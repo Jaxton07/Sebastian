@@ -2,10 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from sebastian.permissions.types import ToolCallContext
 
 from sebastian.core.tool import tool
 from sebastian.core.types import Session, ToolResult
@@ -36,7 +32,6 @@ async def delegate_to_agent(
     agent_type: str,
     goal: str,
     context: str = "",
-    _ctx: ToolCallContext | None = None,
 ) -> ToolResult:
     state = _get_state()
 

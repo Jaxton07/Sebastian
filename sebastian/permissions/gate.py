@@ -9,6 +9,7 @@ from typing import Any
 from sebastian.capabilities.registry import CapabilityRegistry
 from sebastian.core.protocols import ApprovalManagerProtocol
 from sebastian.core.tool import get_tool
+from sebastian.core.tool_context import _current_tool_ctx
 from sebastian.core.types import ToolResult
 from sebastian.permissions.reviewer import PermissionReviewer
 from sebastian.permissions.types import PermissionTier, ToolCallContext
@@ -83,40 +84,44 @@ class PolicyGate:
         native = get_tool(tool_name)
         tier = native[0].permission_tier if native else PermissionTier.MODEL_DECIDES
 
-        if tier == PermissionTier.LOW:
-            return await self._registry.call(tool_name, **inputs)
-
-        if tier == PermissionTier.MODEL_DECIDES:
-            reason = inputs.pop("reason", "")
-            decision = await self._reviewer.review(
-                tool_name=tool_name,
-                tool_input=inputs,
-                reason=reason,
-                task_goal=context.task_goal,
-            )
-            if decision.decision == "proceed":
+        token = _current_tool_ctx.set(context)
+        try:
+            if tier == PermissionTier.LOW:
                 return await self._registry.call(tool_name, **inputs)
+
+            if tier == PermissionTier.MODEL_DECIDES:
+                reason = inputs.pop("reason", "")
+                decision = await self._reviewer.review(
+                    tool_name=tool_name,
+                    tool_input=inputs,
+                    reason=reason,
+                    task_goal=context.task_goal,
+                )
+                if decision.decision == "proceed":
+                    return await self._registry.call(tool_name, **inputs)
+                granted = await self._approval_manager.request_approval(
+                    approval_id=uuid.uuid4().hex,
+                    task_id=context.task_id or "",
+                    tool_name=tool_name,
+                    tool_input=inputs,
+                    reason=decision.explanation,
+                    session_id=context.session_id or "",
+                )
+                if granted:
+                    return await self._registry.call(tool_name, **inputs)
+                return ToolResult(ok=False, error="User denied approval for this tool call.")
+
+            # HIGH_RISK — always request approval regardless of model intent
             granted = await self._approval_manager.request_approval(
                 approval_id=uuid.uuid4().hex,
                 task_id=context.task_id or "",
                 tool_name=tool_name,
                 tool_input=inputs,
-                reason=decision.explanation,
+                reason=f"High-risk tool '{tool_name}' requires explicit user approval.",
                 session_id=context.session_id or "",
             )
             if granted:
                 return await self._registry.call(tool_name, **inputs)
             return ToolResult(ok=False, error="User denied approval for this tool call.")
-
-        # HIGH_RISK — always request approval regardless of model intent
-        granted = await self._approval_manager.request_approval(
-            approval_id=uuid.uuid4().hex,
-            task_id=context.task_id or "",
-            tool_name=tool_name,
-            tool_input=inputs,
-            reason=f"High-risk tool '{tool_name}' requires explicit user approval.",
-            session_id=context.session_id or "",
-        )
-        if granted:
-            return await self._registry.call(tool_name, **inputs)
-        return ToolResult(ok=False, error="User denied approval for this tool call.")
+        finally:
+            _current_tool_ctx.reset(token)

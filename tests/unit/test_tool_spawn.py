@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from sebastian.core.tool_context import _current_tool_ctx
 from sebastian.permissions.types import ToolCallContext
 
 
@@ -25,8 +26,12 @@ async def test_spawn_sub_agent_success():
         depth=2,
     )
 
-    with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
-        result = await spawn_sub_agent(goal="write unit tests", context="", _ctx=ctx)
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
+            result = await spawn_sub_agent(goal="write unit tests", context="")
+    finally:
+        _current_tool_ctx.reset(token)
 
     assert result.ok is True
     assert "组员" in result.output
@@ -51,8 +56,23 @@ async def test_spawn_sub_agent_over_limit():
         task_goal="task", session_id="parent", task_id=None, agent_type="code", depth=2,
     )
 
-    with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
-        result = await spawn_sub_agent(goal="another task", _ctx=ctx)
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
+            result = await spawn_sub_agent(goal="another task")
+    finally:
+        _current_tool_ctx.reset(token)
 
     assert result.ok is False
     assert "上限" in result.error
+
+
+@pytest.mark.asyncio
+async def test_spawn_sub_agent_no_context():
+    """Without ContextVar set, tool returns error."""
+    from sebastian.capabilities.tools.spawn_sub_agent import spawn_sub_agent
+
+    result = await spawn_sub_agent(goal="some task")
+
+    assert result.ok is False
+    assert "上下文" in result.error

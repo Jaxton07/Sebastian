@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -5,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 @pytest.mark.asyncio
 async def test_delegate_to_agent_creates_session_and_dispatches():
     from sebastian.capabilities.tools.delegate_to_agent import delegate_to_agent
-    from sebastian.permissions.types import ToolCallContext
 
     mock_state = MagicMock()
     mock_agent = MagicMock()
@@ -18,17 +18,9 @@ async def test_delegate_to_agent_creates_session_and_dispatches():
     mock_state.index_store = AsyncMock()
     mock_state.event_bus = MagicMock()
 
-    ctx = ToolCallContext(
-        task_goal="build feature",
-        session_id="seb_session",
-        task_id=None,
-        agent_type="sebastian",
-        depth=1,
-    )
-
     with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
         result = await delegate_to_agent(
-            agent_type="code", goal="write auth module", context="", _ctx=ctx,
+            agent_type="code", goal="write auth module", context="",
         )
 
     assert result.ok is True
@@ -41,22 +33,13 @@ async def test_delegate_to_agent_creates_session_and_dispatches():
 async def test_delegate_unknown_agent_type_returns_error() -> None:
     """agent_type 不在 agent_instances 时返回 ok=False。"""
     from sebastian.capabilities.tools.delegate_to_agent import delegate_to_agent
-    from sebastian.permissions.types import ToolCallContext
 
     mock_state = MagicMock()
     mock_state.agent_instances = {}  # 无任何 agent
 
-    ctx = ToolCallContext(
-        task_goal="build feature",
-        session_id="seb_session",
-        task_id=None,
-        agent_type="sebastian",
-        depth=1,
-    )
-
     with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
         result = await delegate_to_agent(
-            agent_type="nonexistent", goal="write auth module", context="", _ctx=ctx,
+            agent_type="nonexistent", goal="write auth module", context="",
         )
 
     assert result.ok is False
@@ -66,9 +49,7 @@ async def test_delegate_unknown_agent_type_returns_error() -> None:
 @pytest.mark.asyncio
 async def test_delegate_creates_background_task() -> None:
     """成功委派时 asyncio.create_task 被调用一次。"""
-    import asyncio
     from sebastian.capabilities.tools.delegate_to_agent import delegate_to_agent
-    from sebastian.permissions.types import ToolCallContext
 
     mock_state = MagicMock()
     mock_agent = MagicMock()
@@ -80,21 +61,13 @@ async def test_delegate_creates_background_task() -> None:
     mock_state.index_store = AsyncMock()
     mock_state.event_bus = MagicMock()
 
-    ctx = ToolCallContext(
-        task_goal="build feature",
-        session_id="seb_session",
-        task_id=None,
-        agent_type="sebastian",
-        depth=1,
-    )
-
     mock_task = MagicMock(spec=asyncio.Task)
     mock_task.add_done_callback = MagicMock()
 
     with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
         with patch("asyncio.create_task", return_value=mock_task) as mock_create_task:
             result = await delegate_to_agent(
-                agent_type="code", goal="write auth module", context="", _ctx=ctx,
+                agent_type="code", goal="write auth module", context="",
             )
 
     assert result.ok is True

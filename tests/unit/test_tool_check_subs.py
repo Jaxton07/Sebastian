@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from sebastian.core.tool_context import _current_tool_ctx
 from sebastian.permissions.types import ToolCallContext
 
 
@@ -20,8 +21,12 @@ async def test_check_sub_agents_as_sebastian():
         task_id=None, agent_type="sebastian", depth=1,
     )
 
-    with patch("sebastian.capabilities.tools.check_sub_agents._get_state", return_value=mock_state):
-        result = await check_sub_agents(_ctx=ctx)
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.check_sub_agents._get_state", return_value=mock_state):
+            result = await check_sub_agents()
+    finally:
+        _current_tool_ctx.reset(token)
 
     assert result.ok is True
     assert "写代码" in result.output
@@ -51,8 +56,12 @@ async def test_check_sub_agents_as_leader():
         task_id=None, agent_type="code", depth=2,
     )
 
-    with patch("sebastian.capabilities.tools.check_sub_agents._get_state", return_value=mock_state):
-        result = await check_sub_agents(_ctx=ctx)
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.check_sub_agents._get_state", return_value=mock_state):
+            result = await check_sub_agents()
+    finally:
+        _current_tool_ctx.reset(token)
 
     assert result.ok is True
     assert "子任务A" in result.output
@@ -60,3 +69,14 @@ async def test_check_sub_agents_as_leader():
     assert "股票任务" not in result.output   # wrong agent_type
     assert "组长任务" not in result.output   # wrong depth
     assert "他人子任务" not in result.output  # different parent
+
+
+@pytest.mark.asyncio
+async def test_check_sub_agents_no_context():
+    """Without ContextVar set, tool returns error."""
+    from sebastian.capabilities.tools.check_sub_agents import check_sub_agents
+
+    result = await check_sub_agents()
+
+    assert result.ok is False
+    assert "上下文" in result.error
