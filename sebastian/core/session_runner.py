@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -28,6 +29,9 @@ async def run_agent_session(
     try:
         await agent.run_streaming(goal, session.id)
         session.status = SessionStatus.COMPLETED
+    except asyncio.CancelledError:
+        session.status = SessionStatus.CANCELLED
+        raise  # finally block runs first, then CancelledError propagates
     except Exception:
         logger.exception("Agent session %s failed", session.id)
         session.status = SessionStatus.FAILED
@@ -40,6 +44,8 @@ async def run_agent_session(
             event_type = (
                 EventType.SESSION_COMPLETED
                 if session.status == SessionStatus.COMPLETED
+                else EventType.SESSION_CANCELLED
+                if session.status == SessionStatus.CANCELLED
                 else EventType.SESSION_FAILED
             )
             await event_bus.publish(

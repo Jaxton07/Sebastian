@@ -34,6 +34,34 @@ async def test_run_agent_session_success():
 
 
 @pytest.mark.asyncio
+async def test_run_agent_session_cancelled():
+    """CancelledError 应将 session 状态设为 CANCELLED，并在持久化后重新抛出。"""
+    import asyncio
+
+    agent = MagicMock()
+    agent.run_streaming = AsyncMock(side_effect=asyncio.CancelledError())
+    session = Session(id="s4", agent_type="code", title="test", depth=2)
+    session_store = AsyncMock()
+    index_store = AsyncMock()
+    event_bus = AsyncMock()
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_agent_session(
+            agent=agent,
+            session=session,
+            goal="cancellable task",
+            session_store=session_store,
+            index_store=index_store,
+            event_bus=event_bus,
+        )
+
+    session_store.update_session.assert_awaited_once()
+    updated = session_store.update_session.call_args[0][0]
+    assert updated.status == SessionStatus.CANCELLED
+    index_store.upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_run_agent_session_failure():
     agent = MagicMock()
     agent.run_streaming = AsyncMock(side_effect=RuntimeError("boom"))

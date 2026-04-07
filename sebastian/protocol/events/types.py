@@ -58,6 +58,7 @@ class EventType(StrEnum):
     # Session lifecycle (three-tier architecture)
     SESSION_COMPLETED = "session.completed"
     SESSION_FAILED = "session.failed"
+    SESSION_CANCELLED = "session.cancelled"
     SESSION_STALLED = "session.stalled"
 
     # Conversation
