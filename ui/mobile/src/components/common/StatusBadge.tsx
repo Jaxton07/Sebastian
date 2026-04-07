@@ -1,5 +1,5 @@
 import { Text, StyleSheet } from 'react-native';
-import type { AgentStatus, TaskStatus } from '../../types';
+import type { AgentStatus, SessionMeta, TaskStatus } from '../../types';
 
 const COLOR: Record<string, string> = {
   idle: '#999',
@@ -12,9 +12,11 @@ const COLOR: Record<string, string> = {
   running: '#007AFF',
   paused: '#FF9500',
   cancelled: '#999',
+  stalled: '#F59E0B',
+  active: '#34C759',
 };
 
-interface Props { status: AgentStatus | TaskStatus; }
+interface Props { status: AgentStatus | TaskStatus | SessionMeta['status']; }
 
 export function StatusBadge({ status }: Props) {
   return (
