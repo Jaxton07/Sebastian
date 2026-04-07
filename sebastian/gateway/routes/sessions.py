@@ -15,6 +15,8 @@ from sebastian.gateway.auth import require_auth
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["sessions"])
 
+_background_tasks: set[asyncio.Task[object]] = set()
+
 AuthPayload = dict[str, Any]
 JSONDict = dict[str, Any]
 
@@ -89,6 +91,8 @@ async def create_agent_session(
             event_bus=state.event_bus,
         )
     )
+    _background_tasks.add(_task)
+    _task.add_done_callback(_background_tasks.discard)
     _task.add_done_callback(_log_background_turn_failure)
 
     return {"session_id": session.id, "ts": session.created_at.isoformat()}
@@ -168,6 +172,9 @@ async def _schedule_session_turn(
         task = asyncio.create_task(
             state.sebastian.run_streaming(content, session.id)
         )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        task.add_done_callback(_log_background_turn_failure)
     else:
         agent = state.agent_instances.get(session.agent_type)
         if agent is None:
@@ -175,7 +182,9 @@ async def _schedule_session_turn(
         task = asyncio.create_task(
             agent.run_streaming(content, session.id)
         )
-    task.add_done_callback(_log_background_turn_failure)
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        task.add_done_callback(_log_background_turn_failure)
 
 
 @router.delete("/sessions/{session_id}")
