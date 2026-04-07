@@ -64,6 +64,7 @@ class EventType(StrEnum):
     # Conversation
     TURN_RECEIVED = "turn.received"
     TURN_RESPONSE = "turn.response"
+    TURN_CANCELLED = "turn.cancelled"
 
 
 class Event(BaseModel):
