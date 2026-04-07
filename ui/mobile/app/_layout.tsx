@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { getApprovals, registerDevice } from '@/src/api/approvals';
 import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
@@ -100,9 +101,11 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.root}>
         <QueryClientProvider client={queryClient}>
-          <AppInit>
-            <Stack screenOptions={{ headerShown: false }} />
-          </AppInit>
+          <KeyboardProvider>
+            <AppInit>
+              <Stack screenOptions={{ headerShown: false }} />
+            </AppInit>
+          </KeyboardProvider>
         </QueryClientProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
