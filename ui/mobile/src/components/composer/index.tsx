@@ -102,10 +102,11 @@ export function Composer({
 
   const isInputDisabled = state === 'sending' || state === 'cancelling';
 
-  // bottom tracks keyboard.height on the UI thread — no JS round-trip on each frame.
-  // insets.bottom is captured as a constant; re-created on orientation change via re-render.
+  // translateY tracks keyboard.height on the UI thread — no JS round-trip on each frame.
+  // Using transform instead of bottom avoids Yoga re-layout on every animation frame,
+  // giving GPU-accelerated smooth motion. insets.bottom captured as a constant.
   const animatedFloatingStyle = useAnimatedStyle(() => ({
-    bottom: keyboard.height.value + insets.bottom + 8,
+    transform: [{ translateY: -(keyboard.height.value + insets.bottom + 8) }],
   }));
 
   return (
@@ -143,6 +144,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
+    bottom: 0,
     borderRadius: 24,
     padding: 12,
     borderWidth: 1,
