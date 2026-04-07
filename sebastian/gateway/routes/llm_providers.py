@@ -86,9 +86,20 @@ async def update_llm_provider(
     import sebastian.gateway.state as state
     from sebastian.llm.crypto import encrypt
 
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if "api_key" in updates:
-        updates["api_key_enc"] = encrypt(updates.pop("api_key"))
+    updates: dict[str, Any] = {}
+    if body.name is not None:
+        updates["name"] = body.name
+    if body.api_key is not None:
+        updates["api_key_enc"] = encrypt(body.api_key)
+    if body.model is not None:
+        updates["model"] = body.model
+    if body.base_url is not None:
+        updates["base_url"] = body.base_url
+    if body.thinking_format is not None:
+        updates["thinking_format"] = body.thinking_format
+    if body.is_default is not None:
+        updates["is_default"] = body.is_default
+
     record = await state.llm_registry.update(provider_id, **updates)
     if record is None:
         raise HTTPException(status_code=404, detail="Provider not found")
