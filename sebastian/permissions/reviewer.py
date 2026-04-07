@@ -84,7 +84,9 @@ class PermissionReviewer:
                 if isinstance(event, TextDelta):
                     text += event.delta
             if not text.strip():
-                logger.warning("PermissionReviewer: LLM returned empty response, defaulting to escalate")
+                logger.warning(
+                    "PermissionReviewer: LLM returned empty response, defaulting to escalate"
+                )
                 return ReviewDecision(
                     decision="escalate",
                     explanation="审查响应为空，请人工批准。",
