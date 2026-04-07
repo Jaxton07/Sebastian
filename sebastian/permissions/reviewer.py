@@ -1,9 +1,11 @@
+# sebastian/permissions/reviewer.py
 from __future__ import annotations
 
 import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from sebastian.config import settings
 from sebastian.core.stream_events import TextDelta
 from sebastian.permissions.types import ReviewDecision
 
@@ -12,7 +14,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT_TEMPLATE = """\
 You are a security reviewer for an AI assistant system.
 Your job: decide whether a tool call should proceed directly or require user approval.
 
@@ -20,10 +22,12 @@ Rules:
 - PROCEED if: the action is reversible, read-only, or clearly aligned with the stated task goal
 - ESCALATE if: the action is destructive, irreversible, accesses sensitive data,
   or the stated reason does not match the task goal
+- If the tool is `Bash` and the command writes, modifies, moves, or deletes files \
+outside the workspace directory (`{workspace_dir}`), you MUST ESCALATE.
 - When in doubt, ESCALATE
 
 Respond ONLY in valid JSON:
-{"decision": "proceed" | "escalate", "explanation": "..."}
+{{"decision": "proceed" | "escalate", "explanation": "..."}}
 explanation must be in the user's language, written for a non-technical user.
 When decision is "proceed", explanation is an empty string.\
 """
@@ -60,6 +64,8 @@ class PermissionReviewer:
                 explanation="未配置 LLM Provider，无法自动审查工具调用，请人工批准。",
             )
 
+        system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(workspace_dir=settings.workspace_dir)
+
         user_content = (
             f"Task goal: {task_goal}\n"
             f"Tool: {tool_name}\n"
@@ -69,7 +75,7 @@ class PermissionReviewer:
         try:
             text = ""
             async for event in provider.stream(
-                system=_SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=[{"role": "user", "content": user_content}],
                 tools=[],
                 model=model,

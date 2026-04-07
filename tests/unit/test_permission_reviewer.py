@@ -197,3 +197,37 @@ async def test_reviewer_escalates_on_empty_response() -> None:
     )
 
     assert decision.decision == "escalate"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_system_prompt_contains_workspace_dir() -> None:
+    """review() 构建的 system prompt 包含真实 workspace_dir 路径。"""
+    from unittest.mock import patch
+    from pathlib import Path
+    from sebastian.permissions.reviewer import PermissionReviewer
+
+    fake_workspace = Path("/fake/workspace/path")
+    captured_prompts: list[str] = []
+
+    provider = MagicMock()
+
+    async def _capturing_stream(*args, **kwargs):
+        captured_prompts.append(kwargs.get("system", ""))
+        yield TextDelta(block_id="0", delta='{"decision": "proceed", "explanation": ""}')
+
+    provider.stream = _capturing_stream
+    registry = _make_registry(provider)
+
+    reviewer = PermissionReviewer(llm_registry=registry)
+
+    with patch("sebastian.permissions.reviewer.settings") as mock_settings:
+        mock_settings.workspace_dir = fake_workspace
+        await reviewer.review(
+            tool_name="Bash",
+            tool_input={"command": "echo hello"},
+            reason="test",
+            task_goal="test goal",
+        )
+
+    assert captured_prompts, "stream was not called"
+    assert str(fake_workspace) in captured_prompts[0]
