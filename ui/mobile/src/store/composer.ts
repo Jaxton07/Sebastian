@@ -1,26 +1,17 @@
+import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { StateStorage } from 'zustand/middleware';
 import type { ThinkingEffort } from '../types';
 
 const DRAFT_KEY = '__draft__';
-const STORAGE_KEY = 'sebastian-composer-v2';
+const STORAGE_KEY = 'sebastian_composer_v2';
 
-// Simple in-memory storage fallback for React Native
-// In production, this could be upgraded to use AsyncStorage if available
-const memoryStorage: Record<string, string> = {};
-
-const createMemoryStorage = (): StateStorage => ({
-  getItem: async (name: string) => {
-    return memoryStorage[name] ?? null;
-  },
-  setItem: async (name: string, value: string) => {
-    memoryStorage[name] = value;
-  },
-  removeItem: async (name: string) => {
-    delete memoryStorage[name];
-  },
-});
+const secureStorage: StateStorage = {
+  getItem: (name) => SecureStore.getItemAsync(name),
+  setItem: (name, value) => SecureStore.setItemAsync(name, value),
+  removeItem: (name) => SecureStore.deleteItemAsync(name),
+};
 
 interface ComposerStore {
   effortBySession: Record<string, ThinkingEffort>;
@@ -109,7 +100,7 @@ export const useComposerStore = create<ComposerStore>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(createMemoryStorage),
+      storage: createJSONStorage(() => secureStorage),
       partialize: (s) => ({ lastUserChoice: s.lastUserChoice }),
     },
   ),
