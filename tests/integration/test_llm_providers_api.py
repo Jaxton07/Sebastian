@@ -112,3 +112,68 @@ def test_update_provider_thinking_capability(client) -> None:
     )
     assert upd.status_code == 200
     assert upd.json()["thinking_capability"] == "effort"
+
+
+def test_put_provider_clears_thinking_capability_with_explicit_null(client) -> None:
+    """PUT 显式传 thinking_capability: null 应清空字段。"""
+    http_client, token = client
+
+    create = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "ClearMe",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-fake",
+            "model": "claude-opus-4-6",
+            "thinking_capability": "effort",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    pid = create.json()["id"]
+    assert create.json()["thinking_capability"] == "effort"
+
+    upd = http_client.put(
+        f"/api/v1/llm-providers/{pid}",
+        json={"thinking_capability": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upd.status_code == 200
+    assert upd.json()["thinking_capability"] is None
+
+    list_resp = http_client.get(
+        "/api/v1/llm-providers", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert list_resp.status_code == 200
+    providers = list_resp.json()["providers"]
+    updated = next(p for p in providers if p["id"] == pid)
+    assert updated["thinking_capability"] is None
+
+
+def test_put_provider_omitted_field_preserves_value(client) -> None:
+    """PUT 不传 thinking_capability 时应保留原值。"""
+    http_client, token = client
+
+    create = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "Preserve",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-fake",
+            "model": "claude-opus-4-6",
+            "thinking_capability": "effort",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    pid = create.json()["id"]
+
+    upd = http_client.put(
+        f"/api/v1/llm-providers/{pid}",
+        json={"name": "PreserveRenamed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upd.status_code == 200
+    body = upd.json()
+    assert body["name"] == "PreserveRenamed"
+    assert body["thinking_capability"] == "effort"
