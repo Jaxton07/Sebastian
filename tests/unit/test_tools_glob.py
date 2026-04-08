@@ -7,23 +7,11 @@ import pytest
 
 @pytest.fixture()
 def isolated_registry():
-    import importlib
-    import sys
-
+    import sebastian.capabilities.tools.glob  # noqa: F401 — ensures Glob is registered
     from sebastian.core import tool as tool_module
 
     saved = dict(tool_module._tools)
-    tool_module._tools.clear()
-
-    # 强制重新执行 @tool 装饰器，确保 Glob 工具在清空后重新注册
-    # importlib.import_module 会在首次调用时导入，之后返回缓存；
-    # 之后 reload 强制重跑 @tool 装饰器，将 Glob 注册到当前 _tools 中。
-    glob_mod_name = "sebastian.capabilities.tools.glob"
-    importlib.import_module(glob_mod_name)
-    importlib.reload(sys.modules[glob_mod_name])
-
     yield
-
     tool_module._tools.clear()
     tool_module._tools.update(saved)
 

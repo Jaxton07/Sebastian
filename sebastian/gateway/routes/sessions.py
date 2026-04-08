@@ -57,7 +57,7 @@ async def list_agent_sessions(
 @router.post("/agents/{agent_type}/sessions")
 async def create_agent_session(
     agent_type: str,
-    body: dict,
+    body: dict[str, Any],
     _auth: AuthPayload = Depends(require_auth),
 ) -> JSONDict:
     """Create a new conversation with a sub-agent."""
@@ -349,7 +349,11 @@ async def cancel_task(
 
     session, _ = await _resolve_session_task(state, session_id, task_id)
     agent = state.agent_instances.get(session.agent_type)
-    manager = agent._task_manager if agent is not None else state.sebastian._task_manager
+    manager = (
+        agent._task_manager  # type: ignore[attr-defined]
+        if agent is not None
+        else state.sebastian._task_manager
+    )
     cancelled = await manager.cancel(task_id)
     return {"task_id": task_id, "cancelled": cancelled}
 
@@ -372,7 +376,11 @@ async def cancel_task_post(
 
     session, task = await _resolve_session_task(state, session_id, task_id)
     agent = state.agent_instances.get(session.agent_type)
-    manager = agent._task_manager if agent is not None else state.sebastian._task_manager
+    manager = (
+        agent._task_manager  # type: ignore[attr-defined]
+        if agent is not None
+        else state.sebastian._task_manager
+    )
     try:
         cancelled = await manager.cancel(task_id)
     except InvalidTaskTransitionError as exc:

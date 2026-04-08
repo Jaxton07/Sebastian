@@ -38,9 +38,10 @@ class AnthropicProvider(LLMProvider):
         base_url: str | None = None,
         thinking_capability: str | None = None,
     ) -> None:
-        self._client = anthropic.AsyncAnthropic(
-            api_key=api_key,
-            **({"base_url": base_url} if base_url else {}),
+        self._client = (
+            anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url)
+            if base_url
+            else anthropic.AsyncAnthropic(api_key=api_key)
         )
         self._capability = thinking_capability
 
@@ -77,7 +78,7 @@ class AnthropicProvider(LLMProvider):
             return {}
 
         if capability == "effort":
-            budget = self.FIXED_EFFORT_TO_BUDGET.get(thinking_effort)
+            budget = self.FIXED_EFFORT_TO_BUDGET.get(thinking_effort or "")
             if budget is None:
                 raise ValueError(
                     f"thinking_effort={thinking_effort!r} not allowed for "
@@ -120,7 +121,8 @@ class AnthropicProvider(LLMProvider):
                 block_id = f"{block_id_prefix}{block_index}"
 
                 if raw.type == "content_block_start":
-                    block_type = raw.content_block.type
+                    content_block = raw.content_block
+                    block_type = content_block.type
                     if block_type == "thinking":
                         yield ThinkingBlockStart(block_id=block_id)
                     elif block_type == "text":
@@ -128,17 +130,18 @@ class AnthropicProvider(LLMProvider):
                     elif block_type == "tool_use":
                         yield ToolCallBlockStart(
                             block_id=block_id,
-                            tool_id=raw.content_block.id,
-                            name=raw.content_block.name,
+                            tool_id=content_block.id,  # type: ignore[union-attr]
+                            name=content_block.name,  # type: ignore[union-attr]
                         )
                     continue
 
                 if raw.type == "content_block_delta":
-                    delta_type = raw.delta.type
+                    delta = raw.delta
+                    delta_type = delta.type
                     if delta_type == "thinking_delta":
-                        yield ThinkingDelta(block_id=block_id, delta=raw.delta.thinking)
+                        yield ThinkingDelta(block_id=block_id, delta=delta.thinking)  # type: ignore[union-attr]
                     elif delta_type == "text_delta":
-                        yield TextDelta(block_id=block_id, delta=raw.delta.text)
+                        yield TextDelta(block_id=block_id, delta=delta.text)  # type: ignore[union-attr]
                     continue
 
                 if raw.type != "content_block_stop":
@@ -162,4 +165,4 @@ class AnthropicProvider(LLMProvider):
                     )
 
             final = await stream.get_final_message()
-            yield ProviderCallEnd(stop_reason=final.stop_reason)
+            yield ProviderCallEnd(stop_reason=final.stop_reason or "end_turn")

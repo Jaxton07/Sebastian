@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 from sebastian.capabilities.tools import (
     delegate_to_agent as _delegate_tools,  # noqa: F401  # registers delegate_to_agent tool
@@ -83,7 +84,7 @@ class Sebastian(BaseAgent):
         # Rebuild with agent_registry so _agents_section is included
         self.system_prompt = self.build_system_prompt(gate, self._agent_registry)
 
-    def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:
+    def _agents_section(self, agent_registry: Mapping[str, Any] | None = None) -> str:
         registry = agent_registry or self._agent_registry
         if not registry:
             return ""

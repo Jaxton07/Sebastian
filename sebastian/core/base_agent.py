@@ -6,6 +6,7 @@ import inspect
 import json
 import logging
 from abc import ABC
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -143,7 +144,7 @@ class BaseAgent(ABC):
             lines.append(f"- **{spec['name']}**: {spec['description']}")
         return "\n".join(lines)
 
-    def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:  # noqa: ARG002
+    def _agents_section(self, agent_registry: Mapping[str, Any] | None = None) -> str:  # noqa: ARG002
         return ""
 
     def _knowledge_dir(self) -> Path:
@@ -201,7 +202,7 @@ class BaseAgent(ABC):
     def build_system_prompt(
         self,
         gate: PolicyGate,
-        agent_registry: dict[str, object] | None = None,
+        agent_registry: Mapping[str, Any] | None = None,
     ) -> str:
         sections = [
             self._persona_section(),

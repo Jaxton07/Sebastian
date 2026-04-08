@@ -150,7 +150,7 @@ class LLMProviderRegistry:
         raise ValueError(f"Unknown provider_type: {record.provider_type!r}")
 
 
-def _read_manifest_llm(agent_type: str) -> dict | None:
+def _read_manifest_llm(agent_type: str) -> dict[str, Any] | None:
     """Read [llm] section from the agent's manifest.toml, or return None if absent."""
     import logging
 

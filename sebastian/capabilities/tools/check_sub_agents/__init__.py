@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from types import ModuleType
+
 from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
 
 
-def _get_state():
+def _get_state() -> ModuleType:
     import sebastian.gateway.state as state
 
     return state

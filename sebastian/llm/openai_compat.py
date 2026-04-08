@@ -39,9 +39,10 @@ class OpenAICompatProvider(LLMProvider):
         thinking_format: str | None = None,
         thinking_capability: str | None = None,
     ) -> None:
-        self._client = openai.AsyncOpenAI(
-            api_key=api_key,
-            **({"base_url": base_url} if base_url else {}),
+        self._client = (
+            openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+            if base_url
+            else openai.AsyncOpenAI(api_key=api_key)
         )
         self._thinking_format = thinking_format
         self._capability = thinking_capability

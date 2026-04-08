@@ -42,5 +42,5 @@ class LLMProvider(ABC):
         Each Provider interprets according to its thinking_capability; providers with
         capability 'none' or 'always_on' ignore this parameter.
         """
-        ...
-        yield  # satisfy type checker that this is an async generator
+        if False:
+            yield  # pragma: no cover — marks this as an async generator for type checker
