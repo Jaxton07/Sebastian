@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,8 +10,6 @@ import pytest
 
 @pytest.fixture
 def client(tmp_path):
-    import asyncio
-
     from sebastian.core.types import Session
     from sebastian.gateway.auth import hash_password
 
@@ -52,22 +51,25 @@ def client(tmp_path):
                     db_module._engine = None
                     db_module._session_factory = None
 
+                    from sebastian.store.database import get_session_factory, init_db
+                    from sebastian.store.owner_store import OwnerStore
+
+                    async def _seed() -> None:
+                        await init_db()
+                        await OwnerStore(get_session_factory()).create_owner(
+                            name="test-owner",
+                            password_hash=password_hash,
+                        )
+
+                    asyncio.run(_seed())
+                    (tmp_path / "secret.key").write_text("test-secret-key")
+
                     from starlette.testclient import TestClient
 
                     from sebastian.gateway.app import create_app
 
                     test_app = create_app()
                     with TestClient(test_app, raise_server_exceptions=True) as test_client:
-                        import sebastian.gateway.state as state
-                        from sebastian.store.owner_store import OwnerStore
-
-                        async def _seed_owner() -> None:
-                            await OwnerStore(state.db_factory).create_owner(
-                                name="test-owner",
-                                password_hash=password_hash,
-                            )
-
-                        asyncio.run(_seed_owner())
                         yield test_client, mock_run_streaming, fake_session
 
 

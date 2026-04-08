@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 from unittest.mock import patch
@@ -11,8 +12,6 @@ from starlette.testclient import TestClient
 @pytest.fixture
 def empty_db_client(tmp_path):
     """Gateway with empty DB (no LLM provider configured)."""
-    import asyncio
-
     from sebastian.gateway.auth import hash_password
 
     password_hash = hash_password("testpass")
@@ -33,20 +32,23 @@ def empty_db_client(tmp_path):
         db_module._engine = None
         db_module._session_factory = None
 
+        from sebastian.store.database import get_session_factory, init_db
+        from sebastian.store.owner_store import OwnerStore
+
+        async def _seed() -> None:
+            await init_db()
+            await OwnerStore(get_session_factory()).create_owner(
+                name="test-owner",
+                password_hash=password_hash,
+            )
+
+        asyncio.run(_seed())
+        (tmp_path / "secret.key").write_text("test-secret-key")
+
         from sebastian.gateway.app import create_app
 
         test_app = create_app()
         with TestClient(test_app, raise_server_exceptions=True) as test_client:
-            import sebastian.gateway.state as state
-            from sebastian.store.owner_store import OwnerStore
-
-            async def _seed_owner() -> None:
-                await OwnerStore(state.db_factory).create_owner(
-                    name="test-owner",
-                    password_hash=password_hash,
-                )
-
-            asyncio.run(_seed_owner())
             yield test_client
         db_module._engine = None
         db_module._session_factory = None
@@ -93,16 +95,14 @@ def test_create_agent_session_returns_400(empty_db_client: TestClient) -> None:
 
 def test_send_turn_to_session_returns_400(empty_db_client: TestClient) -> None:
     """Need an existing session to hit this route. Create one directly via store."""
-    import asyncio
-
-    from sebastian.core.types import Session
-
     token = _login(empty_db_client)
 
     # Create a session directly via store (bypass create route which is also gated).
     import sebastian.gateway.state as state
 
     async def _seed() -> str:
+        from sebastian.core.types import Session
+
         session = Session(
             agent_type="sebastian",
             title="seed",

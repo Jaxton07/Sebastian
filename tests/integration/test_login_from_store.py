@@ -1,93 +1,69 @@
 from __future__ import annotations
 
+import asyncio
+import importlib
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from sebastian.store.database import Base
-from sebastian.store.owner_store import OwnerStore
-
-pytestmark = pytest.mark.skip(reason="unblocked by Task 2.8 state wiring")
 
 
-@pytest_asyncio.fixture
-async def session_factory(tmp_path: Path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/test.db", future=True)
-    async with engine.begin() as conn:
-        from sebastian.store import models  # noqa: F401
+def _seed_and_get_app(tmp_path: Path, password: str):
+    """Seed owner + secret.key before lifespan runs (Strategy B)."""
+    import sebastian.store.database as db_module
 
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    yield factory
-    await engine.dispose()
+    db_module._engine = None
+    db_module._session_factory = None
 
-
-@pytest.mark.asyncio
-async def test_login_succeeds_with_store_owner(tmp_path: Path, session_factory) -> None:
     from sebastian.gateway.auth import hash_password
+    from sebastian.store.database import get_session_factory, init_db
+    from sebastian.store.owner_store import OwnerStore
 
-    password_hash = hash_password("testpass")
-    store = OwnerStore(session_factory)
-    await store.create_owner(name="Eric", password_hash=password_hash)
+    async def _seed() -> None:
+        await init_db()
+        await OwnerStore(get_session_factory()).create_owner(
+            name="Eric", password_hash=hash_password(password)
+        )
 
-    secret_key_path = tmp_path / "secret.key"
-    secret_key_path.write_text("test-secret-key", encoding="utf-8")
+    asyncio.run(_seed())
+    (tmp_path / "secret.key").write_text("integration-secret")
 
-    import importlib
+    from sebastian.gateway.app import create_app
 
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("SEBASTIAN_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
-        monkeypatch.setenv("SEBASTIAN_JWT_SECRET", "test-secret-key")
-
-        import sebastian.config as cfg_module
-
-        importlib.reload(cfg_module)
-
-        from starlette.testclient import TestClient
-
-        def create_app():
-            from sebastian.gateway.app import create_app as _create_app
-
-            return _create_app()
-
-        app = create_app()
-        with TestClient(app, raise_server_exceptions=True) as client:
-            response = client.post("/api/v1/auth/login", json={"password": "testpass"})
-            assert response.status_code == 200
-            data = response.json()
-            assert "access_token" in data
+    return create_app()
 
 
-@pytest.mark.asyncio
-async def test_login_rejects_wrong_password(tmp_path: Path, session_factory) -> None:
-    from sebastian.gateway.auth import hash_password
+def test_login_succeeds_with_store_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEBASTIAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("SEBASTIAN_JWT_SECRET", "ignored-when-secret-file-present")
 
-    password_hash = hash_password("correctpass")
-    store = OwnerStore(session_factory)
-    await store.create_owner(name="Eric", password_hash=password_hash)
+    import sebastian.config as cfg_module
 
-    import importlib
+    importlib.reload(cfg_module)
 
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("SEBASTIAN_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
-        monkeypatch.setenv("SEBASTIAN_JWT_SECRET", "test-secret-key")
+    app = _seed_and_get_app(tmp_path, "hunter2")
 
-        import sebastian.config as cfg_module
+    from starlette.testclient import TestClient
 
-        importlib.reload(cfg_module)
+    with TestClient(app, raise_server_exceptions=True) as client:
+        resp = client.post("/api/v1/auth/login", json={"password": "hunter2"})
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
 
-        from starlette.testclient import TestClient
 
-        def create_app():
-            from sebastian.gateway.app import create_app as _create_app
+def test_login_rejects_wrong_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEBASTIAN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("SEBASTIAN_JWT_SECRET", "ignored-when-secret-file-present")
 
-            return _create_app()
+    import sebastian.config as cfg_module
 
-        app = create_app()
-        with TestClient(app, raise_server_exceptions=True) as client:
-            response = client.post("/api/v1/auth/login", json={"password": "wrongpass"})
-            assert response.status_code == 401
+    importlib.reload(cfg_module)
+
+    app = _seed_and_get_app(tmp_path, "correctpass")
+
+    from starlette.testclient import TestClient
+
+    with TestClient(app, raise_server_exceptions=True) as client:
+        resp = client.post("/api/v1/auth/login", json={"password": "wrongpass"})
+        assert resp.status_code == 401
