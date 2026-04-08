@@ -38,7 +38,8 @@ CREATED → PLANNING → RUNNING → COMPLETED
 | Task 状态流转规则 | [task_manager.py](task_manager.py) 的 `_VALID_TRANSITIONS` |
 | LLM 调用参数 / 最大迭代次数 | [agent_loop.py](agent_loop.py) 的 `MAX_ITERATIONS` |
 | Anthropic / OpenAI 消息格式适配 | [agent_loop.py](agent_loop.py)，由 `provider.message_format` 自动分支 |
-| BaseAgent 默认行为（system_prompt、run_streaming） | [base_agent.py](base_agent.py) |
+| 多轮 thinking signature 回填逻辑 | [agent_loop.py](agent_loop.py) 处理 `ThinkingBlockStop` 的分支 |
+| BaseAgent 默认行为（system_prompt、run_streaming、thinking_effort 参数） | [base_agent.py](base_agent.py) |
 | Sub-Agent session 执行入口 | [session_runner.py](session_runner.py) 的 `run_agent_session()` |
 | 僵死 session 检测与恢复 | [stalled_watchdog.py](stalled_watchdog.py) |
 | 新增核心数据类型 | [types.py](types.py) |

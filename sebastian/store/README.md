@@ -41,7 +41,7 @@ SEBASTIAN_DATA_DIR/sessions/
 | Session 快速索引（避免全量扫描） | [index_store.py](index_store.py) |
 | 事件历史查询 | [event_log.py](event_log.py) + [models.py](models.py) 的 `EventRecord` |
 | Approval 持久化结构 | [models.py](models.py) 的 `ApprovalRecord` |
-| LLM Provider 配置持久化 | [models.py](models.py) 的 `LLMProviderRecord` |
+| LLM Provider 配置持久化（含 `thinking_format` / `thinking_capability`） | [models.py](models.py) 的 `LLMProviderRecord` |
 | 数据库 schema 变更 | [models.py](models.py) 修改 ORM + [migrations/](migrations/) 新增 Alembic migration |
 | SQLAlchemy engine / session factory | [database.py](database.py) |
 | Task SQLite 辅助写入 | [task_store.py](task_store.py) |

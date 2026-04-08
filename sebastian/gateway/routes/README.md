@@ -31,14 +31,14 @@ routes/
 | `POST /approvals/{id}/deny` — 拒绝操作 | [approvals.py](approvals.py) |
 | `GET /debug/logging` — 查询日志状态 | [debug.py](debug.py) |
 | `PATCH /debug/logging` — 动态开关 LLM stream / SSE 日志 | [debug.py](debug.py) |
-| `GET /llm-providers` — 列出所有 LLM Provider | [llm_providers.py](llm_providers.py) |
-| `POST /llm-providers` — 新增 LLM Provider | [llm_providers.py](llm_providers.py) |
-| `PUT /llm-providers/{id}` — 更新 LLM Provider | [llm_providers.py](llm_providers.py) |
+| `GET /llm-providers` — 列出所有 LLM Provider（含 `thinking_capability`） | [llm_providers.py](llm_providers.py) |
+| `POST /llm-providers` — 新增 LLM Provider（支持 `thinking_capability`） | [llm_providers.py](llm_providers.py) |
+| `PUT /llm-providers/{id}` — 更新 LLM Provider（支持 `thinking_capability`） | [llm_providers.py](llm_providers.py) |
 | `DELETE /llm-providers/{id}` — 删除 LLM Provider | [llm_providers.py](llm_providers.py) |
 | `GET /sessions` — 列出会话（支持过滤/分页） | [sessions.py](sessions.py) |
 | `GET /sessions/{id}` — 查询单个会话及其消息 | [sessions.py](sessions.py) |
 | `DELETE /sessions/{id}` — 删除会话 | [sessions.py](sessions.py) |
-| `POST /sessions/{id}/turns` — 向已有会话发送消息 | [sessions.py](sessions.py) |
+| `POST /sessions/{id}/turns` — 向已有会话发送消息（支持 `thinking_effort`） | [sessions.py](sessions.py) |
 | `GET /sessions/{id}/tasks` — 列出会话下的 Task | [sessions.py](sessions.py) |
 | `POST /sessions/{id}/tasks/{tid}/pause` — 暂停 Task | [sessions.py](sessions.py) |
 | `DELETE /sessions/{id}/tasks/{tid}` — 取消 Task（DELETE）| [sessions.py](sessions.py) |
@@ -46,7 +46,7 @@ routes/
 | `GET /stream` — 订阅全局 SSE 事件流 | [stream.py](stream.py) |
 | `GET /sessions/{id}/stream` — 订阅单会话 SSE 事件流 | [stream.py](stream.py) |
 | `POST /auth/login` — 密码登录，获取 JWT | [turns.py](turns.py) |
-| `POST /turns` — 发送消息，触发主对话轮次 | [turns.py](turns.py) |
+| `POST /turns` — 发送消息，触发主对话轮次（支持 `thinking_effort`） | [turns.py](turns.py) |
 
 ---
 
