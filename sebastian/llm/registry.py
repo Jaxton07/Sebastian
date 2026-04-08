@@ -4,7 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from sebastian.llm.provider import LLMProvider
 from sebastian.store.models import LLMProviderRecord
@@ -84,6 +84,8 @@ class LLMProviderRegistry:
 
     async def create(self, record: LLMProviderRecord) -> None:
         async with self._db_factory() as session:
+            if record.is_default:
+                await self._clear_default_provider(session)
             session.add(record)
             await session.commit()
 
@@ -95,6 +97,8 @@ class LLMProviderRegistry:
             record = result.scalar_one_or_none()
             if record is None:
                 return None
+            if kwargs.get("is_default") is True:
+                await self._clear_default_provider(session, exclude_id=record_id)
             for key, value in kwargs.items():
                 setattr(record, key, value)
             await session.commit()
@@ -112,6 +116,17 @@ class LLMProviderRegistry:
             await session.delete(record)
             await session.commit()
             return True
+
+    async def _clear_default_provider(
+        self,
+        session: AsyncSession,
+        *,
+        exclude_id: str | None = None,
+    ) -> None:
+        stmt = update(LLMProviderRecord).where(LLMProviderRecord.is_default.is_(True))
+        if exclude_id is not None:
+            stmt = stmt.where(LLMProviderRecord.id != exclude_id)
+        await session.execute(stmt.values(is_default=False))
 
     def _instantiate(self, record: LLMProviderRecord) -> LLMProvider:
         from sebastian.llm.crypto import decrypt

@@ -74,6 +74,7 @@ def test_create_provider_with_thinking_capability(client) -> None:
             "provider_type": "anthropic",
             "api_key": "sk-ant-fake",
             "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
             "thinking_capability": "adaptive",
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -101,6 +102,7 @@ def test_update_provider_thinking_capability(client) -> None:
             "provider_type": "openai",
             "api_key": "sk-fake",
             "model": "o3",
+            "base_url": "https://api.openai.com/v1",
         },
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -116,6 +118,100 @@ def test_update_provider_thinking_capability(client) -> None:
     assert upd.json()["thinking_capability"] == "effort"
 
 
+def test_create_default_provider_unsets_previous_default(client) -> None:
+    http_client, token = client
+
+    first = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "Claude Home",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-first",
+            "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
+            "is_default": True,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 201
+    assert first.json()["is_default"] is True
+
+    second = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "OpenAI Work",
+            "provider_type": "openai",
+            "api_key": "sk-second",
+            "model": "gpt-4o",
+            "base_url": "https://api.openai.com/v1",
+            "is_default": True,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert second.status_code == 201
+    assert second.json()["is_default"] is True
+
+    list_resp = http_client.get(
+        "/api/v1/llm-providers", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert list_resp.status_code == 200
+    providers = list_resp.json()["providers"]
+    defaults = [provider for provider in providers if provider["is_default"]]
+
+    assert len(defaults) == 1
+    assert defaults[0]["id"] == second.json()["id"]
+
+
+def test_update_provider_to_default_unsets_previous_default(client) -> None:
+    http_client, token = client
+
+    first = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "Claude Home",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-first",
+            "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
+            "is_default": True,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 201
+
+    second = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "OpenAI Work",
+            "provider_type": "openai",
+            "api_key": "sk-second",
+            "model": "gpt-4o",
+            "base_url": "https://api.openai.com/v1",
+            "is_default": False,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert second.status_code == 201
+
+    update_resp = http_client.put(
+        f"/api/v1/llm-providers/{second.json()['id']}",
+        json={"is_default": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["is_default"] is True
+
+    list_resp = http_client.get(
+        "/api/v1/llm-providers", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert list_resp.status_code == 200
+    providers = list_resp.json()["providers"]
+    defaults = [provider for provider in providers if provider["is_default"]]
+
+    assert len(defaults) == 1
+    assert defaults[0]["id"] == second.json()["id"]
+
+
 def test_put_provider_clears_thinking_capability_with_explicit_null(client) -> None:
     """PUT 显式传 thinking_capability: null 应清空字段。"""
     http_client, token = client
@@ -127,6 +223,7 @@ def test_put_provider_clears_thinking_capability_with_explicit_null(client) -> N
             "provider_type": "anthropic",
             "api_key": "sk-ant-fake",
             "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
             "thinking_capability": "effort",
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -163,6 +260,7 @@ def test_put_provider_omitted_field_preserves_value(client) -> None:
             "provider_type": "anthropic",
             "api_key": "sk-ant-fake",
             "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
             "thinking_capability": "effort",
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -196,6 +294,7 @@ def test_put_provider_rejects_explicit_null_on_required_fields(
             "provider_type": "anthropic",
             "api_key": "sk-ant-fake",
             "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
             "thinking_capability": "effort",
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -210,3 +309,21 @@ def test_put_provider_rejects_explicit_null_on_required_fields(
     )
     assert upd.status_code == 400
     assert field in upd.json()["detail"]
+
+
+def test_create_provider_requires_base_url(client) -> None:
+    http_client, token = client
+
+    resp = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "Missing Base URL",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-fake",
+            "model": "claude-opus-4-6",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 422
+    assert "base_url" in resp.text

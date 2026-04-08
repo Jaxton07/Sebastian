@@ -1,8 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ProviderForm } from '@/src/components/settings/ProviderForm';
-import { SettingsScreenLayout } from '@/src/components/settings/SettingsScreenLayout';
+import {
+  ProviderForm,
+  type ProviderFormHandle,
+} from '@/src/components/settings/ProviderForm';
+import { ProviderEditorLayout } from '@/src/components/settings/ProviderEditorLayout';
 import { useLLMProvidersStore } from '@/src/store/llmProviders';
 import { useSettingsStore } from '@/src/store/settings';
 import { useTheme } from '@/src/theme/ThemeContext';
@@ -15,6 +18,8 @@ export default function EditProviderScreen() {
   const jwtToken = useSettingsStore((state) => state.jwtToken);
   const { providers, initialized, loading, error, fetch, update } = useLLMProvidersStore();
   const resolvedProviderId = Array.isArray(providerId) ? providerId[0] : providerId;
+  const formRef = useRef<ProviderFormHandle>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (jwtToken && !initialized && !loading) {
@@ -33,9 +38,12 @@ export default function EditProviderScreen() {
   const provider = providers.find((item) => item.id === resolvedProviderId);
 
   return (
-    <SettingsScreenLayout
+    <ProviderEditorLayout
       title="编辑 Provider"
       subtitle="更新模型提供商配置，并保持默认项设置清晰。"
+      onDone={jwtToken && provider ? () => void formRef.current?.submit() : undefined}
+      doneDisabled={saving}
+      doneLoading={saving}
     >
       {!jwtToken ? (
         <View style={[styles.feedbackCard, { backgroundColor: colors.cardBackground }]}>
@@ -54,11 +62,7 @@ export default function EditProviderScreen() {
           <Text style={[styles.feedbackText, { color: colors.textSecondary }]}>正在加载 Provider…</Text>
         </View>
       ) : provider ? (
-        <ProviderForm
-          initial={provider}
-          onSave={handleSave}
-          onCancel={() => router.back()}
-        />
+        <ProviderForm ref={formRef} initial={provider} onSave={handleSave} onSubmittingChange={setSaving} />
       ) : (
         <View style={[styles.feedbackCard, { backgroundColor: colors.cardBackground }]}>
           <Text style={[styles.feedbackTitle, { color: colors.text }]}>未找到 Provider</Text>
@@ -67,7 +71,7 @@ export default function EditProviderScreen() {
           </Text>
         </View>
       )}
-    </SettingsScreenLayout>
+    </ProviderEditorLayout>
   );
 }
 

@@ -88,15 +88,13 @@ async def test_put_provider_omitted_field_not_updated(
 
 
 @pytest.mark.asyncio
-async def test_put_provider_clears_base_url_with_explicit_null(
+async def test_put_provider_rejects_base_url_with_explicit_null(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """显式传 base_url=None 时应调用 registry 把 base_url 清空。"""
-    captured: dict[str, Any] = {}
+    """显式传 base_url=None 时应返回 400。"""
 
     async def fake_update(pid: str, **kwargs: Any) -> SimpleNamespace:
-        captured["kwargs"] = kwargs
-        return _make_record(base_url=None)
+        raise AssertionError("registry.update 不应被调用")
 
     import sebastian.gateway.state as state
 
@@ -105,10 +103,11 @@ async def test_put_provider_clears_base_url_with_explicit_null(
     )
 
     body = LLMProviderUpdate(base_url=None)
-    await update_llm_provider("p1", body=body, _auth={})
+    with pytest.raises(HTTPException) as exc_info:
+        await update_llm_provider("p1", body=body, _auth={})
 
-    assert "base_url" in captured["kwargs"]
-    assert captured["kwargs"]["base_url"] is None
+    assert exc_info.value.status_code == 400
+    assert "base_url" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
@@ -136,7 +135,7 @@ async def test_put_provider_api_key_encrypted_when_provided(
     assert "api_key" not in captured["kwargs"]
 
 
-@pytest.mark.parametrize("field", ["name", "api_key", "model", "is_default"])
+@pytest.mark.parametrize("field", ["name", "api_key", "model", "base_url", "is_default"])
 @pytest.mark.asyncio
 async def test_put_provider_rejects_null_on_required_fields(
     monkeypatch: pytest.MonkeyPatch,

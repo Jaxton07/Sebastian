@@ -161,7 +161,7 @@ export interface LLMProviderCreate {
   provider_type: LLMProviderType;
   api_key: string;
   model: string;
-  base_url?: string | null;
+  base_url: string;
   thinking_format?: ThinkingFormat;
   thinking_capability?: ThinkingCapability | null;
   is_default?: boolean;

@@ -17,7 +17,7 @@ class LLMProviderCreate(BaseModel):
     provider_type: str  # "anthropic" | "openai"
     api_key: str
     model: str
-    base_url: str | None = None
+    base_url: str
     thinking_format: str | None = None  # None | "reasoning_content" | "think_tags"
     thinking_capability: str | None = None
     is_default: bool = False
@@ -92,7 +92,7 @@ async def update_llm_provider(
 
     data = body.model_dump(exclude_unset=True)
     # nullable=False 的列不允许显式清空
-    for required_field in ("name", "api_key", "model", "is_default"):
+    for required_field in ("name", "api_key", "model", "base_url", "is_default"):
         if required_field in data and data[required_field] is None:
             raise HTTPException(
                 status_code=400,

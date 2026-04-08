@@ -10,6 +10,7 @@
 
 ```
 settings/
+├── ProviderEditorLayout.tsx   # Provider 新增/编辑专用布局（顶部悬浮返回/完成）
 ├── SettingsScreenLayout.tsx   # 设置页通用容器（返回键、标题、副标题、滚动布局）
 ├── SettingsCategoryCard.tsx   # 设置首页状态卡（摘要 + 快捷操作）
 ├── settingsSummary.ts         # 首页摘要文案规则（连接 / Provider / 外观 / 高级）
@@ -34,6 +35,7 @@ settings/
 | 修改 Server URL 输入 / 连接测试 | [ServerConfig.tsx](ServerConfig.tsx) |
 | 修改 Owner 登录 / 登出区块 | [AccountSettingsSection.tsx](AccountSettingsSection.tsx) |
 | 修改 LLM Provider 列表 / 空状态 / 删除入口 | [ProviderListSection.tsx](ProviderListSection.tsx) |
+| 修改 Provider 新增 / 编辑页的顶部悬浮操作布局 | [ProviderEditorLayout.tsx](ProviderEditorLayout.tsx) |
 | 修改 LLM Provider 新增 / 编辑表单 | [ProviderForm.tsx](ProviderForm.tsx) |
 | 修改主题选择（日间/夜间/跟随系统） | [ThemeSettings.tsx](ThemeSettings.tsx) |
 | 修改 Memory 管理入口内容 | [MemorySection.tsx](MemorySection.tsx) |
