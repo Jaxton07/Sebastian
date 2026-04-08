@@ -26,6 +26,9 @@
 - ❌ 不做 iOS 构建与分发（等有需求再付 Apple Developer $99/年）
 - ❌ 不发布到 PyPI（包名冲突风险 + 对自用零收益，后续可加）
 - ❌ 不做 Docker 镜像发布（主线走本机部署，Docker compose 作为开发辅助保留）
+- ❌ 不做 PyInstaller / Nuitka 二进制打包（破坏可审计性，见 §11.1）
+- ❌ 不做 GPG 签名（本期只做 SHA256 校验，v1.0 再考虑）
+- ❌ 不引入 `config.toml` 额外配置层（owner 入 store，jwt_secret 单文件，详见 §3.3）
 - ❌ 不自动注册开机自启（稳定后再考虑）
 - ❌ 不做 nightly build / PR 自动 code review（先把主线跑通）
 
@@ -39,8 +42,9 @@
 ┌──────────────────────────┐   ┌──────────────────────────┐
 │ A. 首次配置 UX           │   │ B. 版本与分发            │
 │  - Web setup 向导        │◄──┤  - 统一 SemVer           │
-│  - `sebastian init` CLI  │   │  - install.sh            │
-│  - setup-mode 安全限制   │   │  - GitHub Release 打包   │
+│  - `sebastian init` CLI  │   │  - bootstrap.sh (一键)   │
+│  - owner → store         │   │  - install.sh (内部)     │
+│  - jwt_secret → 单文件   │   │  - SHA256SUMS 校验       │
 └──────────────────────────┘   └──────────────────────────┘
              ▲                              ▲
              │                              │
@@ -70,8 +74,8 @@ python3 -c "from sebastian.gateway.auth import hash_password; print(hash_passwor
 `sebastian start`（或直接 `uvicorn sebastian.gateway.app:app`）启动时：
 
 ```
-读取 SEBASTIAN_DATA_DIR（默认 ~/.sebastian）
-├── 存在 config.toml + owner 账号？
+启动时检查 SEBASTIAN_DATA_DIR（默认 ~/.sebastian）
+├── store 中存在 owner 账号 + secret.key 文件？
 │   └─ YES → 正常启动
 │   └─ NO  → 进入 setup mode
 └── setup mode：
@@ -87,15 +91,14 @@ python3 -c "from sebastian.gateway.auth import hash_password; print(hash_passwor
 - `index.html`：表单 UI（owner 名称、密码、确认密码、Anthropic API Key 可选）
 - `setup_routes.py`：`GET /setup` + `POST /setup/complete` 两个路由
 - 提交成功后：
-  1. 生成 `SEBASTIAN_JWT_SECRET`（32 字节 urlsafe base64）
-  2. 对密码调用 `hash_password()`
-  3. 写入 `${SEBASTIAN_DATA_DIR}/config.toml`（取代 .env 作为运行时配置源）
-  4. 在 store 中创建 owner 账号记录
-  5. 返回"配置完成，请重启"页面
-  6. 后端 3 秒后自动 `os._exit(0)`，用户用进程管理器（`sebastian start` 命令行）重启
+  1. 对密码调用 `hash_password()`，往 store 的 `users` 表写入 owner 账号记录
+  2. 生成 JWT secret（32 字节 urlsafe base64），写入 `${SEBASTIAN_DATA_DIR}/secret.key`（chmod 600）
+  3. 可选：若用户在向导里填了 Anthropic API Key，走现有的 "LLM Provider 加密存储" 流程写入 `llm_providers` 表（与现有 [sebastian/gateway/routes/llm_providers.py](sebastian/gateway/routes/llm_providers.py) 一致）
+  4. 返回"配置完成"页面
+  5. 后端 3 秒后自动 `os._exit(0)`；用户重新启动 `sebastian start`，这一次因 owner 账号已存在而进入正常模式
 
 #### CLI 兜底：`sebastian init --headless`
-给 SSH 无头服务器用。交互式问答同 Web 向导的字段，最终写同一份 `config.toml`。
+给 SSH 无头服务器用。交互式问答同 Web 向导的字段，最终落到同样的 store 表 + `secret.key` 文件。
 
 ```python
 # sebastian/cli/init.py
@@ -107,35 +110,26 @@ def init(headless: bool = False) -> None:
         _print_setup_mode_hint()  # 提示用户跑 sebastian start 用 Web 向导
 ```
 
-### 3.3 配置源迁移：`.env` → `config.toml`
-**理由**：`.env` 是 shell 风格 kv，不能表达层级结构；`config.toml` 贴近 Python 生态习惯且可结构化。
+### 3.3 不引入 `config.toml`
+**设计决策**：不新增 `config.toml` / `ConfigLoader`，保持现有 `.env` + 环境变量的配置体系不动。
 
-新结构：
-```toml
-# ~/.sebastian/config.toml
-[owner]
-name = "Eric"
-password_hash = "$2b$12$..."
+**推导过程**：一度计划把配置统一迁到 `config.toml`，但逐项盘点后发现所有字段都有现成更合适的位置：
 
-[gateway]
-host = "127.0.0.1"
-port = 8000
-jwt_secret = "..."
+| 字段 | 实际去向 | 理由 |
+|---|---|---|
+| owner.name / password_hash | store 的 `users` 表 | 用户账号本就该在 DB |
+| LLM API keys | store 的 `llm_providers` 表（加密） | 现状已如此，见 [sebastian/llm/registry.py:119](sebastian/llm/registry.py#L119) |
+| JWT secret | `~/.sebastian/secret.key`（chmod 600，单文件） | 启动前需要，一行内容不值得为它引入 TOML |
+| gateway host / port | 环境变量 / 命令行 flag | 启动参数，非持久配置 |
+| data dir | `SEBASTIAN_DATA_DIR` 环境变量 | 同上 |
 
-[llm]
-anthropic_api_key = "sk-ant-..."
-openai_api_key = ""
+结果：`config.toml` 里"什么都不剩"，引入它纯粹是增加抽象层。
 
-[data]
-dir = "~/.sebastian"
-```
-
-**向后兼容**：加载顺序为 `config.toml` > `.env` > 环境变量。`.env` 仍被支持，方便开发；setup 向导写入 `config.toml`。
-
-**改造范围**：
-- `sebastian/config.py`：新增 `ConfigLoader`，优先读 `config.toml`，fallback 到现有 `.env` 逻辑
-- `sebastian/gateway/auth.py`：owner 账号从 store 读取，不再从 env 读 hash
-- 现有 env 变量名保持不变，只是"读取入口"多了一个 toml 层
+**真正的改动范围**（比原计划小很多）：
+- `sebastian/gateway/auth.py`：owner 账号从 "读 `SEBASTIAN_OWNER_PASSWORD_HASH` env" 改为 "读 store `users` 表"；JWT 签名从 "读 `SEBASTIAN_JWT_SECRET` env" 改为 "读 `secret.key` 文件（fallback 到 env，兼容开发模式）"
+- `sebastian/gateway/app.py`：启动时检测 owner 是否存在 → 决定是否进入 setup mode
+- **其他配置读取逻辑完全不动**，`sebastian/config/__init__.py` 保持现状
+- `.env` 的角色不变：开发环境 / CI / 高级用户使用；setup 向导不写 `.env`，它只写 store 和 `secret.key`
 
 ---
 
@@ -152,18 +146,64 @@ dir = "~/.sebastian"
 - 发版时 workflow 自动把 `[Unreleased]` 重命名为 `[X.Y.Z] - YYYY-MM-DD`，并在上方插入新的 `[Unreleased]` 空段
 
 ### 4.3 Release 产物
-每次 release 在 GitHub Release 页面挂两个 asset：
+每次 release 在 GitHub Release 页面挂三个 asset：
 
 | 产物 | 文件名 | 内容 |
 |---|---|---|
 | 后端源码包 | `sebastian-backend-v0.2.0.tar.gz` | `sebastian/` 源码 + `pyproject.toml` + `install.sh` + `README.md` + `LICENSE` + `CHANGELOG.md` |
 | Android APK | `sebastian-app-v0.2.0.apk` | 已签名的 release APK |
+| 校验文件 | `SHA256SUMS` | 上述两个 asset 的 SHA256 指纹 |
 
-### 4.4 `install.sh` 设计
+### 4.4 `bootstrap.sh` —— 一键安装入口（推荐路径）
 
-位置：`scripts/install.sh`（随源码发布，tar.gz 解压后可见）
+位置：仓库根目录 `bootstrap.sh`，随 `main` 分支发布。用户通过 `raw.githubusercontent.com` 直接 `curl` 到。
 
 职责：
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_DIR="${SEBASTIAN_INSTALL_DIR:-$HOME/.sebastian/app}"
+REPO="Jaxton07/Sebastian"
+
+# 1. 环境检查：Python 3.12+ / macOS 或 Linux / curl / tar / shasum
+check_prerequisites
+
+# 2. 调 GitHub API 拿最新 release tag
+LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | jq -r .tag_name)
+
+# 3. 下载 tar.gz 和 SHA256SUMS 到临时目录
+TMPDIR=$(mktemp -d)
+curl -fsSL "https://github.com/${REPO}/releases/download/${LATEST_TAG}/sebastian-backend-${LATEST_TAG}.tar.gz" \
+  -o "${TMPDIR}/sebastian.tar.gz"
+curl -fsSL "https://github.com/${REPO}/releases/download/${LATEST_TAG}/SHA256SUMS" \
+  -o "${TMPDIR}/SHA256SUMS"
+
+# 4. 强制校验 SHA256
+( cd "${TMPDIR}" && shasum -a 256 -c SHA256SUMS --ignore-missing ) \
+  || { echo "❌ SHA256 校验失败，疑似供应链污染，已中止"; exit 1; }
+
+# 5. 解压到 INSTALL_DIR
+mkdir -p "${INSTALL_DIR}"
+tar xzf "${TMPDIR}/sebastian.tar.gz" -C "${INSTALL_DIR}" --strip-components=1
+
+# 6. 运行 install.sh
+cd "${INSTALL_DIR}"
+exec ./install.sh
+```
+
+最终用户体验：
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jaxton07/Sebastian/main/bootstrap.sh | bash
+# 浏览器自动打开 http://127.0.0.1:8000/setup?token=xxx
+# 用户填表单 → 完成
+```
+
+### 4.5 `install.sh` —— 内部步骤 + 手动安装入口
+
+位置：`scripts/install.sh`（随 tar.gz 发布；也在 git 仓库里给 `git clone` 用户用）
+
+职责（在 `bootstrap.sh` 已解压好的目录里运行，或用户手动解压后运行）：
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -191,21 +231,32 @@ exec sebastian start  # 进入 setup mode，用户跟浏览器走完 Web 向导
 - 不做开机自启注册（本版本非目标）
 - 脚本结尾执行 `sebastian start` 后直接阻塞在终端，Ctrl-C 停止；生产使用由用户自行 `nohup` / `screen` / `tmux`
 
-### 4.5 用户侧安装流程（最终体验）
+### 4.6 用户侧安装流程（最终体验）
 
+**推荐：一键安装**
 ```bash
 # macOS / Linux
-curl -L -o sebastian.tar.gz \
-  https://github.com/Jaxton07/Sebastian/releases/latest/download/sebastian-backend-v0.2.0.tar.gz
-tar xzf sebastian.tar.gz
+curl -fsSL https://raw.githubusercontent.com/Jaxton07/Sebastian/main/bootstrap.sh | bash
+# 浏览器自动打开 http://127.0.0.1:8000/setup?token=xxx
+# 用户填表单 → 后端自动写入 store → 重启 → 正常运行
+```
+
+**手动安装**（给偏执型用户，可以逐步校验）
+```bash
+# 1. 下载 tar.gz 和 SHA256SUMS
+curl -LO https://github.com/Jaxton07/Sebastian/releases/download/v0.2.0/sebastian-backend-v0.2.0.tar.gz
+curl -LO https://github.com/Jaxton07/Sebastian/releases/download/v0.2.0/SHA256SUMS
+
+# 2. 手动校验指纹
+shasum -a 256 -c SHA256SUMS --ignore-missing
+
+# 3. 解压 + 跑 install.sh
+tar xzf sebastian-backend-v0.2.0.tar.gz
 cd sebastian-backend-v0.2.0
 ./install.sh
-# 浏览器自动打开 http://127.0.0.1:8000/setup?token=xxx
-# 用户填表单 → 后端自动写配置 → 重启 → 正常运行
-
-# Android
-# 从同一 Release 页下载 APK → adb install 或直接传手机安装
 ```
+
+**Android**：从同一 Release 页下载 APK → `adb install` 或直接传手机安装
 
 ---
 
@@ -272,8 +323,9 @@ build-android (needs: sync-version)
 
 publish-release (needs: [build-backend, build-android])
   ├─ download 两个 artifact
+  ├─ 生成 SHA256SUMS 文件（对 tar.gz 和 apk 计算 SHA256）
   ├─ 从 CHANGELOG.md 中抽取 [X.Y.Z] 段落作为 release body
-  └─ gh release create v${inputs.version} *.tar.gz *.apk --notes "${body}"
+  └─ gh release create v${inputs.version} *.tar.gz *.apk SHA256SUMS --notes "${body}"
 ```
 
 **关键点**：
@@ -398,15 +450,14 @@ gh secret set ANDROID_KEY_PASSWORD --body "<password>"
 .github/PULL_REQUEST_TEMPLATE.md
 .github/CODEOWNERS
 .github/dependabot.yml
-scripts/install.sh
+bootstrap.sh                    # 一键安装入口，放仓库根目录
+scripts/install.sh              # 内部安装步骤 + 手动入口
 CHANGELOG.md
-LICENSE                         # 准开源需要，建议 Apache-2.0 或 MIT
+LICENSE                         # Apache-2.0
 sebastian/cli/__init__.py
-sebastian/cli/init.py
+sebastian/cli/init.py           # sebastian init --headless CLI 向导
 sebastian/gateway/setup/__init__.py
-sebastian/gateway/setup/setup_routes.py
-sebastian/gateway/setup/templates/index.html
-sebastian/config/loader.py      # ConfigLoader (toml + env fallback)
+sebastian/gateway/setup/setup_routes.py   # /setup/* 路由 + 内嵌 HTML 字符串
 ```
 
 修改：
@@ -414,11 +465,11 @@ sebastian/config/loader.py      # ConfigLoader (toml + env fallback)
 pyproject.toml                  # version 字段（交给 release workflow 维护）
 ui/mobile/app.json              # version 字段同上
 sebastian/main.py               # 注册 cli init 子命令、start 启动时检查 setup mode
-sebastian/gateway/app.py        # setup mode 路由挂载逻辑
-sebastian/gateway/auth.py       # owner 从 store 读，不再从 env
-sebastian/config.py             # 接入 ConfigLoader
+sebastian/gateway/app.py        # 启动时检测 owner，决定正常模式 / setup mode
+sebastian/gateway/auth.py       # owner 从 store 读；JWT secret 从 secret.key 读
 CLAUDE.md                       # 更新 §3 启动命令、§6 环境变量、§11 PR 流程
-README.md                       # 新增"一键安装"章节
+README.md                       # 新增"一键安装"章节 + 手动安装 + 校验说明
+.gitignore                      # 增补 secret.key、build 产物
 ```
 
 ---
@@ -430,8 +481,9 @@ README.md                       # 新增"一键安装"章节
 | Release workflow push 到 main 被 branch protection 拒绝 | 在 bypass 列表加 `github-actions[bot]`，并单独限制其只能做 release commit（通过 commit message 前缀校验） |
 | Android keystore 丢失导致无法更新 App | 本地备份 + 密码管理器 + 仓库外的加密云备份 三重冗余 |
 | Setup mode 被外网访问绕过 | 三重限制：绑定 127.0.0.1 + 来源 IP 白名单 + 一次性 token |
-| 用户误把 config.toml 提交到仓库 | `.gitignore` 加 `config.toml` 和 `~/.sebastian/` 不会被追踪；默认配置存 `~/.sebastian/` 而非项目内 |
-| `config.toml` 和 `.env` 双源导致歧义 | loader 明确优先级：toml > env；README 明确说明，setup 向导只写 toml，`.env` 仅限开发 |
+| `secret.key` 误提交或泄漏 | `.gitignore` 显式排除；默认路径 `~/.sebastian/secret.key` 不在项目内；chmod 600 |
+| bootstrap.sh 从 GitHub raw 拉取被中间人篡改 | 全程 HTTPS（GitHub 强制）；下载 tar.gz 后强制校验 SHA256SUMS；`curl -fsSL` 确保 TLS |
+| 用户直接 `curl | bash` 的信任问题 | README 并列提供"手动安装"路径；bootstrap.sh 本身开源可读；脚本头部打印即将执行的动作 |
 | Dependabot 噪音过大 | 限制每周最多 5 个 PR，只跟 minor/patch，major 手动处理 |
 | Squash merge 丢失 feature 分支的细粒度历史 | PR 页面永远保留原 commits；main 历史只看发版单位就够了 |
 
@@ -445,39 +497,67 @@ README.md                       # 新增"一键安装"章节
    - 创建 `.github/` 目录结构
    - `ci.yml` 上线：lint / type / test / mobile lint
    - PR 模板、Issue 模板、CODEOWNERS、dependabot
-   - `main` 分支保护规则配置
+   - `main` 分支保护规则 + tag 保护规则配置
    - 目的：未来每个 PR 都自动跑门禁
-2. **Phase 2：配置系统重构**
-   - `ConfigLoader`（toml + env fallback）
-   - `sebastian/config.toml` schema 定义与迁移
-   - `auth.py` 改造：owner 账号入 store
-   - 单元测试：loader 优先级、toml 解析、默认值
-3. **Phase 3：首次配置 UX**
-   - Setup mode 启动逻辑
-   - `/setup/*` 路由 + HTML 单页向导
+2. **Phase 2：首次配置 UX**
+   - `auth.py` 改造：owner 从 store 读，JWT secret 从 `secret.key` 读（fallback 到 env 兼容开发）
+   - `app.py` 启动时检测 owner → setup mode 分支
+   - `/setup/*` 路由 + 内嵌 HTML 单页向导（setup_routes.py 一个文件）
    - `sebastian init --headless` CLI 子命令
    - 安全限制（127.0.0.1 + token）的集成测试
-4. **Phase 4：install.sh 与源码包**
+3. **Phase 3：install.sh + bootstrap.sh + 源码包**
    - `scripts/install.sh` 实现
+   - `bootstrap.sh` 实现（含 SHA256SUMS 校验）
    - 手动验证 macOS / Linux 全流程
-   - README 新增"一键安装"章节
-5. **Phase 5：Release 流水线**
+   - README 新增"一键安装 / 手动安装 / 手动校验"章节
+4. **Phase 4：Release 流水线**
    - 生成 Android release keystore + 上传 Secrets
-   - `release.yml` workflow 实现
-   - 第一次手动触发发版（v0.2.0），产出 tar.gz + APK
-   - 验证 install.sh 在 release 产物上能跑通
-6. **Phase 6：文档同步**
+   - `release.yml` workflow 实现（含 SHA256SUMS 生成）
+   - 第一次手动触发发版（v0.2.0），产出 tar.gz + APK + SHA256SUMS
+   - 跑通 `curl ... | bash` 端到端（用真实 release 验证 bootstrap.sh）
+5. **Phase 5：文档同步**
    - `CLAUDE.md` 更新（启动命令、环境变量、PR 流程）
-   - `CHANGELOG.md` 补齐 v0.1.0 ~ v0.2.0 历史
-   - `LICENSE` 文件添加（建议 Apache-2.0）
+   - `CHANGELOG.md` 初始化（`[Unreleased]` + `[0.2.0]`）
+   - `LICENSE` 文件添加（Apache-2.0）
    - README 整体重写为面向用户
 
 ---
 
 ## 10. 开放问题
 
-以下问题不阻塞 spec 定稿，留到 implementation plan 里决策：
+无。所有关键决策已在 §1–§9 中闭环。
 
-- **LICENSE 选什么？** 建议 Apache-2.0（友好商用 + 专利授权），也可选 MIT（更简洁）。
-- **首版发版号是 `0.2.0` 还是 `0.1.0`？** 鉴于 `pyproject.toml` 已写 `0.1.0` 且未发布过，建议第一次 workflow 发版跳到 `0.2.0` 避免语义混淆。
-- **Setup 向导的 HTML 是纯手写还是用模板引擎？** 纯手写（单文件 < 200 行）即可，不引入 jinja2 等依赖。
+---
+
+## 11. 安全模型与供应链完整性
+
+### 11.1 为什么用源码分发而不是编译二进制
+准开源项目的核心价值是"代码可审计"。Sebastian 作为 AI 管家会读写文件、调用工具、访问 LLM API，**用户必须能看到代码才敢让它住进自己的设备**。PyInstaller / Nuitka 之类的"编译"方案：
+- 没有实质安全收益 —— Python 字节码逆向非常容易
+- 破坏可审计性 —— 用户无法验证二进制和仓库源码一致
+- 增加构建复杂度与跨平台问题
+
+**决策：源码分发，不做二进制打包**。
+
+### 11.2 供应链完整性：三道防线
+真正的安全风险是"用户下载的 tar.gz 不是官方构建"（中间人 / CDN 劫持 / 恶意镜像）。对策：
+
+1. **HTTPS 下载**：GitHub Release 全程强制 HTTPS，`bootstrap.sh` 用 `curl -fsSL` 保证 TLS 校验
+2. **SHA256SUMS 校验**：
+   - `release.yml` 的 `publish-release` job 对每个 asset 计算 SHA256 并生成 `SHA256SUMS` 文件一起挂到 Release
+   - `bootstrap.sh` 下载 tar.gz 后**强制**校验，不匹配立即 `exit 1`
+   - 手动安装路径也在 README 里写明 `shasum -a 256 -c` 命令
+3. **本期不做 GPG 签名**：对个人项目是 overkill，维护私钥成本高于收益；v1.0 再考虑
+
+### 11.3 运行时权限：架构层面的事，不是打包格式
+Sebastian 跑在用户机器上、以用户身份运行，理论上能做任何用户本人能做的事。这是"个人自托管 AI 管家"架构本身决定的信任模型，和分发格式无关。真正缓解这一层风险靠已规划的架构能力：
+- [sebastian/sandbox/](sebastian/sandbox/)：dynamic tool 执行时 Docker 隔离
+- Approval 机制：高危操作（文件删除、网络请求、系统命令）需要用户显式授权
+- 用户敏感数据（密码 hash / JWT secret / LLM key / 聊天历史）只存本地 `~/.sebastian/`，不外传
+
+### 11.4 用户直接 `curl | bash` 的信任问题
+这是个典型争议点。我们的应对：
+- **并列提供手动安装路径**：README 同等篇幅给出 `wget` + `shasum` + `tar` + `install.sh` 四步版本，给偏执型用户用
+- **bootstrap.sh 本身开源可读**：用户可以在执行前 `curl ... | less` 审视
+- **脚本头部打印动作清单**：在执行任何操作前先 echo "I will: 1. download ... 2. verify ... 3. extract ... 4. run install.sh"，允许 Ctrl-C 中止
+- **对比业界实践**：这就是 Rust `rustup` / Homebrew / Ollama / `nvm` 等主流工具的通行做法，信任模型已被工业界广泛接受
