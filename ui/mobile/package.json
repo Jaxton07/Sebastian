@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.96.1",
@@ -35,7 +36,8 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "react-native-svg-transformer": "^1.5.3",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.4"
   },
   "private": true
 }

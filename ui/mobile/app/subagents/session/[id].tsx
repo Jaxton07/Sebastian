@@ -14,6 +14,7 @@ import {
   getSessionDetail,
   sendTurnToSession,
 } from '../../../src/api/sessions';
+import { cancelTurn } from '../../../src/api/turns';
 import { useConversationStore } from '../../../src/store/conversation';
 import { Composer } from '../../../src/components/composer';
 import { ConversationView } from '../../../src/components/conversation';
@@ -88,14 +89,19 @@ export default function SessionDetailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const colors = useTheme();
-  const [sending, setSending] = useState(false);
   const [realSessionId, setRealSessionId] = useState<string | null>(null);
   const [todoSidebarOpen, setTodoSidebarOpen] = useState(false);
   const sendingRef = useRef(false);
   const effectiveSessionId = realSessionId || (isNewSession ? null : sessionId);
+  const sessionKey = effectiveSessionId ?? sessionId;
+  const sessionState = useConversationStore((s) => s.sessions[sessionKey]);
+  const activeTurn = sessionState?.activeTurn ?? null;
+  const isWorking = activeTurn !== null;
   const banner = useConversationStore(
-    (s) => s.sessions[effectiveSessionId ?? sessionId]?.errorBanner ?? null,
+    (s) => s.sessions[sessionKey]?.errorBanner ?? null,
   );
+  const bannerActionLabel =
+    banner?.code === 'no_llm_provider' ? '前往模型与 Provider' : '前往设置';
 
   const { data: remoteDetail } = useQuery({
     queryKey: ['session-detail', effectiveSessionId, agentName],
@@ -131,9 +137,8 @@ export default function SessionDetailScreen() {
         Alert.alert('模拟会话', '这是用于导航测试的假数据页面。');
         return;
       }
-      if (sendingRef.current) return;
+      if (sendingRef.current || isWorking) return;
       sendingRef.current = true;
-      setSending(true);
       try {
         if (isNewSession && !realSessionId) {
           const { sessionId: newId } = await createAgentSession(agentName, text, opts.effort);
@@ -161,10 +166,19 @@ export default function SessionDetailScreen() {
         Alert.alert('发送失败，请重试');
       } finally {
         sendingRef.current = false;
-        setSending(false);
       }
     },
-    [agentName, effectiveSessionId, isMockSession, isNewSession, queryClient, realSessionId, router, sessionId],
+    [
+      agentName,
+      effectiveSessionId,
+      isMockSession,
+      isNewSession,
+      isWorking,
+      queryClient,
+      realSessionId,
+      router,
+      sessionId,
+    ],
   );
 
   return (
@@ -192,16 +206,26 @@ export default function SessionDetailScreen() {
           <ConversationView
             sessionId={isMockSession ? null : effectiveSessionId}
             errorBanner={banner}
-            onBannerAction={() => router.push('/settings')}
+            bannerActionLabel={bannerActionLabel}
+            onBannerAction={() => {
+              if (banner?.code === 'no_llm_provider') {
+                router.push('/settings/providers');
+                return;
+              }
+              router.push('/settings');
+            }}
             renderScrollComponent={renderScrollComponent}
           />
 
           <KeyboardStickyView offset={stickyOffset} style={styles.stickyComposer}>
             <Composer
               sessionId={effectiveSessionId}
-              isWorking={sending}
+              isWorking={isWorking}
               onSend={handleSend}
-              onStop={async () => {}}
+              onStop={async () => {
+                if (!effectiveSessionId) return;
+                await cancelTurn(effectiveSessionId);
+              }}
             />
           </KeyboardStickyView>
         </KeyboardGestureArea>

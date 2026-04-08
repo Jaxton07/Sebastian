@@ -27,6 +27,7 @@ conversation/
 | `sessionId` | `string \| null` | 当前会话 ID |
 | `errorBanner` | `ErrorBannerType \| null` | 错误横幅，显示在列表尾部 |
 | `onBannerAction` | `() => void` | 横幅操作回调（如跳转设置） |
+| `bannerActionLabel` | `string \| undefined` | 横幅按钮文案（默认“前往设置”） |
 | `renderScrollComponent` | `(props: ScrollViewProps) => ReactElement` | 可选，注入 `KeyboardChatScrollView` 实现键盘感知滚动 |
 
 `renderScrollComponent` 由页面层传入，允许 ConversationView 在不同上下文中复用（聊天页注入 `KeyboardChatScrollView`，其他场景可省略）。

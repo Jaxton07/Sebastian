@@ -46,6 +46,17 @@ export default function ChatScreen() {
     currentSessionId ? (s.sessions[currentSessionId]?.errorBanner ?? null) : s.draftErrorBanner,
   );
 
+  function handleBannerAction() {
+    if (currentBanner?.code === 'no_llm_provider') {
+      router.push('/settings/providers');
+      return;
+    }
+    router.push('/settings');
+  }
+
+  const bannerActionLabel =
+    currentBanner?.code === 'no_llm_provider' ? '前往模型与 Provider' : '前往设置';
+
   // KeyboardStickyView offset: when keyboard opens, Composer bottom sits at keyboard top.
   // insets.bottom compensates for SafeAreaView's bottom padding (which would double-stack
   // without this offset when keyboard is visible).
@@ -174,7 +185,8 @@ export default function ChatScreen() {
               <View style={styles.emptyContainer}>
                 <ErrorBanner
                   message={currentBanner.message}
-                  onAction={() => router.push('/settings')}
+                  actionLabel={bannerActionLabel}
+                  onAction={handleBannerAction}
                 />
               </View>
             ) : (
@@ -184,7 +196,8 @@ export default function ChatScreen() {
             <ConversationView
               sessionId={currentSessionId}
               errorBanner={currentBanner}
-              onBannerAction={() => router.push('/settings')}
+              bannerActionLabel={bannerActionLabel}
+              onBannerAction={handleBannerAction}
               renderScrollComponent={renderScrollComponent}
             />
           )}

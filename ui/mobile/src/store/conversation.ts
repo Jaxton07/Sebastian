@@ -7,6 +7,7 @@ interface ConversationStore {
   sessions: Record<string, ConvSessionState>;
   draftErrorBanner: ErrorBanner | null;
 
+  reset: () => void;
   getOrInit(sessionId: string): ConvSessionState;
   setStatus(sessionId: string, status: ConvSessionState['status']): void;
   setMessages(sessionId: string, messages: ConvMessage[]): void;
@@ -77,6 +78,10 @@ function updateSession(
 export const useConversationStore = create<ConversationStore>((set, get) => ({
   sessions: {},
   draftErrorBanner: null,
+
+  reset() {
+    set({ sessions: {}, draftErrorBanner: null });
+  },
 
   getOrInit(sessionId) {
     return get().sessions[sessionId] ?? emptySession();

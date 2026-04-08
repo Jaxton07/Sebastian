@@ -27,6 +27,7 @@ interface ComposerStore {
   setEffort: (sessionId: string | null, effort: ThinkingEffort) => void;
   migrateDraftToSession: (newSessionId: string) => void;
   clearSession: (sessionId: string) => void;
+  resetServerBoundState: () => void;
   clampAllToCapability: (allowedEfforts: readonly ThinkingEffort[]) => ClampReport | null;
 }
 
@@ -82,6 +83,10 @@ export const useComposerStore = create<ComposerStore>()(
           delete next[sessionId];
           return { effortBySession: next };
         });
+      },
+
+      resetServerBoundState() {
+        set({ effortBySession: {} });
       },
 
       clampAllToCapability(allowedEfforts) {
