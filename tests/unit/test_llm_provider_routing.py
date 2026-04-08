@@ -131,3 +131,53 @@ async def test_base_agent_run_streaming_uses_injected_llm_registry() -> None:
     result = await agent.run("hello", session_id="sess-h9")
     assert result == "hi"
     mock_registry.get_provider.assert_awaited_once_with("code")
+
+
+@pytest.mark.asyncio
+async def test_registry_passes_thinking_capability_to_provider() -> None:
+    from unittest.mock import MagicMock
+    from sebastian.llm.registry import LLMProviderRegistry
+    from sebastian.store.models import LLMProviderRecord
+
+    record = LLMProviderRecord(
+        name="test", provider_type="anthropic", api_key_enc="",
+        model="claude-opus-4-6", thinking_capability="adaptive",
+    )
+    registry = LLMProviderRegistry(db_factory=MagicMock())
+
+    import sebastian.llm.crypto as crypto
+    original_decrypt = crypto.decrypt
+    crypto.decrypt = lambda _enc: "fake-key"
+    try:
+        provider = registry._instantiate(record)
+    finally:
+        crypto.decrypt = original_decrypt
+
+    from sebastian.llm.anthropic import AnthropicProvider
+    assert isinstance(provider, AnthropicProvider)
+    assert provider._capability == "adaptive"
+
+
+@pytest.mark.asyncio
+async def test_registry_passes_thinking_capability_to_openai_provider() -> None:
+    from unittest.mock import MagicMock
+    from sebastian.llm.registry import LLMProviderRegistry
+    from sebastian.store.models import LLMProviderRecord
+
+    record = LLMProviderRecord(
+        name="test", provider_type="openai", api_key_enc="",
+        model="o3", thinking_format=None, thinking_capability="effort",
+    )
+    registry = LLMProviderRegistry(db_factory=MagicMock())
+
+    import sebastian.llm.crypto as crypto
+    original_decrypt = crypto.decrypt
+    crypto.decrypt = lambda _enc: "fake-key"
+    try:
+        provider = registry._instantiate(record)
+    finally:
+        crypto.decrypt = original_decrypt
+
+    from sebastian.llm.openai_compat import OpenAICompatProvider
+    assert isinstance(provider, OpenAICompatProvider)
+    assert provider._capability == "effort"

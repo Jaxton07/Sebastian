@@ -120,7 +120,11 @@ class LLMProviderRegistry:
         if record.provider_type == "anthropic":
             from sebastian.llm.anthropic import AnthropicProvider
 
-            return AnthropicProvider(api_key=plain_key, base_url=record.base_url)
+            return AnthropicProvider(
+                api_key=plain_key,
+                base_url=record.base_url,
+                thinking_capability=record.thinking_capability,
+            )
         if record.provider_type == "openai":
             from sebastian.llm.openai_compat import OpenAICompatProvider
 
@@ -128,6 +132,7 @@ class LLMProviderRegistry:
                 api_key=plain_key,
                 base_url=record.base_url,
                 thinking_format=record.thinking_format,
+                thinking_capability=record.thinking_capability,
             )
         raise ValueError(f"Unknown provider_type: {record.provider_type!r}")
 
