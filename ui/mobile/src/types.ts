@@ -104,7 +104,8 @@ export type SSEEventType =
   | 'tool.failed'
   | 'session.completed'
   | 'session.failed'
-  | 'session.stalled';
+  | 'session.stalled'
+  | 'todo.updated';
 
 export interface SSEEvent<T = unknown> {
   type: SSEEventType;

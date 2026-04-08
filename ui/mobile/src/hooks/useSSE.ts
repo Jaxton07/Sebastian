@@ -51,6 +51,12 @@ export function useSSE(options?: UseSSEOptions) {
     } else if (event.type === 'user.intervened') {
       queryClient.invalidateQueries({ queryKey: ['session-detail'] });
       queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
+    } else if (event.type === 'todo.updated') {
+      const data = event.data as { session_id?: string };
+      const sessionId = data?.session_id;
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: ['session-todos', sessionId] });
+      }
     }
   }
 
