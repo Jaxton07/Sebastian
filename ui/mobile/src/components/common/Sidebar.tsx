@@ -6,90 +6,77 @@ import { useTheme } from '../../theme/ThemeContext';
 const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.75;
 const SWIPE_THRESHOLD = 50;
 
+type Side = 'left' | 'right';
+
 interface Props {
   visible: boolean;
   onOpen: () => void;
   onClose: () => void;
   children: React.ReactNode;
+  side?: Side;
 }
 
-export function Sidebar({ visible, onOpen, onClose, children }: Props) {
+export function Sidebar({ visible, onClose, children, side = 'left' }: Props) {
   const colors = useTheme();
-  const translateX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
+  const hiddenX = side === 'left' ? -SIDEBAR_WIDTH : SIDEBAR_WIDTH;
+  const translateX = useRef(new Animated.Value(hiddenX)).current;
 
   useEffect(() => {
     Animated.timing(translateX, {
-      toValue: visible ? 0 : -SIDEBAR_WIDTH,
+      toValue: visible ? 0 : hiddenX,
       duration: 250,
       useNativeDriver: true,
     }).start();
-  }, [visible]);
-
-  function handleEdgeGesture({ nativeEvent }: any) {
-    if (nativeEvent.state === State.END && nativeEvent.translationX > SWIPE_THRESHOLD) {
-      onOpen();
-    }
-  }
+  }, [visible, hiddenX]);
 
   function handleSidebarGesture({ nativeEvent }: any) {
-    if (nativeEvent.state === State.END && nativeEvent.translationX < -SWIPE_THRESHOLD) {
+    if (nativeEvent.state !== State.END) return;
+    // Close gesture: left sidebar closes on left swipe, right sidebar closes on right swipe
+    if (side === 'left' && nativeEvent.translationX < -SWIPE_THRESHOLD) {
+      onClose();
+    } else if (side === 'right' && nativeEvent.translationX > SWIPE_THRESHOLD) {
       onClose();
     }
   }
 
+  const panelStyle = [
+    styles.sidebarBase,
+    side === 'left' ? styles.sidebarLeft : styles.sidebarRight,
+    {
+      transform: [{ translateX }],
+      backgroundColor: colors.secondaryBackground,
+      shadowOffset: { width: side === 'left' ? 2 : -2, height: 0 },
+    },
+  ];
+
   return (
-    <View
-      style={[StyleSheet.absoluteFill, { pointerEvents: visible ? 'auto' : 'box-none' }]}
-    >
-      {/* Overlay: 点击右侧区域关闭 */}
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: visible ? 'auto' : 'box-none' }]}>
       <TouchableOpacity
         style={[styles.overlay, { display: visible ? 'flex' : 'none', backgroundColor: colors.overlay }]}
         activeOpacity={1}
         onPress={onClose}
       />
-
-      {/* 侧边栏面板：左滑关闭 */}
       <PanGestureHandler onHandlerStateChange={handleSidebarGesture} enabled={visible}>
-        <Animated.View
-          collapsable={false}
-          style={[styles.sidebar, { transform: [{ translateX }], backgroundColor: colors.secondaryBackground }]}
-          pointerEvents={visible ? 'auto' : 'none'}
-        >
+        <Animated.View collapsable={false} style={panelStyle} pointerEvents={visible ? 'auto' : 'none'}>
           {children}
         </Animated.View>
       </PanGestureHandler>
-
-      {/* 左边缘触发区：右滑开启（仅在关闭状态渲染） */}
-      {!visible && (
-        <PanGestureHandler onHandlerStateChange={handleEdgeGesture}>
-          <View style={styles.edgeTrigger} />
-        </PanGestureHandler>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sidebar: {
+  overlay: { ...StyleSheet.absoluteFillObject },
+  sidebarBase: {
     position: 'absolute',
-    left: 0,
     top: 0,
     bottom: 0,
     width: SIDEBAR_WIDTH,
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 8,
   },
-  edgeTrigger: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 25,
-  },
+  sidebarLeft: { left: 0 },
+  sidebarRight: { right: 0 },
 });
