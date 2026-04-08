@@ -154,7 +154,7 @@ def test_send_turn_to_sebastian_session_runs_background_stream(client):
     assert "ts" in payload
     assert "response" not in payload
     assert len(scheduled_coroutines) == 1
-    mock_run_streaming.assert_called_once_with("Continue the conversation", session.id)
+    mock_run_streaming.assert_called_once_with("Continue the conversation", session.id, thinking_effort=None)
     assert mock_run_streaming.await_count == 0
 
 
@@ -352,3 +352,51 @@ def test_post_cancel_idle_session_returns_404(client) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
+
+
+def test_sub_agent_turns_accepts_thinking_effort(client) -> None:
+    """Test that POST /sessions/{id}/turns accepts thinking_effort for sub-agents."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    import sebastian.gateway.state as state
+    from sebastian.core.types import Session
+
+    http_client, _, _ = client
+    token = _login(http_client)
+
+    # Get first available agent from agent_instances
+    sub_agent_type = next(iter(state.agent_instances.keys()))
+    original_instances = dict(state.agent_instances)
+
+    # Create a mock agent with tracking
+    mock_agent = _AsyncMock()
+    mock_agent.run_streaming = _AsyncMock(return_value="Agent reply")
+    state.agent_instances[sub_agent_type] = mock_agent
+
+    try:
+        # Create a real session
+        session = Session(agent_type=sub_agent_type, agent_id=f"{sub_agent_type}_01", title="Test session")
+        _store_session(session)
+
+        scheduled_coroutines = []
+
+        with patch(
+            "sebastian.gateway.routes.sessions.asyncio.create_task",
+            side_effect=_capture_background_task(scheduled_coroutines),
+        ):
+            resp = http_client.post(
+                f"/api/v1/sessions/{session.id}/turns",
+                json={"content": "follow up", "thinking_effort": "medium"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert len(scheduled_coroutines) == 1
+        # Check that run_streaming was called with thinking_effort
+        mock_agent.run_streaming.assert_called_once_with(
+            "follow up", session.id, thinking_effort="medium"
+        )
+    finally:
+        # Restore original
+        state.agent_instances.clear()
+        state.agent_instances.update(original_instances)
