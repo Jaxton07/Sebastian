@@ -38,6 +38,34 @@ llm/
 | `"reasoning_content"` | DeepSeek-R1：`delta.reasoning_content` 字段 |
 | `"think_tags"` | llama.cpp 等：响应文本内嵌 `<think>...</think>` |
 
+## thinking_capability
+
+与 `thinking_format`（解析返回）正交，`thinking_capability` 描述 Provider 如何**发起**思考请求，值为：
+
+| 值 | 含义 | 可选 effort | 请求行为 |
+|---|---|---|---|
+| `none` | 不支持思考控制 | — | 不传任何 thinking 参数 |
+| `toggle` | 只支持开关二态 | off / on | `thinking={"type":"enabled"}`（Anthropic 路径）；OpenAI 路径 no-op |
+| `effort` | 4 档 | off / low / medium / high | Anthropic 旧版 `thinking={"type":"enabled","budget_tokens":N}`；OpenAI `reasoning_effort=...` |
+| `adaptive` | Anthropic Adaptive Thinking | off / low / medium / high / max | `thinking={"type":"adaptive"}` + `output_config={"effort":...}` |
+| `always_on` | 模型必然思考 | —（UI 固定）| 不传参数，解析侧由 `thinking_format` 决定 |
+
+典型组合：
+
+| 模型 | provider_type | thinking_capability | thinking_format |
+|---|---|---|---|
+| Claude Opus 4.6 / Sonnet 4.6 | anthropic | adaptive | None |
+| Claude 3.7 Sonnet | anthropic | effort | None |
+| 第三方 Anthropic-format 代理 | anthropic | toggle | None |
+| OpenAI o3 / o4 | openai | effort | None |
+| GPT-4o | openai | none | None |
+| DeepSeek-R1 | openai | always_on | reasoning_content |
+| llama.cpp Qwen `<think>` | openai | always_on | think_tags |
+
+**注意**：`OpenAICompatProvider` 收到 `capability=toggle` 时默认 no-op。OpenAI 兼容接口没有统一的"布尔 thinking"字段标准，若将来需要支持具体某个后端，再在 `openai_compat.py` 加分支。
+
+Anthropic 旧版 effort 模式的 budget_tokens 映射写在 `AnthropicProvider.FIXED_EFFORT_TO_BUDGET` 常量表里（low=2048 / medium=8192 / high=24576）。budget_tokens 必须小于 max_tokens，超出时自动 clamp 到 `max(1024, max_tokens - 1)`；如果连 1024 都放不下则禁用 thinking。
+
 ## 修改导航
 
 | 如果要修改… | 看这里 |
@@ -45,6 +73,7 @@ llm/
 | 新增 Provider（如 Google Gemini） | 继承 [provider.py](provider.py) 的 `LLMProvider`，声明 `message_format`，在 [registry.py](registry.py) 的 `_instantiate()` 注册 `provider_type` |
 | Anthropic streaming 行为 / thinking block | [anthropic.py](anthropic.py) |
 | OpenAI 兼容模型适配 / thinking_format | [openai_compat.py](openai_compat.py) |
+| 调整 thinking_capability 翻译规则 / budget 默认值 | [anthropic.py](anthropic.py) 的 `_build_thinking_kwargs` 与 `FIXED_EFFORT_TO_BUDGET` / [openai_compat.py](openai_compat.py) |
 | 切换默认模型 | [registry.py](registry.py)，更新 DB 中 `is_default=True` 的 `LLMProviderRecord`，或修改 `settings.sebastian_model` |
 | Provider 抽象接口定义 | [provider.py](provider.py) 的 `stream()` 签名和 `message_format` |
 | 调试 Provider 流式输出 | 在 [provider.py](provider.py) 的 `stream()` 加日志，事件由 `AgentLoop` 消费 |
