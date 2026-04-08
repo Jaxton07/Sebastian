@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
-import type { LLMProviderType } from '../types';
+import type { LLMProviderType, ThinkingCapability } from '../types';
 
 const KEYS = {
   serverUrl: 'settings_server_url',
@@ -20,12 +20,14 @@ interface SettingsState {
   jwtToken: string | null;
   llmProvider: LocalLLMConfig | null;
   themeMode: 'system' | 'light' | 'dark';
+  currentThinkingCapability: ThinkingCapability | null;
   isLoaded: boolean;
   load: () => Promise<void>;
   setServerUrl: (url: string) => Promise<void>;
   setJwtToken: (token: string | null) => Promise<void>;
   setLlmProvider: (provider: LocalLLMConfig) => Promise<void>;
   setThemeMode: (mode: 'system' | 'light' | 'dark') => Promise<void>;
+  setCurrentThinkingCapability: (cap: ThinkingCapability | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -33,6 +35,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   jwtToken: null,
   llmProvider: null,
   themeMode: 'system',
+  currentThinkingCapability: null,
   isLoaded: false,
 
   load: async () => {
@@ -78,5 +81,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setThemeMode: async (mode) => {
     await SecureStore.setItemAsync(KEYS.themeMode, mode);
     set({ themeMode: mode });
+  },
+
+  setCurrentThinkingCapability(cap) {
+    set({ currentThinkingCapability: cap });
   },
 }));
