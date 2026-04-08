@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
   StyleSheet,
+  ToastAndroid,
 } from 'react-native';
 import { useLLMProvidersStore } from '../../store/llmProviders';
 import { useSettingsStore } from '../../store/settings';
@@ -204,16 +206,29 @@ export function LLMProviderConfig() {
     if (jwtToken) fetch();
   }, [jwtToken]);
 
+  function notifyClamped(from: string, to: string) {
+    const msg = `${from} 在新模型下不可用，已切换为 ${to}`;
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(msg, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('思考档位已调整', msg);
+    }
+  }
+
   async function handleCreate(data: LLMProviderCreate) {
     await create(data);
-    await syncCurrentThinkingCapability();
+    await syncCurrentThinkingCapability((report) =>
+      notifyClamped(report.from, report.to),
+    );
     setShowForm(false);
   }
 
   async function handleUpdate(data: LLMProviderCreate) {
     if (!editing) return;
     await update(editing.id, data);
-    await syncCurrentThinkingCapability();
+    await syncCurrentThinkingCapability((report) =>
+      notifyClamped(report.from, report.to),
+    );
     setEditing(null);
   }
 

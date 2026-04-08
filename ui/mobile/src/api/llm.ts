@@ -1,8 +1,9 @@
 import { apiClient } from './client';
-import type { ThinkingCapability, ThinkingEffort } from '../types';
+import type { ThinkingCapability } from '../types';
 import { EFFORT_LEVELS_BY_CAPABILITY } from '../types';
 import { useSettingsStore } from '../store/settings';
 import { useComposerStore } from '../store/composer';
+import type { ClampReport } from '../store/composer';
 
 export interface LLMProviderRecord {
   id: string;
@@ -25,7 +26,7 @@ export async function fetchProviders(): Promise<LLMProviderRecord[]> {
 }
 
 export async function syncCurrentThinkingCapability(
-  onClamped?: (from: ThinkingEffort, to: ThinkingEffort) => void,
+  onClamped?: (report: ClampReport) => void,
 ): Promise<void> {
   const providers = await fetchProviders();
   const defaultProvider = providers.find((p) => p.is_default) ?? null;
@@ -35,10 +36,9 @@ export async function syncCurrentThinkingCapability(
 
   if (capability) {
     const allowed = EFFORT_LEVELS_BY_CAPABILITY[capability];
-    const changedFrom = useComposerStore.getState().clampAllToCapability(allowed);
-    if (changedFrom && onClamped) {
-      const after = useComposerStore.getState().lastUserChoice;
-      onClamped(changedFrom, after);
+    const report = useComposerStore.getState().clampAllToCapability(allowed);
+    if (report && onClamped) {
+      onClamped(report);
     }
   }
 }

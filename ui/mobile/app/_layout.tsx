@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState, Platform, ToastAndroid } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -66,7 +66,14 @@ function AppInit({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!jwtToken) return;
-    void syncCurrentThinkingCapability().catch(() => {
+    void syncCurrentThinkingCapability((report) => {
+      const msg = `${report.from} 在新模型下不可用，已切换为 ${report.to}`;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      } else {
+        Alert.alert('思考档位已调整', msg);
+      }
+    }).catch(() => {
       // 拉失败时 currentThinkingCapability 保持 null，UI 按 disabled 兜底
     });
   }, [jwtToken]);
