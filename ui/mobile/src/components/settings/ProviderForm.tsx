@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { syncCurrentThinkingCapability } from '@/src/api/llm';
+import { EyeCloseIcon, EyeOpenIcon } from '@/src/components/common/Icons';
 import { useTheme } from '@/src/theme/ThemeContext';
 import type {
   LLMProvider,
@@ -72,6 +73,7 @@ export const ProviderForm = forwardRef<ProviderFormHandle, Props>(function Provi
     initial?.provider_type ?? 'anthropic',
   );
   const [apiKey, setApiKey] = useState(initial?.api_key ?? '');
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [model, setModel] = useState(initial?.model ?? '');
   const [baseUrl, setBaseUrl] = useState(initial?.base_url ?? '');
   const [isDefault, setIsDefault] = useState(initial?.is_default ?? false);
@@ -170,25 +172,39 @@ export const ProviderForm = forwardRef<ProviderFormHandle, Props>(function Provi
         </View>
       </SectionCard>
 
-      <SectionCard title="连接配置" description="填写鉴权信息和可选的自定义接入地址。">
+      <SectionCard title="连接配置" description="填写鉴权信息和服务接入地址。">
         <Text style={[styles.label, { color: colors.textSecondary }]}>API Key</Text>
-        <TextInput
+        <View
           style={[
-            styles.input,
-            styles.elevatedInput,
+            styles.inputShell,
             {
               backgroundColor: colors.secondaryBackground,
               borderColor: colors.border,
-              color: colors.text,
             },
           ]}
-          value={apiKey}
-          onChangeText={setApiKey}
-          placeholder="sk-..."
-          placeholderTextColor={colors.textSecondary}
-          secureTextEntry
-          autoCapitalize="none"
-        />
+        >
+          <TextInput
+            style={[styles.input, styles.inputWithAccessory, { color: colors.text }]}
+            value={apiKey}
+            onChangeText={setApiKey}
+            placeholder="sk-..."
+            placeholderTextColor={colors.textSecondary}
+            secureTextEntry={!apiKeyVisible}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity
+            style={styles.inputAccessory}
+            onPress={() => setApiKeyVisible((value) => !value)}
+            hitSlop={8}
+            activeOpacity={0.7}
+          >
+            {apiKeyVisible ? (
+              <EyeOpenIcon size={18} color={colors.textSecondary} />
+            ) : (
+              <EyeCloseIcon size={18} color={colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </View>
 
         <Text style={[styles.label, { color: colors.textSecondary }]}>Base URL</Text>
         <TextInput
@@ -337,6 +353,24 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     fontSize: 17,
+  },
+  inputShell: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputWithAccessory: {
+    flex: 1,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    paddingRight: 4,
+  },
+  inputAccessory: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   elevatedInput: {
     borderWidth: 1,

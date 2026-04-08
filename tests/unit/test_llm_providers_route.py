@@ -7,8 +7,10 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
+from sebastian.llm.crypto import encrypt
 from sebastian.gateway.routes.llm_providers import (
     LLMProviderUpdate,
+    _record_to_dict,
     update_llm_provider,
 )
 
@@ -19,7 +21,8 @@ def _make_record(**overrides: Any) -> SimpleNamespace:
         "id": "p1",
         "name": "anthropic",
         "provider_type": "anthropic",
-        "base_url": None,
+        "base_url": "https://api.example.com/v1",
+        "api_key_enc": encrypt("sk-test"),
         "model": "claude-sonnet-4-6",
         "thinking_format": None,
         "thinking_capability": "effort",
@@ -49,7 +52,10 @@ async def test_put_provider_clears_thinking_capability_with_explicit_null(
         state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
     )
 
-    body = LLMProviderUpdate(thinking_capability=None)
+    body = LLMProviderUpdate(
+        thinking_capability=None,
+        base_url="https://api.example.com/v1",
+    )
     result = await update_llm_provider("p1", body=body, _auth={})
 
     assert "thinking_capability" in captured["kwargs"]
@@ -75,16 +81,11 @@ async def test_put_provider_omitted_field_not_updated(
     )
 
     body = LLMProviderUpdate(name="updated")
-    await update_llm_provider("p1", body=body, _auth={})
+    with pytest.raises(HTTPException) as exc_info:
+        await update_llm_provider("p1", body=body, _auth={})
 
-    assert "name" in captured["kwargs"]
-    assert captured["kwargs"]["name"] == "updated"
-    assert "thinking_capability" not in captured["kwargs"]
-    assert "base_url" not in captured["kwargs"]
-    assert "thinking_format" not in captured["kwargs"]
-    assert "is_default" not in captured["kwargs"]
-    assert "model" not in captured["kwargs"]
-    assert "api_key_enc" not in captured["kwargs"]
+    assert exc_info.value.status_code == 400
+    assert "base_url" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
@@ -127,12 +128,41 @@ async def test_put_provider_api_key_encrypted_when_provided(
         state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
     )
 
-    body = LLMProviderUpdate(api_key="sk-new-key")
+    body = LLMProviderUpdate(api_key="sk-new-key", base_url="https://api.example.com/v1")
     await update_llm_provider("p1", body=body, _auth={})
 
     assert "api_key_enc" in captured["kwargs"]
     assert captured["kwargs"]["api_key_enc"] != "sk-new-key"  # encrypted
     assert "api_key" not in captured["kwargs"]
+
+
+@pytest.mark.asyncio
+async def test_put_provider_updates_name_without_touching_omitted_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_update(pid: str, **kwargs: Any) -> SimpleNamespace:
+        captured["kwargs"] = kwargs
+        return _make_record(name=kwargs.get("name", "anthropic"), base_url=kwargs["base_url"])
+
+    import sebastian.gateway.state as state
+
+    monkeypatch.setattr(
+        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
+    )
+
+    body = LLMProviderUpdate(name="updated", base_url="https://api.example.com/v1")
+    await update_llm_provider("p1", body=body, _auth={})
+
+    assert "name" in captured["kwargs"]
+    assert captured["kwargs"]["name"] == "updated"
+    assert captured["kwargs"]["base_url"] == "https://api.example.com/v1"
+    assert "thinking_capability" not in captured["kwargs"]
+    assert "thinking_format" not in captured["kwargs"]
+    assert "is_default" not in captured["kwargs"]
+    assert "model" not in captured["kwargs"]
+    assert "api_key_enc" not in captured["kwargs"]
 
 
 @pytest.mark.parametrize("field", ["name", "api_key", "model", "base_url", "is_default"])
@@ -152,9 +182,18 @@ async def test_put_provider_rejects_null_on_required_fields(
         state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
     )
 
-    body = LLMProviderUpdate(**{field: None})
+    body = LLMProviderUpdate(
+        **{field: None, **({"base_url": "https://api.example.com/v1"} if field != "base_url" else {})}
+    )
     with pytest.raises(HTTPException) as exc_info:
         await update_llm_provider("p1", body=body, _auth={})
 
     assert exc_info.value.status_code == 400
     assert field in exc_info.value.detail
+
+
+def test_record_to_dict_includes_decrypted_api_key() -> None:
+    record = _make_record(api_key_enc=encrypt("secret-key"))
+    result = _record_to_dict(record)
+
+    assert result["api_key"] == "secret-key"

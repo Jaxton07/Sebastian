@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from sebastian.gateway.auth import require_auth
+from sebastian.llm.crypto import decrypt
 
 router = APIRouter(tags=["llm-providers"])
 
@@ -39,6 +40,7 @@ def _record_to_dict(record: Any) -> dict[str, Any]:
         "name": record.name,
         "provider_type": record.provider_type,
         "base_url": record.base_url,
+        "api_key": decrypt(record.api_key_enc),
         "model": record.model,
         "thinking_format": record.thinking_format,
         "thinking_capability": record.thinking_capability,
@@ -91,6 +93,8 @@ async def update_llm_provider(
     from sebastian.llm.crypto import encrypt
 
     data = body.model_dump(exclude_unset=True)
+    if "base_url" not in data:
+        raise HTTPException(status_code=400, detail="base_url is required")
     # nullable=False 的列不允许显式清空
     for required_field in ("name", "api_key", "model", "base_url", "is_default"):
         if required_field in data and data[required_field] is None:

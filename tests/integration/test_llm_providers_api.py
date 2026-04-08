@@ -81,6 +81,7 @@ def test_create_provider_with_thinking_capability(client) -> None:
     )
     assert resp.status_code == 201
     data = resp.json()
+    assert data["api_key"] == "sk-ant-fake"
     assert data["thinking_capability"] == "adaptive"
 
     list_resp = http_client.get(
@@ -89,6 +90,7 @@ def test_create_provider_with_thinking_capability(client) -> None:
     assert list_resp.status_code == 200
     providers = list_resp.json()["providers"]
     created = next(p for p in providers if p["id"] == data["id"])
+    assert created["api_key"] == "sk-ant-fake"
     assert created["thinking_capability"] == "adaptive"
 
 
@@ -111,10 +113,11 @@ def test_update_provider_thinking_capability(client) -> None:
 
     upd = http_client.put(
         f"/api/v1/llm-providers/{pid}",
-        json={"thinking_capability": "effort"},
+        json={"thinking_capability": "effort", "base_url": "https://api.openai.com/v1"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upd.status_code == 200
+    assert upd.json()["api_key"] == "sk-fake"
     assert upd.json()["thinking_capability"] == "effort"
 
 
@@ -195,7 +198,7 @@ def test_update_provider_to_default_unsets_previous_default(client) -> None:
 
     update_resp = http_client.put(
         f"/api/v1/llm-providers/{second.json()['id']}",
-        json={"is_default": True},
+        json={"is_default": True, "base_url": "https://api.openai.com/v1"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert update_resp.status_code == 200
@@ -234,7 +237,7 @@ def test_put_provider_clears_thinking_capability_with_explicit_null(client) -> N
 
     upd = http_client.put(
         f"/api/v1/llm-providers/{pid}",
-        json={"thinking_capability": None},
+        json={"thinking_capability": None, "base_url": "https://api.anthropic.com"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upd.status_code == 200
@@ -270,7 +273,7 @@ def test_put_provider_omitted_field_preserves_value(client) -> None:
 
     upd = http_client.put(
         f"/api/v1/llm-providers/{pid}",
-        json={"name": "PreserveRenamed"},
+        json={"name": "PreserveRenamed", "base_url": "https://api.anthropic.com"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upd.status_code == 200
@@ -304,7 +307,7 @@ def test_put_provider_rejects_explicit_null_on_required_fields(
 
     upd = http_client.put(
         f"/api/v1/llm-providers/{pid}",
-        json={field: None},
+        json={field: None, **({"base_url": "https://api.anthropic.com"} if field != "base_url" else {})},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upd.status_code == 400
@@ -327,3 +330,28 @@ def test_create_provider_requires_base_url(client) -> None:
 
     assert resp.status_code == 422
     assert "base_url" in resp.text
+
+
+def test_update_provider_requires_base_url(client) -> None:
+    http_client, token = client
+
+    create = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "Need Base URL On Edit",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-fake",
+            "model": "claude-opus-4-6",
+            "base_url": "https://api.anthropic.com",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+
+    upd = http_client.put(
+        f"/api/v1/llm-providers/{create.json()['id']}",
+        json={"name": "Rename Only"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upd.status_code == 400
+    assert "base_url" in upd.json()["detail"]
