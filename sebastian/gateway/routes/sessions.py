@@ -293,6 +293,32 @@ async def list_session_tasks(
     return {"tasks": [task.model_dump(mode="json") for task in tasks]}
 
 
+@router.get("/sessions/{session_id}/todos")
+async def list_session_todos(
+    session_id: str,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    import json as _json
+
+    import sebastian.gateway.state as state
+
+    session = await _resolve_session(state, session_id)
+    todos = await state.todo_store.read(session.agent_type, session_id)
+
+    path = state.todo_store._todos_path(session.agent_type, session_id)
+    updated_at: str | None = None
+    if path.exists():
+        try:
+            updated_at = _json.loads(path.read_text(encoding="utf-8")).get("updated_at")
+        except (OSError, ValueError):
+            updated_at = None
+
+    return {
+        "todos": [t.model_dump(mode="json", by_alias=True) for t in todos],
+        "updated_at": updated_at,
+    }
+
+
 @router.get("/sessions/{session_id}/tasks/{task_id}")
 async def get_session_task(
     session_id: str,
