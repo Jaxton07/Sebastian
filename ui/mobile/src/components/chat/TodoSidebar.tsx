@@ -27,18 +27,18 @@ export function TodoSidebar({ sessionId, agentType }: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.secondaryBackground }]} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>任务</Text>
+        <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>Tasks</Text>
         {tasks.length === 0 ? (
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>暂无任务</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No tasks yet</Text>
         ) : (
           tasks.map((task) => <TaskRow key={task.id} task={task} />)
         )}
 
         <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
 
-        <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>待办</Text>
+        <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>Todos</Text>
         {todos.length === 0 ? (
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>暂无待办</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No todos yet</Text>
         ) : (
           todos.map((todo, idx) => <TodoRow key={idx} todo={todo} />)
         )}
