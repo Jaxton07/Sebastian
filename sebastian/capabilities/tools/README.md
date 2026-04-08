@@ -24,6 +24,8 @@ tools/
 │   └── __init__.py      # @tool: file_grep
 ├── read/                # 文件读取工具（permission_tier: LOW）
 │   └── __init__.py      # @tool: file_read
+├── todo_write/          # Session 级 todo 列表覆盖式写入工具（permission_tier: LOW）
+│   └── __init__.py      # @tool: todo_write
 └── write/               # 文件写入工具，含 mtime 保护（permission_tier: MODEL_DECIDES）
     └── __init__.py      # @tool: file_write
 ```
@@ -41,6 +43,7 @@ tools/
 | 文件模式匹配工具 | [glob/\_\_init\_\_.py](glob/__init__.py) |
 | 文件内容搜索工具 | [grep/\_\_init\_\_.py](grep/__init__.py) |
 | 文件读取工具 | [read/\_\_init\_\_.py](read/__init__.py) |
+| Todo 列表写入工具 | [todo_write/\_\_init\_\_.py](todo_write/__init__.py) |
 | 文件写入工具 | [write/\_\_init\_\_.py](write/__init__.py) |
 
 ## ToolResult 规范

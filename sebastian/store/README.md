@@ -17,6 +17,7 @@ store/
 ├── index_store.py       # 轻量级 index.json 维护 session 元数据快速查询，原子写入防并发损坏
 ├── event_log.py         # EventLog：将 Event 对象追加写入 SQLite events 表，用于历史查询
 ├── task_store.py        # Task 级别的 SQLite 辅助写入（补充 session_store 的文件存储）
+├── todo_store.py        # per-session todos.json 原子读写（LLM 维护的 todo 列表）
 └── migrations/
     └── __init__.py      # Alembic 迁移脚本目录（schema 变更在此新增 migration）
 ```
@@ -28,6 +29,7 @@ SEBASTIAN_DATA_DIR/sessions/
   <agent_type>/<session_id>/   # agent_type 例如 sebastian、code
     session.json               # Session 元数据
     tasks/<task_id>.json       # Task 数据（每个 task 独立文件）
+    todos.json                 # LLM 维护的 todo 列表（覆盖式写入）
   index.json                   # 全局 session 元数据索引（由 IndexStore 维护）
 ```
 
@@ -43,6 +45,7 @@ SEBASTIAN_DATA_DIR/sessions/
 | 数据库 schema 变更 | [models.py](models.py) 修改 ORM + [migrations/](migrations/) 新增 Alembic migration |
 | SQLAlchemy engine / session factory | [database.py](database.py) |
 | Task SQLite 辅助写入 | [task_store.py](task_store.py) |
+| Todo 列表读写 | [todo_store.py](todo_store.py) |
 
 ## 公开接口（其他模块如何使用）
 
