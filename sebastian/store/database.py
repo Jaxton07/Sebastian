@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -44,4 +45,23 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _apply_idempotent_migrations(conn)
     logger.info("Database initialized")
+
+
+async def _apply_idempotent_migrations(conn: Any) -> None:
+    """Apply best-effort schema patches for columns added after initial create_all.
+
+    Each entry: (table, column, DDL fragment). SQLite only.
+    """
+    patches: list[tuple[str, str, str]] = [
+        ("llm_providers", "thinking_capability", "VARCHAR(20)"),
+    ]
+    for table, column, ddl in patches:
+        result = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
+        existing = {row[1] for row in result.fetchall()}
+        if column not in existing:
+            await conn.exec_driver_sql(
+                f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
+            )
+            logger.info("Applied migration: %s.%s", table, column)
