@@ -66,6 +66,9 @@ class EventType(StrEnum):
     TURN_RESPONSE = "turn.response"
     TURN_CANCELLED = "turn.cancelled"
 
+    # Todo lifecycle
+    TODO_UPDATED = "todo.updated"
+
 
 class Event(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
