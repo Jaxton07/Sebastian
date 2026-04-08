@@ -179,3 +179,34 @@ def test_put_provider_omitted_field_preserves_value(client) -> None:
     body = upd.json()
     assert body["name"] == "PreserveRenamed"
     assert body["thinking_capability"] == "effort"
+
+
+@pytest.mark.parametrize("field", ["name", "api_key", "model", "is_default"])
+def test_put_provider_rejects_explicit_null_on_required_fields(
+    client,
+    field: str,
+) -> None:
+    """nullable=False 的列显式传 null 应返回 400，而不是 500。"""
+    http_client, token = client
+
+    create = http_client.post(
+        "/api/v1/llm-providers",
+        json={
+            "name": "NullGuard",
+            "provider_type": "anthropic",
+            "api_key": "sk-ant-fake",
+            "model": "claude-opus-4-6",
+            "thinking_capability": "effort",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    pid = create.json()["id"]
+
+    upd = http_client.put(
+        f"/api/v1/llm-providers/{pid}",
+        json={field: None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upd.status_code == 400
+    assert field in upd.json()["detail"]

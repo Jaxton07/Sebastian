@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     # LLM model selection
     sebastian_model: str = "claude-opus-4-6"
 
-    # LLM max tokens per request (spec: 16000)
-    llm_max_tokens: int = 16000
+    # LLM max tokens per request
+    # 32000 覆盖 Anthropic effort capability 下 high 档位 budget=24576 + 足够正文空间
+    llm_max_tokens: int = 32000
 
     # Logging toggles (initial state; can be changed at runtime via API)
     sebastian_log_llm_stream: bool = False

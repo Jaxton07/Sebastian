@@ -49,7 +49,12 @@ class AnthropicProvider(LLMProvider):
     ) -> dict[str, Any]:
         """Translate (capability, effort) -> SDK kwargs fragment.
 
-        Returns empty dict when no thinking should be enabled.
+        Returns empty dict when no thinking should be enabled (capability
+        is none/always_on/unset, or effort is off/None, or toggle=off).
+
+        Raises ValueError for ``capability='effort'`` when:
+          - thinking_effort 不在 low/medium/high 中（快速失败，不静默降级）
+          - FIXED_EFFORT_TO_BUDGET[effort] >= max_tokens（预算无法容纳思考+正文）
         """
         capability = getattr(self, '_capability', None)
 

@@ -205,12 +205,17 @@ async def test_openai_effort_plus_reasoning_content_combo() -> None:
     assert "TextDelta" in types
     assert "TextBlockStop" in types
 
-    # Order: thinking fully emitted before text block starts
+    # Order: thinking must START before text starts (reasoning chunks arrive first).
+    # ThinkingBlockStop 由 provider 在流结束后 flush 阶段统一发出（见
+    # openai_compat.py 的 "Flush open text/thinking blocks" 段），
+    # 因此 stop 事件位于所有 delta 之后、TextBlockStop 之前。
     think_start = types.index("ThinkingBlockStart")
-    think_stop = types.index("ThinkingBlockStop")
     text_start = types.index("TextBlockStart")
-    assert think_start < think_stop
-    assert think_stop > text_start or think_start < text_start  # think started first
+    think_stop = types.index("ThinkingBlockStop")
+    text_stop_idx = types.index("TextBlockStop")
+    assert think_start < text_start, "thinking must begin before text begins"
+    assert think_stop > text_start, "thinking stop is emitted in flush phase"
+    assert think_stop < text_stop_idx, "thinking stop flushed before text stop"
 
     # Verify accumulated thinking text
     stop_ev = next(ev for ev in events if type(ev).__name__ == "ThinkingBlockStop")

@@ -91,6 +91,14 @@ async def update_llm_provider(
     from sebastian.llm.crypto import encrypt
 
     data = body.model_dump(exclude_unset=True)
+    # nullable=False 的列不允许显式清空
+    for required_field in ("name", "api_key", "model", "is_default"):
+        if required_field in data and data[required_field] is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{required_field} cannot be null",
+            )
+
     updates: dict[str, Any] = {}
     if "name" in data:
         updates["name"] = data["name"]

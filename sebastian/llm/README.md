@@ -68,6 +68,8 @@ Anthropic 旧版 effort 模式的 budget_tokens 映射写在 `AnthropicProvider.
 - `thinking_effort` 不在 low/medium/high 中 → 抛 `ValueError`（不静默兜底）
 - `budget_tokens >= max_tokens` → 抛 `ValueError`，要求调用方显式抬高 `max_tokens` 或降档
 
+为保证 `effort=high` 始终可用，`llm_max_tokens` 默认值已设为 **32000**（> 24576）。通过 `SEBASTIAN_LLM_MAX_TOKENS` 下调到 < 24577 时，选择 `high` 档位将稳定触发上述 ValueError。
+
 UI 层需在 clamp 规则中保证传入 Provider 的 effort 始终合法（见 `ui/mobile/src/store/composer.ts` 的 `clampAllToCapability`）。
 
 ## 修改导航

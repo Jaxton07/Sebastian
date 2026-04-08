@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 
 from sebastian.gateway.routes.llm_providers import (
     LLMProviderUpdate,
@@ -133,3 +134,28 @@ async def test_put_provider_api_key_encrypted_when_provided(
     assert "api_key_enc" in captured["kwargs"]
     assert captured["kwargs"]["api_key_enc"] != "sk-new-key"  # encrypted
     assert "api_key" not in captured["kwargs"]
+
+
+@pytest.mark.parametrize("field", ["name", "api_key", "model", "is_default"])
+@pytest.mark.asyncio
+async def test_put_provider_rejects_null_on_required_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """nullable=False 的列显式传 null 应返回 400，而不是让后端崩溃。"""
+
+    async def fake_update(pid: str, **kwargs: Any) -> SimpleNamespace:
+        raise AssertionError("registry.update 不应被调用")
+
+    import sebastian.gateway.state as state
+
+    monkeypatch.setattr(
+        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
+    )
+
+    body = LLMProviderUpdate(**{field: None})
+    with pytest.raises(HTTPException) as exc_info:
+        await update_llm_provider("p1", body=body, _auth={})
+
+    assert exc_info.value.status_code == 400
+    assert field in exc_info.value.detail
