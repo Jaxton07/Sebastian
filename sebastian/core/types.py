@@ -105,3 +105,17 @@ class Session(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     task_count: int = 0
     active_task_count: int = 0
+
+
+class TodoStatus(StrEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class TodoItem(BaseModel):
+    content: str = Field(min_length=1)
+    active_form: str = Field(min_length=1, alias="activeForm")
+    status: TodoStatus
+
+    model_config = {"populate_by_name": True}
