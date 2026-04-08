@@ -9,6 +9,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { getApprovals, registerDevice } from '@/src/api/approvals';
 import { syncCurrentThinkingCapability } from '@/src/api/llm';
+import { registerDevicePushToken } from '@/src/api/pushRegistration';
+import { setUnauthorizedHandler } from '@/src/api/runtime';
 import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useApprovalStore } from '@/src/store/approval';
@@ -51,13 +53,25 @@ function AppInit({ children }: { children: ReactNode }) {
   }, [load]);
 
   useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await useSettingsStore.getState().setJwtToken(null);
+      router.push('/settings');
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!jwtToken) return;
-    void (async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') return;
-      const token = (await Notifications.getDevicePushTokenAsync()).data;
-      await registerDevice(token).catch(() => {});
-    })();
+    void registerDevicePushToken({
+      notifications: Notifications,
+      registerDevice,
+      onError: () => {
+        // 开发期常见于未配置 FCM；忽略即可，避免启动时抛未处理异常。
+      },
+    });
   }, [jwtToken]);
 
   useEffect(() => {

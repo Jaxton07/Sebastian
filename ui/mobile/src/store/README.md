@@ -15,7 +15,8 @@ store/
 ├── agents.ts          # Sub-Agent 相关 UI 状态
 ├── approval.ts        # 待审批项队列
 ├── llmProviders.ts    # LLM Provider 本地 UI 状态（含 initialized / loading / error）
-└── settings.ts        # serverUrl、jwtToken、theme、connectionStatus 等配置（SecureStore 持久化）
+├── settings.ts        # serverUrl、jwtToken、theme、connectionStatus 等配置（SecureStore 持久化）
+└── serverBoundState.test.ts # server 切换 / logout 时重置链路的回归测试
 ```
 
 ## 修改导航

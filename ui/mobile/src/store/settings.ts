@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
+import { setApiRuntimeState } from '../api/runtime';
 import type { LLMProviderType, ThinkingCapability } from '../types';
 import { useComposerStore } from './composer';
 import { useConversationStore } from './conversation';
@@ -49,6 +50,10 @@ function clearServerBoundState(set: (patch: Partial<SettingsState>) => void): vo
   useSessionStore.getState().reset();
   useConversationStore.getState().reset();
   useComposerStore.getState().resetServerBoundState();
+  setApiRuntimeState({
+    serverUrl: '',
+    jwtToken: null,
+  });
   set({
     jwtToken: null,
     connectionStatus: 'idle',
@@ -95,6 +100,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         connectionStatus === 'ok' || connectionStatus === 'fail' ? connectionStatus : 'idle',
       isLoaded: true,
     });
+    setApiRuntimeState({
+      serverUrl: serverUrl ?? '',
+      jwtToken: jwtToken ?? null,
+    });
   },
 
   setServerUrl: async (url) => {
@@ -104,17 +113,34 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (previousServerUrl !== url) {
       await clearPersistedServerBoundState();
       clearServerBoundState(set);
+      setApiRuntimeState({
+        serverUrl: url,
+        jwtToken: null,
+      });
+      return;
     }
+    setApiRuntimeState({
+      serverUrl: url,
+      jwtToken: get().jwtToken,
+    });
   },
 
   setJwtToken: async (token) => {
     if (token === null) {
       await clearPersistedServerBoundState();
       clearServerBoundState(set);
+      setApiRuntimeState({
+        serverUrl: get().serverUrl,
+        jwtToken: null,
+      });
       return;
     }
     await SecureStore.setItemAsync(KEYS.jwtToken, token);
     set({ jwtToken: token });
+    setApiRuntimeState({
+      serverUrl: get().serverUrl,
+      jwtToken: token,
+    });
   },
 
   setLlmProvider: async (provider) => {
