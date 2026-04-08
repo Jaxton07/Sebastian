@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { getApprovals, registerDevice } from '@/src/api/approvals';
+import { syncCurrentThinkingCapability } from '@/src/api/llm';
 import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useApprovalStore } from '@/src/store/approval';
@@ -61,6 +62,13 @@ function AppInit({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void hydratePendingApproval();
+  }, [jwtToken]);
+
+  useEffect(() => {
+    if (!jwtToken) return;
+    void syncCurrentThinkingCapability().catch(() => {
+      // 拉失败时 currentThinkingCapability 保持 null，UI 按 disabled 兜底
+    });
   }, [jwtToken]);
 
   useEffect(() => {
