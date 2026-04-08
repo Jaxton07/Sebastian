@@ -150,6 +150,43 @@ class BaseAgent(ABC):
         module_file = inspect.getfile(type(self))
         return Path(module_file).parent / "knowledge"
 
+    async def _session_todos_section(
+        self,
+        session_id: str,
+        agent_type: str,
+    ) -> str:
+        """Return a '## Session Todos' section reflecting current todos.json.
+
+        Empty string if no todos exist. Called fresh each turn so the LLM
+        sees the latest state without needing a read tool.
+        """
+        try:
+            import sebastian.gateway.state as state
+
+            store = state.todo_store
+        except (ImportError, AttributeError):
+            return ""
+
+        items = await store.read(agent_type, session_id)
+        if not items:
+            return ""
+
+        lines = ["## Session Todos", ""]
+        for idx, item in enumerate(items, start=1):
+            marker = {
+                "pending": "[ ]",
+                "in_progress": "[→]",
+                "completed": "[x]",
+            }.get(item.status.value, "[?]")
+            display = item.active_form if item.status.value == "in_progress" else item.content
+            lines.append(f"{idx}. {marker} {display}")
+        lines.append("")
+        lines.append(
+            "(The above reflects the current session todo list. Use todo_write "
+            "to update — pass the complete new list, not just changed items.)"
+        )
+        return "\n".join(lines)
+
     def _knowledge_section(self) -> str:
         kdir = self._knowledge_dir()
         if not kdir.is_dir():
@@ -295,7 +332,11 @@ class BaseAgent(ABC):
     ) -> str:
         full_text = ""
         tool_records: list[dict[str, Any]] = []
-        gen = self._loop.stream(self.system_prompt, messages, task_id=task_id)
+        todo_section = await self._session_todos_section(session_id, agent_context)
+        effective_system_prompt = (
+            f"{self.system_prompt}\n\n{todo_section}" if todo_section else self.system_prompt
+        )
+        gen = self._loop.stream(effective_system_prompt, messages, task_id=task_id)
         send_value: StreamToolResult | None = None
 
         try:
