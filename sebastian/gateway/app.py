@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.store.database import get_session_factory, init_db
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
+    from sebastian.store.todo_store import TodoStore
 
     ensure_data_dir()
     setup_logging(
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     db_factory = get_session_factory()
     session_store = SessionStore(settings.sessions_dir)
+    todo_store = TodoStore(settings.sessions_dir)
     index_store = IndexStore(settings.sessions_dir, session_store=session_store)
 
     from sebastian.llm.registry import LLMProviderRegistry
@@ -122,6 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.event_bus = event_bus
     state.conversation = conversation
     state.session_store = session_store
+    state.todo_store = todo_store
     state.index_store = index_store
     state.db_factory = db_factory
     state.llm_registry = llm_registry

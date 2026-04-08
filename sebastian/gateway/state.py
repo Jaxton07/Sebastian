@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from sebastian.protocol.events.bus import EventBus
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
+    from sebastian.store.todo_store import TodoStore
     from sebastian.llm.registry import LLMProviderRegistry
 
 sebastian: Sebastian
@@ -20,6 +21,7 @@ sse_manager: SSEManager
 event_bus: EventBus
 conversation: ConversationManager
 session_store: SessionStore
+todo_store: TodoStore
 index_store: IndexStore
 db_factory: async_sessionmaker[AsyncSession]
 llm_registry: LLMProviderRegistry
