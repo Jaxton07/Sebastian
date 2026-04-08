@@ -124,7 +124,10 @@ class AgentLoop:
 
                 if isinstance(event, ThinkingBlockStop):
                     if not is_openai:
-                        block_dict: dict[str, Any] = {"type": "thinking", "thinking": event.thinking}
+                        block_dict: dict[str, Any] = {
+                            "type": "thinking",
+                            "thinking": event.thinking,
+                        }
                         if event.signature is not None:
                             block_dict["signature"] = event.signature
                         assistant_blocks.append(block_dict)

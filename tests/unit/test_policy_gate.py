@@ -204,6 +204,7 @@ def test_get_all_tool_specs_injects_reason_for_model_decides() -> None:
     gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
 
     with patch("sebastian.permissions.gate.get_tool") as mock_get_tool:
+
         def _side_effect(name: str):
             spec = MagicMock()
             spec.permission_tier = (
@@ -225,8 +226,8 @@ def test_get_all_tool_specs_injects_reason_for_model_decides() -> None:
 @pytest.mark.asyncio
 async def test_low_tier_sets_and_resets_tool_context() -> None:
     """ContextVar is set during tool execution and reset to None after."""
-    from sebastian.permissions.gate import PolicyGate
     from sebastian.core.tool_context import _current_tool_ctx
+    from sebastian.permissions.gate import PolicyGate
 
     captured: list = []
 
@@ -285,6 +286,7 @@ async def test_model_decides_file_path_outside_workspace_skips_reviewer(tmp_path
     """file_path 在 workspace 外 → 跳过 reviewer，直接走用户审批。"""
     from pathlib import Path
     from unittest.mock import patch
+
     from sebastian.permissions.gate import PolicyGate
 
     outside_path = "/tmp/evil_output.txt"
@@ -298,9 +300,11 @@ async def test_model_decides_file_path_outside_workspace_skips_reviewer(tmp_path
 
     gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
 
-    with patch("sebastian.permissions.gate.get_tool") as mock_get_tool, \
-         patch("sebastian.permissions.gate.resolve_path", return_value=Path(outside_path)), \
-         patch("sebastian.permissions.gate.settings") as mock_settings:
+    with (
+        patch("sebastian.permissions.gate.get_tool") as mock_get_tool,
+        patch("sebastian.permissions.gate.resolve_path", return_value=Path(outside_path)),
+        patch("sebastian.permissions.gate.settings") as mock_settings,
+    ):
         mock_settings.workspace_dir = tmp_path
         mock_spec = MagicMock()
         mock_spec.permission_tier = PermissionTier.MODEL_DECIDES
@@ -325,6 +329,7 @@ async def test_model_decides_file_path_outside_workspace_user_denies(tmp_path) -
     """workspace 外路径，用户拒绝审批 → 返回错误，不执行。"""
     from pathlib import Path
     from unittest.mock import patch
+
     from sebastian.permissions.gate import PolicyGate
 
     registry = MagicMock()
@@ -335,9 +340,11 @@ async def test_model_decides_file_path_outside_workspace_user_denies(tmp_path) -
 
     gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
 
-    with patch("sebastian.permissions.gate.get_tool") as mock_get_tool, \
-         patch("sebastian.permissions.gate.resolve_path", return_value=Path("/tmp/evil.txt")), \
-         patch("sebastian.permissions.gate.settings") as mock_settings:
+    with (
+        patch("sebastian.permissions.gate.get_tool") as mock_get_tool,
+        patch("sebastian.permissions.gate.resolve_path", return_value=Path("/tmp/evil.txt")),
+        patch("sebastian.permissions.gate.settings") as mock_settings,
+    ):
         mock_settings.workspace_dir = tmp_path
         mock_spec = MagicMock()
         mock_spec.permission_tier = PermissionTier.MODEL_DECIDES
@@ -357,8 +364,8 @@ async def test_model_decides_file_path_outside_workspace_user_denies(tmp_path) -
 @pytest.mark.asyncio
 async def test_model_decides_file_path_inside_workspace_uses_reviewer(tmp_path) -> None:
     """file_path 在 workspace 内 → 走原有 reviewer 流程，不触发 workspace 拦截。"""
-    from pathlib import Path
     from unittest.mock import patch
+
     from sebastian.permissions.gate import PolicyGate
 
     inside_path = tmp_path / "output.txt"
@@ -371,9 +378,11 @@ async def test_model_decides_file_path_inside_workspace_uses_reviewer(tmp_path) 
 
     gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
 
-    with patch("sebastian.permissions.gate.get_tool") as mock_get_tool, \
-         patch("sebastian.permissions.gate.resolve_path", return_value=inside_path), \
-         patch("sebastian.permissions.gate.settings") as mock_settings:
+    with (
+        patch("sebastian.permissions.gate.get_tool") as mock_get_tool,
+        patch("sebastian.permissions.gate.resolve_path", return_value=inside_path),
+        patch("sebastian.permissions.gate.settings") as mock_settings,
+    ):
         mock_settings.workspace_dir = tmp_path
         mock_spec = MagicMock()
         mock_spec.permission_tier = PermissionTier.MODEL_DECIDES
@@ -394,6 +403,7 @@ async def test_model_decides_file_path_inside_workspace_uses_reviewer(tmp_path) 
 async def test_low_tier_with_file_path_no_workspace_check(tmp_path) -> None:
     """LOW tier（Read）含 file_path → 不触发 workspace 检查，直接执行。"""
     from unittest.mock import patch
+
     from sebastian.permissions.gate import PolicyGate
 
     registry = MagicMock()

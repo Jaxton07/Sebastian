@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sebastian.permissions.types import ToolCallContext
 
-_current_tool_ctx: ContextVar[ToolCallContext | None] = ContextVar(
-    "tool_ctx", default=None
-)
+_current_tool_ctx: ContextVar[ToolCallContext | None] = ContextVar("tool_ctx", default=None)
 
 
 def get_tool_context() -> ToolCallContext | None:

@@ -307,7 +307,10 @@ def test_put_provider_rejects_explicit_null_on_required_fields(
 
     upd = http_client.put(
         f"/api/v1/llm-providers/{pid}",
-        json={field: None, **({"base_url": "https://api.anthropic.com"} if field != "base_url" else {})},
+        json={
+            field: None,
+            **({"base_url": "https://api.anthropic.com"} if field != "base_url" else {}),
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upd.status_code == 400

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 from pathlib import Path
-from datetime import UTC, datetime
 
 import pytest
 
@@ -11,8 +10,8 @@ import pytest
 @pytest.mark.asyncio
 async def test_session_store_update_activity_updates_last_activity(tmp_path: Path) -> None:
     """SessionStore.update_activity 更新 meta.json 中的 last_activity_at。"""
+    from sebastian.core.types import Session
     from sebastian.store.session_store import SessionStore
-    from sebastian.core.types import Session, SessionStatus
 
     store = SessionStore(tmp_path)
     session = Session(agent_type="code", title="test", goal="test goal", depth=2)
@@ -31,8 +30,8 @@ async def test_session_store_update_activity_updates_last_activity(tmp_path: Pat
 @pytest.mark.asyncio
 async def test_session_store_update_activity_transitions_stalled_to_active(tmp_path: Path) -> None:
     """SessionStore.update_activity 将 stalled 状态转为 active。"""
-    from sebastian.store.session_store import SessionStore
     from sebastian.core.types import Session, SessionStatus
+    from sebastian.store.session_store import SessionStore
 
     store = SessionStore(tmp_path)
     session = Session(agent_type="code", title="test", goal="test goal", depth=2)
@@ -58,9 +57,9 @@ async def test_session_store_update_activity_noop_when_meta_missing(tmp_path: Pa
 @pytest.mark.asyncio
 async def test_index_store_update_activity_syncs_meta(tmp_path: Path) -> None:
     """IndexStore.update_activity 注入 session_store 后同步写 meta.json。"""
+    from sebastian.core.types import Session, SessionStatus
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
-    from sebastian.core.types import Session, SessionStatus
 
     session_store = SessionStore(tmp_path)
     index_store = IndexStore(tmp_path, session_store=session_store)
@@ -80,8 +79,8 @@ async def test_index_store_update_activity_syncs_meta(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_index_store_update_activity_without_session_store(tmp_path: Path) -> None:
     """IndexStore.update_activity 不注入 session_store 时仅写 index.json，不报错。"""
-    from sebastian.store.index_store import IndexStore
     from sebastian.core.types import Session
+    from sebastian.store.index_store import IndexStore
 
     index_store = IndexStore(tmp_path)  # no session_store
 

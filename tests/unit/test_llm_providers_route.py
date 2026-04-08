@@ -7,12 +7,12 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from sebastian.llm.crypto import encrypt
 from sebastian.gateway.routes.llm_providers import (
     LLMProviderUpdate,
     _record_to_dict,
     update_llm_provider,
 )
+from sebastian.llm.crypto import encrypt
 
 
 def _make_record(**overrides: Any) -> SimpleNamespace:
@@ -48,9 +48,7 @@ async def test_put_provider_clears_thinking_capability_with_explicit_null(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(
         thinking_capability=None,
@@ -76,9 +74,7 @@ async def test_put_provider_omitted_field_not_updated(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(name="updated")
     with pytest.raises(HTTPException) as exc_info:
@@ -99,9 +95,7 @@ async def test_put_provider_rejects_base_url_with_explicit_null(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(base_url=None)
     with pytest.raises(HTTPException) as exc_info:
@@ -124,9 +118,7 @@ async def test_put_provider_api_key_encrypted_when_provided(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(api_key="sk-new-key", base_url="https://api.example.com/v1")
     await update_llm_provider("p1", body=body, _auth={})
@@ -148,9 +140,7 @@ async def test_put_provider_updates_name_without_touching_omitted_fields(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(name="updated", base_url="https://api.example.com/v1")
     await update_llm_provider("p1", body=body, _auth={})
@@ -178,12 +168,13 @@ async def test_put_provider_rejects_null_on_required_fields(
 
     import sebastian.gateway.state as state
 
-    monkeypatch.setattr(
-        state, "llm_registry", SimpleNamespace(update=fake_update), raising=False
-    )
+    monkeypatch.setattr(state, "llm_registry", SimpleNamespace(update=fake_update), raising=False)
 
     body = LLMProviderUpdate(
-        **{field: None, **({"base_url": "https://api.example.com/v1"} if field != "base_url" else {})}
+        **{
+            field: None,
+            **({"base_url": "https://api.example.com/v1"} if field != "base_url" else {}),
+        }
     )
     with pytest.raises(HTTPException) as exc_info:
         await update_llm_provider("p1", body=body, _auth={})

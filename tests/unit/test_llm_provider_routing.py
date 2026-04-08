@@ -12,7 +12,9 @@ async def test_get_provider_falls_back_to_default_when_no_manifest_llm() -> None
 
     registry = LLMProviderRegistry(MagicMock())
     mock_provider = MagicMock()
-    registry.get_default_with_model = AsyncMock(return_value=(mock_provider, "claude-3-5-sonnet-20241022"))
+    registry.get_default_with_model = AsyncMock(
+        return_value=(mock_provider, "claude-3-5-sonnet-20241022")
+    )
 
     with patch("sebastian.llm.registry._read_manifest_llm", return_value=None):
         provider, model = await registry.get_provider("code")
@@ -80,18 +82,22 @@ async def test_get_provider_falls_back_when_no_db_record_for_type() -> None:
 @pytest.mark.asyncio
 async def test_base_agent_run_streaming_uses_injected_llm_registry() -> None:
     """run_streaming 通过注入的 llm_registry 获取 provider，不 import gateway.state。"""
+    from unittest.mock import AsyncMock, MagicMock
+
     from sebastian.core.base_agent import BaseAgent
-    from sebastian.store.session_store import SessionStore
-    from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.core.stream_events import (
-        TextBlockStart, TextBlockStop, TextDelta,
+        TextBlockStart,
+        TextBlockStop,
+        TextDelta,
     )
+    from sebastian.llm.registry import LLMProviderRegistry
+    from sebastian.store.session_store import SessionStore
     from tests.unit.test_agent_loop import MockLLMProvider
-    from unittest.mock import MagicMock, AsyncMock
 
     # ProviderCallEnd is needed for the mock to complete
     try:
         from sebastian.core.stream_events import ProviderCallEnd
+
         events = [
             TextBlockStart(block_id="b0"),
             TextDelta(block_id="b0", delta="hi"),
@@ -117,6 +123,7 @@ async def test_base_agent_run_streaming_uses_injected_llm_registry() -> None:
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
 
     from sebastian.memory.episodic_memory import EpisodicMemory
+
     episodic_mock = MagicMock(spec=EpisodicMemory)
     episodic_mock.get_turns = AsyncMock(return_value=[])
     episodic_mock.add_turn = AsyncMock()
@@ -136,16 +143,21 @@ async def test_base_agent_run_streaming_uses_injected_llm_registry() -> None:
 @pytest.mark.asyncio
 async def test_registry_passes_thinking_capability_to_provider() -> None:
     from unittest.mock import MagicMock
+
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store.models import LLMProviderRecord
 
     record = LLMProviderRecord(
-        name="test", provider_type="anthropic", api_key_enc="",
-        model="claude-opus-4-6", thinking_capability="adaptive",
+        name="test",
+        provider_type="anthropic",
+        api_key_enc="",
+        model="claude-opus-4-6",
+        thinking_capability="adaptive",
     )
     registry = LLMProviderRegistry(db_factory=MagicMock())
 
     import sebastian.llm.crypto as crypto
+
     original_decrypt = crypto.decrypt
     crypto.decrypt = lambda _enc: "fake-key"
     try:
@@ -154,6 +166,7 @@ async def test_registry_passes_thinking_capability_to_provider() -> None:
         crypto.decrypt = original_decrypt
 
     from sebastian.llm.anthropic import AnthropicProvider
+
     assert isinstance(provider, AnthropicProvider)
     assert provider._capability == "adaptive"
 
@@ -161,16 +174,22 @@ async def test_registry_passes_thinking_capability_to_provider() -> None:
 @pytest.mark.asyncio
 async def test_registry_passes_thinking_capability_to_openai_provider() -> None:
     from unittest.mock import MagicMock
+
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store.models import LLMProviderRecord
 
     record = LLMProviderRecord(
-        name="test", provider_type="openai", api_key_enc="",
-        model="o3", thinking_format=None, thinking_capability="effort",
+        name="test",
+        provider_type="openai",
+        api_key_enc="",
+        model="o3",
+        thinking_format=None,
+        thinking_capability="effort",
     )
     registry = LLMProviderRegistry(db_factory=MagicMock())
 
     import sebastian.llm.crypto as crypto
+
     original_decrypt = crypto.decrypt
     crypto.decrypt = lambda _enc: "fake-key"
     try:
@@ -179,5 +198,6 @@ async def test_registry_passes_thinking_capability_to_openai_provider() -> None:
         crypto.decrypt = original_decrypt
 
     from sebastian.llm.openai_compat import OpenAICompatProvider
+
     assert isinstance(provider, OpenAICompatProvider)
     assert provider._capability == "effort"

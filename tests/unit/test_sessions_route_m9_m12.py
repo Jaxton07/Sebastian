@@ -44,6 +44,7 @@ async def test_schedule_session_turn_sub_agent_no_agent_name() -> None:
     """_schedule_session_turn 调用 sub-agent 的 run_streaming 时不传 agent_name。"""
     import sys
     import types
+
     import sebastian.gateway.routes.sessions as mod
 
     session = MagicMock(spec=Session)
@@ -80,9 +81,7 @@ async def test_schedule_session_turn_sub_agent_no_agent_name() -> None:
             gw_pkg.__dict__.pop("state", None)
 
     # Verify run_streaming was called exactly once, without agent_name kwarg
-    mock_agent.run_streaming.assert_awaited_once_with(
-        "hello", "sess-test", thinking_effort=None
-    )
+    mock_agent.run_streaming.assert_awaited_once_with("hello", "sess-test", thinking_effort=None)
 
 
 @pytest.mark.asyncio

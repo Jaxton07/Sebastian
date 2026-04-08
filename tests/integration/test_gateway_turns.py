@@ -114,7 +114,9 @@ def test_send_turn_returns_immediate_session_metadata(client):
     assert "response" not in data
     assert len(scheduled_coroutines) == 1
     mock_create_task.assert_called_once()
-    mock_run_streaming.assert_called_once_with("Hello Sebastian", fake_session.id, thinking_effort=None)
+    mock_run_streaming.assert_called_once_with(
+        "Hello Sebastian", fake_session.id, thinking_effort=None
+    )
     assert mock_run_streaming.await_count == 0
 
 
@@ -180,7 +182,5 @@ def test_post_turns_accepts_thinking_effort_and_passes_to_agent(client):
         )
 
     assert response.status_code == 200, response.text
-    mock_run_streaming.assert_called_once_with(
-        "hello", fake_session.id, thinking_effort="high"
-    )
+    mock_run_streaming.assert_called_once_with("hello", fake_session.id, thinking_effort="high")
     assert len(scheduled_coroutines) == 1

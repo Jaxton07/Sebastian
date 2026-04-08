@@ -30,6 +30,7 @@ def _log_task_failure(task: asyncio.Task) -> None:
 
 def _get_state():
     import sebastian.gateway.state as state
+
     return state
 
 

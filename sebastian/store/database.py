@@ -61,7 +61,5 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
         result = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
         existing = {row[1] for row in result.fetchall()}
         if column not in existing:
-            await conn.exec_driver_sql(
-                f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
-            )
+            await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
             logger.info("Applied migration: %s.%s", table, column)

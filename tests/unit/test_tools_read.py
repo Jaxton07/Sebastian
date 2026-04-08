@@ -6,6 +6,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def clear_state():
     from sebastian.capabilities.tools import _file_state
+
     _file_state._file_mtimes.clear()
 
 

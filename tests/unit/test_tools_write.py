@@ -5,10 +5,9 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_registry():
+    import sebastian.capabilities.tools.write  # noqa: F401 — ensures tool is registered
     from sebastian.capabilities.tools import _file_state
     from sebastian.core import tool as tool_module
-
-    import sebastian.capabilities.tools.write  # noqa: F401 — ensures tool is registered
 
     _file_state._file_mtimes.clear()
     saved = dict(tool_module._tools)
@@ -83,6 +82,7 @@ async def test_write_rejects_stale_mtime(tmp_path):
 async def test_write_relative_path_resolves_to_workspace(tmp_path):
     """相对路径应解析到 workspace_dir，而非进程 cwd。"""
     from unittest.mock import patch
+
     from sebastian.core.tool import call_tool
 
     with patch("sebastian.capabilities.tools._path_utils.settings") as mock_settings:

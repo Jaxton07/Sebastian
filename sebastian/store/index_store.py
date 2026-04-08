@@ -93,7 +93,8 @@ class IndexStore:
         Both statuses occupy max_children slots per spec §3.3.
         """
         return [
-            s for s in await self._read()
+            s
+            for s in await self._read()
             if s.get("agent_type") == agent_type
             and s.get("parent_session_id") == parent_session_id
             and s.get("status") in ("active", "stalled")

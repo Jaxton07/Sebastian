@@ -27,14 +27,13 @@ def check_write(path: str) -> None:
         return  # file does not exist — allow creation
 
     if path not in _file_mtimes:
-        raise ValueError(
-            f"File has not been read yet. Call Read first before writing: {path}"
-        )
+        raise ValueError(f"File has not been read yet. Call Read first before writing: {path}")
     if current_mtime != _file_mtimes[path]:
         raise ValueError(
             f"File has been modified externally since last read. "
             f"Call Read again before writing: {path}"
         )
+
 
 def invalidate(path: str) -> None:
     """Write/Edit 成功后调用，更新缓存 mtime。"""

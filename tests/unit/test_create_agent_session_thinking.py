@@ -30,9 +30,7 @@ async def test_run_agent_session_passes_thinking_effort() -> None:
         thinking_effort="high",
     )
 
-    agent.run_streaming.assert_awaited_once_with(
-        "hello", session.id, thinking_effort="high"
-    )
+    agent.run_streaming.assert_awaited_once_with("hello", session.id, thinking_effort="high")
 
 
 @pytest.mark.asyncio
@@ -51,6 +49,4 @@ async def test_run_agent_session_default_none() -> None:
         event_bus=None,
     )
 
-    agent.run_streaming.assert_awaited_once_with(
-        "hello", session.id, thinking_effort=None
-    )
+    agent.run_streaming.assert_awaited_once_with("hello", session.id, thinking_effort=None)

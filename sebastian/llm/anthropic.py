@@ -23,13 +23,13 @@ from sebastian.llm.provider import LLMProvider
 class AnthropicProvider(LLMProvider):
     """Anthropic SDK adapter. Supports thinking blocks and tool use."""
 
-    message_format = 'anthropic'
+    message_format = "anthropic"
 
     # Fixed-budget mode (thinking_capability='effort'): map effort -> budget_tokens.
     FIXED_EFFORT_TO_BUDGET: ClassVar[dict[str, int]] = {
-        'low': 2048,
-        'medium': 8192,
-        'high': 24576,
+        "low": 2048,
+        "medium": 8192,
+        "high": 24576,
     }
 
     def __init__(
@@ -40,7 +40,7 @@ class AnthropicProvider(LLMProvider):
     ) -> None:
         self._client = anthropic.AsyncAnthropic(
             api_key=api_key,
-            **({'base_url': base_url} if base_url else {}),
+            **({"base_url": base_url} if base_url else {}),
         )
         self._capability = thinking_capability
 
@@ -56,27 +56,27 @@ class AnthropicProvider(LLMProvider):
           - thinking_effort 不在 low/medium/high 中（快速失败，不静默降级）
           - FIXED_EFFORT_TO_BUDGET[effort] >= max_tokens（预算无法容纳思考+正文）
         """
-        capability = getattr(self, '_capability', None)
+        capability = getattr(self, "_capability", None)
 
-        if capability is None or capability in ('none', 'always_on'):
+        if capability is None or capability in ("none", "always_on"):
             return {}
-        if thinking_effort in (None, 'off'):
-            return {}
-
-        if capability == 'toggle':
-            if thinking_effort == 'on':
-                return {'thinking': {'type': 'enabled'}}
+        if thinking_effort in (None, "off"):
             return {}
 
-        if capability == 'adaptive':
-            if thinking_effort in ('low', 'medium', 'high', 'max'):
+        if capability == "toggle":
+            if thinking_effort == "on":
+                return {"thinking": {"type": "enabled"}}
+            return {}
+
+        if capability == "adaptive":
+            if thinking_effort in ("low", "medium", "high", "max"):
                 return {
-                    'thinking': {'type': 'adaptive'},
-                    'output_config': {'effort': thinking_effort},
+                    "thinking": {"type": "adaptive"},
+                    "output_config": {"effort": thinking_effort},
                 }
             return {}
 
-        if capability == 'effort':
+        if capability == "effort":
             budget = self.FIXED_EFFORT_TO_BUDGET.get(thinking_effort)
             if budget is None:
                 raise ValueError(
@@ -88,7 +88,7 @@ class AnthropicProvider(LLMProvider):
                     f"budget_tokens={budget} must be strictly less than "
                     f"max_tokens={max_tokens}; raise max_tokens or lower effort"
                 )
-            return {'thinking': {'type': 'enabled', 'budget_tokens': budget}}
+            return {"thinking": {"type": "enabled", "budget_tokens": budget}}
 
         return {}
 
@@ -100,32 +100,32 @@ class AnthropicProvider(LLMProvider):
         tools: list[dict[str, Any]],
         model: str,
         max_tokens: int,
-        block_id_prefix: str = '',
+        block_id_prefix: str = "",
         thinking_effort: str | None = None,
     ) -> AsyncGenerator[LLMStreamEvent, None]:
         kwargs: dict[str, Any] = {
-            'model': model,
-            'max_tokens': max_tokens,
-            'system': system,
-            'messages': messages,
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": messages,
         }
         if tools:
-            kwargs['tools'] = tools
+            kwargs["tools"] = tools
 
         kwargs.update(self._build_thinking_kwargs(thinking_effort, max_tokens))
 
         async with self._client.messages.stream(**kwargs) as stream:
             async for raw in stream:
-                block_index = getattr(raw, 'index', 0)
-                block_id = f'{block_id_prefix}{block_index}'
+                block_index = getattr(raw, "index", 0)
+                block_id = f"{block_id_prefix}{block_index}"
 
-                if raw.type == 'content_block_start':
+                if raw.type == "content_block_start":
                     block_type = raw.content_block.type
-                    if block_type == 'thinking':
+                    if block_type == "thinking":
                         yield ThinkingBlockStart(block_id=block_id)
-                    elif block_type == 'text':
+                    elif block_type == "text":
                         yield TextBlockStart(block_id=block_id)
-                    elif block_type == 'tool_use':
+                    elif block_type == "tool_use":
                         yield ToolCallBlockStart(
                             block_id=block_id,
                             tool_id=raw.content_block.id,
@@ -133,27 +133,27 @@ class AnthropicProvider(LLMProvider):
                         )
                     continue
 
-                if raw.type == 'content_block_delta':
+                if raw.type == "content_block_delta":
                     delta_type = raw.delta.type
-                    if delta_type == 'thinking_delta':
+                    if delta_type == "thinking_delta":
                         yield ThinkingDelta(block_id=block_id, delta=raw.delta.thinking)
-                    elif delta_type == 'text_delta':
+                    elif delta_type == "text_delta":
                         yield TextDelta(block_id=block_id, delta=raw.delta.text)
                     continue
 
-                if raw.type != 'content_block_stop':
+                if raw.type != "content_block_stop":
                     continue
 
                 block = stream.current_message_snapshot.content[block_index]
-                if block.type == 'thinking':
+                if block.type == "thinking":
                     yield ThinkingBlockStop(
                         block_id=block_id,
                         thinking=block.thinking,
-                        signature=getattr(block, 'signature', None),
+                        signature=getattr(block, "signature", None),
                     )
-                elif block.type == 'text':
+                elif block.type == "text":
                     yield TextBlockStop(block_id=block_id, text=block.text)
-                elif block.type == 'tool_use':
+                elif block.type == "tool_use":
                     yield ToolCallReady(
                         block_id=block_id,
                         tool_id=block.id,

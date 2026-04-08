@@ -84,6 +84,7 @@ def test_create_agent_session_returns_400(empty_db_client: TestClient) -> None:
 def test_send_turn_to_session_returns_400(empty_db_client: TestClient) -> None:
     """Need an existing session to hit this route. Create one directly via store."""
     import asyncio
+
     from sebastian.core.types import Session
 
     token = _login(empty_db_client)

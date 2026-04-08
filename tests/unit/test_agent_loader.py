@@ -93,7 +93,7 @@ def test_load_agents_reads_stalled_threshold_from_manifest(tmp_path: Path) -> No
     manifest.write_text(
         '[agent]\nname = "My Agent"\ndescription = "test"\n'
         'max_children = 1\nclass_name = "MyAgent3"\n'
-        'stalled_threshold_minutes = 10\n'
+        "stalled_threshold_minutes = 10\n"
     )
     init = agent_dir / "__init__.py"
     init.write_text("class MyAgent3: pass\n")

@@ -6,6 +6,7 @@ from sebastian.core.types import ToolResult
 
 def _make_registry() -> CapabilityRegistry:
     reg = CapabilityRegistry()
+
     # 注册两个普通 MCP tool
     async def mcp_fn(**kwargs):  # type: ignore[no-untyped-def]
         return ToolResult(ok=True, output="ok")

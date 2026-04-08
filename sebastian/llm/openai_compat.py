@@ -79,9 +79,10 @@ class OpenAICompatProvider(LLMProvider):
                 }
                 for t in tools
             ]
-        if (
-            getattr(self, "_capability", None) == "effort"
-            and thinking_effort in ("low", "medium", "high")
+        if getattr(self, "_capability", None) == "effort" and thinking_effort in (
+            "low",
+            "medium",
+            "high",
         ):
             kwargs["reasoning_effort"] = thinking_effort
 

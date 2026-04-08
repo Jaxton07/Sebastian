@@ -83,7 +83,7 @@ class SessionStore:
             await self._write_session_meta(session)
 
     async def update_activity(self, session_id: str, agent_type: str) -> None:
-        """Lightweight update: set last_activity_at to now, transition stalled→active in meta.json."""
+        """Lightweight update: set last_activity_at=now, transition stalled→active in meta."""
         async with self._session_lock(session_id, agent_type):
             directory = _session_dir_by_id(self._dir, session_id, agent_type)
             meta_path = directory / "meta.json"
@@ -273,9 +273,7 @@ class SessionStore:
         session_id: str,
         agent_type: str,
     ) -> asyncio.Lock:
-        meta_path = (
-            _session_dir_by_id(self._dir, session_id, agent_type) / "meta.json"
-        ).resolve()
+        meta_path = (_session_dir_by_id(self._dir, session_id, agent_type) / "meta.json").resolve()
         lock = _SESSION_LOCKS_BY_PATH.get(meta_path)
         if lock is None:
             lock = asyncio.Lock()

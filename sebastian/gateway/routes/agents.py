@@ -24,13 +24,15 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
         sessions = await state.index_store.list_by_agent_type(agent_type)
         active_count = sum(1 for s in sessions if s.get("status") == "active")
 
-        agents.append({
-            "agent_type": agent_type,
-            "name": config.display_name,
-            "description": config.description,
-            "active_session_count": active_count,
-            "max_children": config.max_children,
-        })
+        agents.append(
+            {
+                "agent_type": agent_type,
+                "name": config.display_name,
+                "description": config.description,
+                "active_session_count": active_count,
+                "max_children": config.max_children,
+            }
+        )
 
     return {"agents": agents}
 

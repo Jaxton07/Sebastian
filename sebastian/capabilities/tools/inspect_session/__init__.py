@@ -7,6 +7,7 @@ from sebastian.permissions.types import PermissionTier
 
 def _get_state():
     import sebastian.gateway.state as state
+
     return state
 
 
@@ -32,7 +33,9 @@ async def inspect_session(
         return ToolResult(ok=False, error=f"Session {session_id} 数据不存在")
 
     messages = await state.session_store.get_messages(
-        session_id, agent_type, limit=recent_n,
+        session_id,
+        agent_type,
+        limit=recent_n,
     )
 
     lines = [

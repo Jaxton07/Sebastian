@@ -341,7 +341,9 @@ class BaseAgent(ABC):
         effective_system_prompt = (
             f"{self.system_prompt}\n\n{todo_section}" if todo_section else self.system_prompt
         )
-        gen = self._loop.stream(effective_system_prompt, messages, task_id=task_id, thinking_effort=thinking_effort)
+        gen = self._loop.stream(
+            effective_system_prompt, messages, task_id=task_id, thinking_effort=thinking_effort
+        )
         send_value: StreamToolResult | None = None
 
         try:

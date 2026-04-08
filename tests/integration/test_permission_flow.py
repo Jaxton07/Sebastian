@@ -108,12 +108,16 @@ async def test_policy_gate_model_decides_full_escalate_grant_flow() -> None:
     from sebastian.core.stream_events import TextDelta
 
     async def _stream_escalate(*args, **kwargs):
-        yield TextDelta(block_id="0", delta='{"decision": "escalate", "explanation": "删除操作需要确认"}')
+        yield TextDelta(
+            block_id="0", delta='{"decision": "escalate", "explanation": "删除操作需要确认"}'
+        )
 
     mock_provider = MagicMock()
     mock_provider.stream = _stream_escalate
     mock_registry = MagicMock()
-    mock_registry.get_default_with_model = AsyncMock(return_value=(mock_provider, "claude-haiku-4-5-20251001"))
+    mock_registry.get_default_with_model = AsyncMock(
+        return_value=(mock_provider, "claude-haiku-4-5-20251001")
+    )
 
     reviewer = PermissionReviewer(llm_registry=mock_registry)
     bus = EventBus()

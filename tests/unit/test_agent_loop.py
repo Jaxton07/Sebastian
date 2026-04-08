@@ -320,9 +320,11 @@ async def test_agent_loop_formats_failed_tool_result_for_next_turn() -> None:
 @pytest.mark.asyncio
 async def test_agent_loop_passes_thinking_effort_to_provider() -> None:
     from unittest.mock import MagicMock
+
     from sebastian.core.agent_loop import AgentLoop
 
     captured: dict = {}
+
     async def _empty_stream(**kwargs):
         captured.update(kwargs)
         yield ProviderCallEnd(stop_reason="end_turn")
@@ -347,9 +349,11 @@ async def test_agent_loop_passes_thinking_effort_to_provider() -> None:
 @pytest.mark.asyncio
 async def test_agent_loop_preserves_thinking_signature_across_iterations() -> None:
     from unittest.mock import MagicMock
+
     from sebastian.core.agent_loop import AgentLoop
 
     iteration_calls: list[list[dict]] = []
+
     async def _two_iter_stream(**kwargs):
         iteration_calls.append(list(kwargs["messages"]))
         if len(iteration_calls) == 1:
@@ -375,7 +379,9 @@ async def test_agent_loop_preserves_thinking_signature_across_iterations() -> No
             ev = await gen.asend(send_val)
             send_val = None
             if isinstance(ev, ToolCallReady):
-                send_val = ToolResult(tool_id="tu_1", name="noop", ok=True, output="done", error=None)
+                send_val = ToolResult(
+                    tool_id="tu_1", name="noop", ok=True, output="done", error=None
+                )
     except StopAsyncIteration:
         pass
 

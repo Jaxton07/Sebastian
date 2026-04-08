@@ -3,19 +3,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from sebastian.capabilities.tools import (
+    delegate_to_agent as _delegate_tools,  # noqa: F401  # registers delegate_to_agent tool
+)
 from sebastian.core.base_agent import BaseAgent
-from sebastian.permissions.gate import PolicyGate
 from sebastian.core.task_manager import TaskManager
 from sebastian.core.types import Session, Task
 from sebastian.orchestrator.conversation import ConversationManager
-from sebastian.capabilities.tools import delegate_to_agent as _delegate_tools  # noqa: F401  # registers delegate_to_agent tool
+from sebastian.permissions.gate import PolicyGate
 from sebastian.protocol.events.bus import EventBus
 from sebastian.store.index_store import IndexStore
 from sebastian.store.session_store import SessionStore
 
 if TYPE_CHECKING:
     from sebastian.agents._loader import AgentConfig
-    from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
 
 logger = logging.getLogger(__name__)

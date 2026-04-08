@@ -32,9 +32,7 @@ class LLMProviderRegistry:
             record = result.scalar_one_or_none()
 
         if record is None:
-            raise RuntimeError(
-                "No default LLM provider configured. Add one via the Settings page."
-            )
+            raise RuntimeError("No default LLM provider configured. Add one via the Settings page.")
 
         return self._instantiate(record), record.model
 

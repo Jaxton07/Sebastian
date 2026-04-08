@@ -12,8 +12,6 @@ def anyio_backend():
     return "asyncio"
 
 
-
-
 @pytest_asyncio.fixture
 async def db_session():
     """In-memory SQLite session for unit tests."""
@@ -40,4 +38,5 @@ def _patch_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _reset_event_bus() -> Generator[None, None, None]:
     yield
     from sebastian.protocol.events.bus import bus
+
     bus.reset()

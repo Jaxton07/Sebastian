@@ -10,9 +10,7 @@ def _fernet() -> Fernet:
     # Delayed import to avoid circular deps; reads jwt_secret at call time
     from sebastian.config import settings
 
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.sebastian_jwt_secret.encode()).digest()
-    )
+    key = base64.urlsafe_b64encode(hashlib.sha256(settings.sebastian_jwt_secret.encode()).digest())
     return Fernet(key)
 
 

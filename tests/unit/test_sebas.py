@@ -113,6 +113,7 @@ async def test_get_or_create_session_creates_sebastian_session(
     )
 
     import sebastian.gateway.state as _state
+
     _state.index_store = index_store
 
     session = await agent.get_or_create_session(None, "hello from sebastian")
@@ -166,5 +167,3 @@ async def test_get_or_create_session_reloads_existing_sebastian_session(
     assert loaded.id == "existing-session"
     assert loaded.agent_type == "sebastian"
     assert loaded.title == "Persisted title"
-
-

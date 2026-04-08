@@ -1,6 +1,7 @@
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio
@@ -18,9 +19,13 @@ async def test_delegate_to_agent_creates_session_and_dispatches():
     mock_state.index_store = AsyncMock()
     mock_state.event_bus = MagicMock()
 
-    with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
+    with patch(
+        "sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state
+    ):
         result = await delegate_to_agent(
-            agent_type="code", goal="write auth module", context="",
+            agent_type="code",
+            goal="write auth module",
+            context="",
         )
 
     assert result.ok is True
@@ -37,9 +42,13 @@ async def test_delegate_unknown_agent_type_returns_error() -> None:
     mock_state = MagicMock()
     mock_state.agent_instances = {}  # 无任何 agent
 
-    with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
+    with patch(
+        "sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state
+    ):
         result = await delegate_to_agent(
-            agent_type="nonexistent", goal="write auth module", context="",
+            agent_type="nonexistent",
+            goal="write auth module",
+            context="",
         )
 
     assert result.ok is False
@@ -64,10 +73,14 @@ async def test_delegate_creates_background_task() -> None:
     mock_task = MagicMock(spec=asyncio.Task)
     mock_task.add_done_callback = MagicMock()
 
-    with patch("sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state):
+    with patch(
+        "sebastian.capabilities.tools.delegate_to_agent._get_state", return_value=mock_state
+    ):
         with patch("asyncio.create_task", return_value=mock_task) as mock_create_task:
             result = await delegate_to_agent(
-                agent_type="code", goal="write auth module", context="",
+                agent_type="code",
+                goal="write auth module",
+                context="",
             )
 
     assert result.ok is True

@@ -8,13 +8,13 @@ if TYPE_CHECKING:
     from sebastian.agents._loader import AgentConfig
     from sebastian.core.base_agent import BaseAgent
     from sebastian.gateway.sse import SSEManager
+    from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import EventBus
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
     from sebastian.store.todo_store import TodoStore
-    from sebastian.llm.registry import LLMProviderRegistry
 
 sebastian: Sebastian
 sse_manager: SSEManager
