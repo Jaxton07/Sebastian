@@ -105,10 +105,14 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function createAgentSession(
   agent: string,
   content: string,
+  thinkingEffort: ThinkingEffort,
 ): Promise<{ sessionId: string; ts: string }> {
   const { data } = await apiClient.post<{ session_id: string; ts: string }>(
     `/api/v1/agents/${agent}/sessions`,
-    { content },
+    {
+      content,
+      thinking_effort: thinkingEffort === 'off' ? null : thinkingEffort,
+    },
   );
   return { sessionId: data.session_id, ts: data.ts };
 }

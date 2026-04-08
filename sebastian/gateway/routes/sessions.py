@@ -72,6 +72,7 @@ async def create_agent_session(
     content = body.get("content", "")
     if not content:
         raise HTTPException(400, "content is required")
+    thinking_effort = body.get("thinking_effort")
 
     session = Session(
         agent_type=agent_type,
@@ -94,6 +95,7 @@ async def create_agent_session(
             session_store=state.session_store,
             index_store=state.index_store,
             event_bus=state.event_bus,
+            thinking_effort=thinking_effort,
         )
     )
     _background_tasks.add(_task)

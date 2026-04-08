@@ -135,7 +135,7 @@ export default function SessionDetailScreen() {
       setSending(true);
       try {
         if (isNewSession && !realSessionId) {
-          const { sessionId: newId } = await createAgentSession(agentName, text);
+          const { sessionId: newId } = await createAgentSession(agentName, text, opts.effort);
           setRealSessionId(newId);
           router.replace(`/subagents/session/${newId}?agent=${agentName}`);
           return;
