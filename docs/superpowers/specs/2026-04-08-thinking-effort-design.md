@@ -27,9 +27,9 @@ Phase 1 设计时只覆盖了"思考事件接收链路"——`ThinkingBlockStart
 
 ### 目标
 
-1. 输入框的"思考"按钮真正控制当前 turn 是否开启思考，并支持档位选择（off / low / medium / high / max）。
-2. 同时支持 Anthropic Adaptive Thinking、Anthropic 旧版 Extended Thinking、OpenAI `reasoning_effort` 三种请求形态。
-3. 对"模型本身就是 reasoning 模型"（DeepSeek-R1、llama.cpp Qwen 等）和"模型不支持思考控制"（GPT-4o）两种边缘情况，UI 给出明确表现。
+1. 输入框的"思考"按钮真正控制当前 turn 是否开启思考，并按 provider 能力支持档位选择（off / on / low / medium / high / max）。
+2. 同时支持 Anthropic Adaptive Thinking、Anthropic 旧版 Extended Thinking、OpenAI `reasoning_effort`、以及只接受布尔 `{"type":"enabled"}` 的第三方 Anthropic-format 服务四种请求形态。
+3. 对"模型本身就是 reasoning 模型"（DeepSeek-R1、llama.cpp Qwen 等）、"模型不支持思考控制"（GPT-4o）、"只支持开关不支持档位"（某些第三方实现）三种边缘情况，UI 给出明确表现。
 4. 修复多轮 thinking signature 缺失，让"开启思考 + 多轮工具调用"的链路真正可用。
 5. 前端档位选择按 provider 的能力动态显示。
 
@@ -61,9 +61,12 @@ class LLMProviderRecord(Base):
 | 值 | 含义 | UI 档位 | Provider 请求行为 |
 |---|---|---|---|
 | `none` | 模型不支持思考控制 | 隐藏按钮 | 不传任何 thinking 参数 |
+| `toggle` | 只支持开关二态，无档位 | off / on（单点切换 pill，无 picker） | on 时传 `{"type":"enabled"}`（不带 budget_tokens）；off 时不传 |
 | `effort` | 支持 4 档 effort | off / low / medium / high | 见 §3.2 |
 | `adaptive` | Anthropic 原生 Adaptive | off / low / medium / high / max | 见 §3.2 |
 | `always_on` | 模型必然思考 | 不可点徽标"思考·自动" | 不传参数（解析侧由 `thinking_format` 决定） |
+
+关于 `toggle`：此档位针对的是第三方 Anthropic-format 兼容服务，它们只接受 `thinking: {"type":"enabled"}` 的裸布尔形态，不支持 `budget_tokens` 或 adaptive。Anthropic 官方 API 的 `{"type":"enabled"}` 必须带 `budget_tokens`，因此**`toggle` 不应用于 Anthropic 官方 record**——官方 Anthropic provider 应该配 `effort` 或 `adaptive`。
 
 `thinking_format` 与 `thinking_capability` 的组合矩阵（典型模型）：
 
@@ -75,10 +78,19 @@ class LLMProviderRecord(Base):
 | GPT-4o / GPT-4.1 | openai | none | None |
 | DeepSeek-R1 | openai | always_on | reasoning_content |
 | llama.cpp Qwen `<think>` | openai | always_on | think_tags |
+| 第三方 Anthropic-format 代理（仅支持 enabled 布尔） | anthropic | toggle | None |
 
 ### 3.2 Provider 内部 effort 翻译表
 
 每个 Provider 类持有一份 `EFFORT_TO_REQUEST` 常量表，把统一的 effort 字符串翻译成 SDK 调用参数。Sebastian 业务层不感知数值。
+
+**`AnthropicProvider`**（`thinking_capability=toggle`）：
+
+```python
+# 仅两态，不查表
+# effort == "on"  → kwargs["thinking"] = {"type": "enabled"}
+# effort in (None, "off") → 不传
+```
 
 **`AnthropicProvider`**（`thinking_capability=adaptive`）：
 
@@ -123,6 +135,8 @@ EFFORT_TO_REASONING_EFFORT = {
 
 `thinking_capability=none / always_on` 的 Provider 实例直接忽略 effort 参数。
 
+**`OpenAICompatProvider`（`thinking_capability=toggle`）的处理**：默认当作 no-op，不传任何 thinking 参数（等同 `none`）。理由：OpenAI 兼容接口没有统一的"布尔开关"字段形态，不同第三方实现各自发明字段（有的用 `enable_thinking`，有的用 `reasoning=true`）。本期不在 Provider 内硬编码具体字段；若将来确实需要支持某个具体后端，再按该后端的字段名加分支，并在 README 的矩阵里记录。此默认行为需要在 README 明确写出，避免配置者误以为 `toggle` 会对 OpenAI 生效。
+
 ### 3.3 API 协议变更
 
 **`POST /api/v1/turns` 请求体新增字段**（[sebastian/gateway/routes/turns.py:29-32](../../sebastian/gateway/routes/turns.py#L29-L32)）：
@@ -131,7 +145,7 @@ EFFORT_TO_REASONING_EFFORT = {
 class SendTurnRequest(BaseModel):
     content: str
     session_id: str | None = None
-    thinking_effort: str | None = None  # off | low | medium | high | max | None
+    thinking_effort: str | None = None  # off | on | low | medium | high | max | None
 ```
 
 `None` 与 `"off"` 在 Provider 侧等价。保留 `None` 是为了识别"老 client 没传"与"新 client 显式选了 off"两种状态——便于后续日志/灰度。
@@ -226,7 +240,7 @@ interface SettingsStore {
 把 `thinkingBySession: Record<string, boolean>` 改成：
 
 ```ts
-type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
+type ThinkingEffort = 'off' | 'on' | 'low' | 'medium' | 'high' | 'max';
 
 interface ComposerStore {
   effortBySession: Record<string, ThinkingEffort>;
@@ -236,6 +250,8 @@ interface ComposerStore {
   ...
 }
 ```
+
+`'on'` 仅在 `capability=toggle` 时合法，其他 capability 下不会被存入。
 
 新建 session 时默认值 = `lastUserChoice`，首次安装时 `lastUserChoice = 'off'`。`lastUserChoice` 持久化到 AsyncStorage（与现有 settings 持久化机制一致）。
 
@@ -247,11 +263,12 @@ interface ComposerStore {
 |---|---|
 | `null`（未加载/未配置 provider） | 灰色 disabled，文案"思考" |
 | `none` | **不渲染** |
-| `effort` | 可点 pill，文案"思考·{当前档位}"。点击弹出 ActionSheet，选项 = off / low / medium / high |
-| `adaptive` | 可点 pill，文案"思考·{当前档位}"。点击弹出 ActionSheet，选项 = off / low / medium / high / max |
+| `toggle` | 单点切换 pill，文案"思考"。点击在 off ↔ on 之间翻转，**不弹 picker**。激活态高亮（沿用现有 ThinkButton 视觉） |
+| `effort` | 可点 pill，文案"思考·{当前档位}"。点击弹出 ActionSheet/BottomSheet，选项 = off / low / medium / high |
+| `adaptive` | 可点 pill，文案"思考·{当前档位}"。点击弹出 ActionSheet/BottomSheet，选项 = off / low / medium / high / max |
 | `always_on` | 不可点 pill，文案"思考·自动"，灰色背景 |
 
-ActionSheet 用 `@expo/react-native-action-sheet` 或自己实现一个轻量 BottomSheet 组件（项目已有 BottomSheet 习惯则复用）。每个选项显示档位名称 + 简短说明（如 "low — 少量思考"）。
+ActionSheet 用 `@expo/react-native-action-sheet` 或自己实现一个轻量 BottomSheet 组件（项目已有 BottomSheet 习惯则复用）。每个选项显示档位名称 + 简短说明（如 "low — 少量思考"）。`toggle` 不经过此组件。
 
 #### `handleSend` 修复
 
@@ -286,6 +303,25 @@ export async function sendTurn(
 ### 3.7 Sub-Agent session 的 turns 路由
 
 [sebastian/gateway/routes/sessions.py] 中 sub-agent 的 `POST /api/v1/sessions/{id}/turns` 同样需要接受 `thinking_effort` 字段并透传到对应 agent 的 `run_streaming`。改动与 §3.3 / §3.4 对称。
+
+### 3.7.1 Capability clamp 矩阵
+
+Provider 切换导致 `currentThinkingCapability` 变化时，`useSettingsStore` 遍历 `effortBySession`（以及 `lastUserChoice`）按下表统一 clamp：
+
+| 原档位 → 新 capability | none | toggle | effort | adaptive | always_on |
+|---|---|---|---|---|---|
+| off | 隐藏 | off | off | off | 徽标 |
+| on | 隐藏 | on | medium | medium | 徽标 |
+| low | 隐藏 | on | low | low | 徽标 |
+| medium | 隐藏 | on | medium | medium | 徽标 |
+| high | 隐藏 | on | high | high | 徽标 |
+| max | 隐藏 | on | high | max | 徽标 |
+
+规则简化为两条：
+- 降级到不存在的档位 → 取新 capability 中"语义最接近"的一档（low/medium/high 同名保留；max → high；on → medium）
+- 升级到无等级模型（→ toggle）→ 任何"开"状态（low 及以上、以及 on）都映射为 `on`
+
+Clamp 发生时触发一次 toast：`"{原档位} 在新模型下不可用，已切换为 {新档位}"`。
 
 ### 3.8 切换时机与生效语义
 
@@ -338,6 +374,8 @@ export async function sendTurn(
   - capability=adaptive，effort=off → 验证不传 thinking
   - capability=effort，effort=medium → 验证 `thinking={"type":"enabled","budget_tokens":8192}`
   - capability=effort，budget_tokens 超过 max_tokens 时的处理
+  - capability=toggle，effort=on → 验证 `thinking={"type":"enabled"}` 且不含 budget_tokens
+  - capability=toggle，effort=off/None → 验证不传 thinking
   - capability=none → 任意 effort 都不影响请求
 - `tests/unit/test_openai_compat_provider.py`：
   - capability=effort，effort=high → 验证请求 kwargs 包含 `reasoning_effort="high"`
@@ -420,6 +458,7 @@ export async function sendTurn(
 - [x] always_on 的 UI：保留位置，显示不可点的"思考·自动"徽标
 - [x] 前端档位 UI：点击 ThinkButton 弹出选择栏（ActionSheet/BottomSheet），按当前 provider capability 显示可用档位
 - [x] 切换时机：effort 在 POST /turns 时锁定；picker 不在 in-flight 期间禁用；改动应用到下一条 turn；provider 切换导致 capability 变化时 clamp + toast
+- [x] 新增 `toggle` capability：覆盖只支持 `{"type":"enabled"}` 裸布尔形态的第三方 Anthropic-format 服务；OpenAI 兼容路径下默认 no-op
 
 ---
 
