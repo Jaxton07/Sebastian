@@ -9,8 +9,8 @@ import pytest
 async def test_update_activity_uses_injected_index_store() -> None:
     """_update_activity 应该调用注入的 index_store，不 import gateway.state。"""
     from sebastian.core.base_agent import BaseAgent
-    from sebastian.store.session_store import SessionStore
     from sebastian.store.index_store import IndexStore
+    from sebastian.store.session_store import SessionStore
 
     class TestAgent(BaseAgent):
         name = "test"

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from sebastian.gateway.auth import require_auth
+from sebastian.llm.crypto import decrypt
 
 router = APIRouter(tags=["llm-providers"])
 
@@ -17,8 +18,9 @@ class LLMProviderCreate(BaseModel):
     provider_type: str  # "anthropic" | "openai"
     api_key: str
     model: str
-    base_url: str | None = None
+    base_url: str
     thinking_format: str | None = None  # None | "reasoning_content" | "think_tags"
+    thinking_capability: str | None = None
     is_default: bool = False
 
 
@@ -28,6 +30,7 @@ class LLMProviderUpdate(BaseModel):
     model: str | None = None
     base_url: str | None = None
     thinking_format: str | None = None
+    thinking_capability: str | None = None
     is_default: bool | None = None
 
 
@@ -37,8 +40,10 @@ def _record_to_dict(record: Any) -> dict[str, Any]:
         "name": record.name,
         "provider_type": record.provider_type,
         "base_url": record.base_url,
+        "api_key": decrypt(record.api_key_enc),
         "model": record.model,
         "thinking_format": record.thinking_format,
+        "thinking_capability": record.thinking_capability,
         "is_default": record.is_default,
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
@@ -71,6 +76,7 @@ async def create_llm_provider(
         model=body.model,
         base_url=body.base_url,
         thinking_format=body.thinking_format,
+        thinking_capability=body.thinking_capability,
         is_default=body.is_default,
     )
     await state.llm_registry.create(record)
@@ -86,19 +92,32 @@ async def update_llm_provider(
     import sebastian.gateway.state as state
     from sebastian.llm.crypto import encrypt
 
+    data = body.model_dump(exclude_unset=True)
+    if "base_url" not in data:
+        raise HTTPException(status_code=400, detail="base_url is required")
+    # nullable=False 的列不允许显式清空
+    for required_field in ("name", "api_key", "model", "base_url", "is_default"):
+        if required_field in data and data[required_field] is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{required_field} cannot be null",
+            )
+
     updates: dict[str, Any] = {}
-    if body.name is not None:
-        updates["name"] = body.name
-    if body.api_key is not None:
-        updates["api_key_enc"] = encrypt(body.api_key)
-    if body.model is not None:
-        updates["model"] = body.model
-    if body.base_url is not None:
-        updates["base_url"] = body.base_url
-    if body.thinking_format is not None:
-        updates["thinking_format"] = body.thinking_format
-    if body.is_default is not None:
-        updates["is_default"] = body.is_default
+    if "name" in data:
+        updates["name"] = data["name"]
+    if "api_key" in data:
+        updates["api_key_enc"] = encrypt(data["api_key"])
+    if "model" in data:
+        updates["model"] = data["model"]
+    if "base_url" in data:
+        updates["base_url"] = data["base_url"]
+    if "thinking_format" in data:
+        updates["thinking_format"] = data["thinking_format"]
+    if "thinking_capability" in data:
+        updates["thinking_capability"] = data["thinking_capability"]
+    if "is_default" in data:
+        updates["is_default"] = data["is_default"]
 
     record = await state.llm_registry.update(provider_id, **updates)
     if record is None:

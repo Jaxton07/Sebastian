@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 _REASON_SCHEMA: dict[str, str] = {
     "type": "string",
     "description": (
-        "Explain why you need to call this tool and confirm it aligns "
-        "with the current task goal."
+        "Explain why you need to call this tool and confirm it aligns with the current task goal."
     ),
 }
 

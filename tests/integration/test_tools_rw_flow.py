@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from sebastian.capabilities.tools._loader import load_tools
 
 

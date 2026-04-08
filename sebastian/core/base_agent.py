@@ -6,6 +6,7 @@ import inspect
 import json
 import logging
 from abc import ABC
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -143,7 +144,7 @@ class BaseAgent(ABC):
             lines.append(f"- **{spec['name']}**: {spec['description']}")
         return "\n".join(lines)
 
-    def _agents_section(self, agent_registry: dict[str, object] | None = None) -> str:  # noqa: ARG002
+    def _agents_section(self, agent_registry: Mapping[str, Any] | None = None) -> str:  # noqa: ARG002
         return ""
 
     def _knowledge_dir(self) -> Path:
@@ -201,7 +202,7 @@ class BaseAgent(ABC):
     def build_system_prompt(
         self,
         gate: PolicyGate,
-        agent_registry: dict[str, object] | None = None,
+        agent_registry: Mapping[str, Any] | None = None,
     ) -> str:
         sections = [
             self._persona_section(),
@@ -219,12 +220,14 @@ class BaseAgent(ABC):
         session_id: str,
         task_id: str | None = None,
         agent_name: str | None = None,
+        thinking_effort: str | None = None,
     ) -> str:
         return await self.run_streaming(
             user_message,
             session_id,
             task_id=task_id,
             agent_name=agent_name,
+            thinking_effort=thinking_effort,
         )
 
     async def run_streaming(
@@ -233,6 +236,7 @@ class BaseAgent(ABC):
         session_id: str,
         task_id: str | None = None,
         agent_name: str | None = None,
+        thinking_effort: str | None = None,
     ) -> str:
         self._current_task_goals[session_id] = user_message
 
@@ -289,6 +293,7 @@ class BaseAgent(ABC):
                 session_id=session_id,
                 task_id=task_id,
                 agent_context=agent_context,
+                thinking_effort=thinking_effort,
             )
         )
         self._active_streams[session_id] = current_stream
@@ -329,6 +334,7 @@ class BaseAgent(ABC):
         session_id: str,
         task_id: str | None,
         agent_context: str,
+        thinking_effort: str | None = None,
     ) -> str:
         full_text = ""
         tool_records: list[dict[str, Any]] = []
@@ -336,7 +342,9 @@ class BaseAgent(ABC):
         effective_system_prompt = (
             f"{self.system_prompt}\n\n{todo_section}" if todo_section else self.system_prompt
         )
-        gen = self._loop.stream(effective_system_prompt, messages, task_id=task_id)
+        gen = self._loop.stream(
+            effective_system_prompt, messages, task_id=task_id, thinking_effort=thinking_effort
+        )
         send_value: StreamToolResult | None = None
 
         try:

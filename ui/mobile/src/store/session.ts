@@ -8,6 +8,7 @@ interface SessionState {
   currentSessionId: string | null;
   draftSession: boolean;
   streamingMessage: string;
+  reset: () => void;
   setCurrentSession: (id: string | null) => void;
   startDraft: () => void;
   persistSession: (meta: SessionMeta) => void;
@@ -20,6 +21,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   currentSessionId: null,
   draftSession: false,
   streamingMessage: '',
+
+  reset: () =>
+    set({
+      sessionIndex: [],
+      currentSessionId: null,
+      draftSession: false,
+      streamingMessage: '',
+    }),
 
   setCurrentSession: (id) => set({ currentSessionId: id, draftSession: false }),
 

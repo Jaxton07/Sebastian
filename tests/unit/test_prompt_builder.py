@@ -20,13 +20,15 @@ def _make_registry_with_tools_and_skills() -> CapabilityRegistry:
         {"name": "file_read", "description": "Read a file", "input_schema": {}},
         fn,
     )
-    reg.register_skill_specs([
-        {
-            "name": "web_research",
-            "description": "Research the web",
-            "input_schema": {"type": "object", "properties": {}, "required": []},
-        }
-    ])
+    reg.register_skill_specs(
+        [
+            {
+                "name": "web_research",
+                "description": "Research the web",
+                "input_schema": {"type": "object", "properties": {}, "required": []},
+            }
+        ]
+    )
     return reg
 
 
@@ -136,7 +138,7 @@ async def test_persona_with_extra_braces_does_not_crash(tmp_path: Path) -> None:
 
     class MyAgent(BaseAgent):
         name = "test"
-        persona = "Hello {owner_name}. Use tools like: {\"key\": \"value\"}."
+        persona = 'Hello {owner_name}. Use tools like: {"key": "value"}.'
 
     store = SessionStore(tmp_path / "sessions")
     reg = CapabilityRegistry()

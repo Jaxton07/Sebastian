@@ -4,9 +4,10 @@ import { useTheme, useIsDark } from '../../theme/ThemeContext';
 interface Props {
   message: string;
   onAction: () => void;
+  actionLabel?: string;
 }
 
-export function ErrorBanner({ message, onAction }: Props) {
+export function ErrorBanner({ message, onAction, actionLabel = '前往设置' }: Props) {
   const colors = useTheme();
   const isDark = useIsDark();
   return (
@@ -19,7 +20,7 @@ export function ErrorBanner({ message, onAction }: Props) {
     >
       <Text style={styles.message}>{message}</Text>
       <TouchableOpacity onPress={onAction} style={styles.actionBtn}>
-        <Text style={styles.actionText}>前往 Settings</Text>
+        <Text style={styles.actionText}>{actionLabel}</Text>
       </TouchableOpacity>
     </View>
   );

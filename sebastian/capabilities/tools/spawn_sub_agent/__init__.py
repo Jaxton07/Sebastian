@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from types import ModuleType
+from typing import Any
 
 from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
@@ -20,7 +22,7 @@ def _get_spawn_lock(agent_type: str) -> asyncio.Lock:
     return _SPAWN_LOCKS[agent_type]
 
 
-def _log_task_failure(task: asyncio.Task) -> None:
+def _log_task_failure(task: asyncio.Task[Any]) -> None:
     if task.cancelled():
         return
     exc = task.exception()
@@ -28,8 +30,9 @@ def _log_task_failure(task: asyncio.Task) -> None:
         logger.exception("Background agent session failed", exc_info=exc)
 
 
-def _get_state():
+def _get_state() -> ModuleType:
     import sebastian.gateway.state as state
+
     return state
 
 

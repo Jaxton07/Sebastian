@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-
 from sebastian.core.agent_loop import _is_empty_output, _tool_result_content
 from sebastian.core.stream_events import ToolResult
-
 
 # ---------------------------------------------------------------------------
 # _is_empty_output
 # ---------------------------------------------------------------------------
+
 
 class TestIsEmptyOutput:
     def test_none_is_empty(self) -> None:
@@ -41,6 +40,7 @@ class TestIsEmptyOutput:
 # ---------------------------------------------------------------------------
 # _tool_result_content
 # ---------------------------------------------------------------------------
+
 
 def _make_result(
     *,

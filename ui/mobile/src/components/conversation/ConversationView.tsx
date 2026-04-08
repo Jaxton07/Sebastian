@@ -17,6 +17,7 @@ interface Props {
   sessionId: string | null;
   errorBanner?: ErrorBannerType | null;
   onBannerAction?: () => void;
+  bannerActionLabel?: string;
   // Pass KeyboardChatScrollView as renderScrollComponent for keyboard-aware scrolling.
   // If omitted, FlatList uses its built-in ScrollView (e.g. in non-chat contexts).
   renderScrollComponent?: (props: ScrollViewProps) => React.ReactElement<ScrollViewProps>;
@@ -30,6 +31,7 @@ export function ConversationView({
   sessionId,
   errorBanner,
   onBannerAction,
+  bannerActionLabel,
   renderScrollComponent,
 }: Props) {
   useConversation(sessionId);
@@ -87,7 +89,11 @@ export function ConversationView({
         }
         ListFooterComponent={
           errorBanner ? (
-            <ErrorBanner message={errorBanner.message} onAction={onBannerAction ?? (() => {})} />
+            <ErrorBanner
+              message={errorBanner.message}
+              actionLabel={bannerActionLabel}
+              onAction={onBannerAction ?? (() => {})}
+            />
           ) : null
         }
       />

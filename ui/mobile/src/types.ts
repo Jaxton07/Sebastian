@@ -119,6 +119,29 @@ export interface ApprovalRequiredData { approval: Approval; }
 export type LLMProviderType = 'anthropic' | 'openai';
 export type ThinkingFormat = 'reasoning_content' | 'think_tags' | null;
 
+export type ThinkingEffort =
+  | 'off'
+  | 'on'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'max';
+
+export type ThinkingCapability =
+  | 'none'
+  | 'toggle'
+  | 'effort'
+  | 'adaptive'
+  | 'always_on';
+
+export const EFFORT_LEVELS_BY_CAPABILITY: Record<ThinkingCapability, readonly ThinkingEffort[]> = {
+  none: [],
+  toggle: ['off', 'on'],
+  effort: ['off', 'low', 'medium', 'high'],
+  adaptive: ['off', 'low', 'medium', 'high', 'max'],
+  always_on: [],
+};
+
 export interface LLMProvider {
   id: string;
   name: string;
@@ -127,6 +150,7 @@ export interface LLMProvider {
   api_key: string;
   model: string;
   thinking_format: ThinkingFormat;
+  thinking_capability: ThinkingCapability | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -137,8 +161,9 @@ export interface LLMProviderCreate {
   provider_type: LLMProviderType;
   api_key: string;
   model: string;
-  base_url?: string | null;
+  base_url: string;
   thinking_format?: ThinkingFormat;
+  thinking_capability?: ThinkingCapability | null;
   is_default?: boolean;
 }
 

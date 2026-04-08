@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View, type ScrollViewProps } from 'react-native';
+import { Alert, StyleSheet, Text, View, type ScrollViewProps } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,15 +14,18 @@ import {
   getSessionDetail,
   sendTurnToSession,
 } from '../../../src/api/sessions';
+import { cancelTurn } from '../../../src/api/turns';
 import { useConversationStore } from '../../../src/store/conversation';
 import { Composer } from '../../../src/components/composer';
 import { ConversationView } from '../../../src/components/conversation';
 import { ErrorBanner } from '../../../src/components/conversation/ErrorBanner';
 import { COMPOSER_DEFAULT_HEIGHT } from '../../../src/components/composer/constants';
 import { ContentPanGestureArea } from '../../../src/components/common/ContentPanGestureArea';
+import { BackButton } from '../../../src/components/common/BackButton';
 import { TodoSidebar } from '../../../src/components/chat/TodoSidebar';
 import { Sidebar } from '../../../src/components/common/Sidebar';
 import { useTheme } from '../../../src/theme/ThemeContext';
+import type { ThinkingEffort } from '../../../src/types';
 
 const MOCK_MESSAGES = [
   {
@@ -86,14 +89,19 @@ export default function SessionDetailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const colors = useTheme();
-  const [sending, setSending] = useState(false);
   const [realSessionId, setRealSessionId] = useState<string | null>(null);
   const [todoSidebarOpen, setTodoSidebarOpen] = useState(false);
   const sendingRef = useRef(false);
   const effectiveSessionId = realSessionId || (isNewSession ? null : sessionId);
+  const sessionKey = effectiveSessionId ?? sessionId;
+  const sessionState = useConversationStore((s) => s.sessions[sessionKey]);
+  const activeTurn = sessionState?.activeTurn ?? null;
+  const isWorking = activeTurn !== null;
   const banner = useConversationStore(
-    (s) => s.sessions[effectiveSessionId ?? sessionId]?.errorBanner ?? null,
+    (s) => s.sessions[sessionKey]?.errorBanner ?? null,
   );
+  const bannerActionLabel =
+    banner?.code === 'no_llm_provider' ? '前往模型与 Provider' : '前往设置';
 
   const { data: remoteDetail } = useQuery({
     queryKey: ['session-detail', effectiveSessionId, agentName],
@@ -124,23 +132,22 @@ export default function SessionDetailScreen() {
   );
 
   const handleSend = useCallback(
-    async (text: string, _opts?: { thinking: boolean }) => {
+    async (text: string, opts: { effort: ThinkingEffort }) => {
       if (isMockSession) {
         Alert.alert('模拟会话', '这是用于导航测试的假数据页面。');
         return;
       }
-      if (sendingRef.current) return;
+      if (sendingRef.current || isWorking) return;
       sendingRef.current = true;
-      setSending(true);
       try {
         if (isNewSession && !realSessionId) {
-          const { sessionId: newId } = await createAgentSession(agentName, text);
+          const { sessionId: newId } = await createAgentSession(agentName, text, opts.effort);
           setRealSessionId(newId);
           router.replace(`/subagents/session/${newId}?agent=${agentName}`);
           return;
         }
         if (!effectiveSessionId) return;
-        await sendTurnToSession(effectiveSessionId, text, agentName);
+        await sendTurnToSession(effectiveSessionId, text, opts.effort, agentName);
         useConversationStore.getState().appendUserMessage(effectiveSessionId, text);
         queryClient.invalidateQueries({
           queryKey: ['session-detail', effectiveSessionId, agentName],
@@ -159,10 +166,19 @@ export default function SessionDetailScreen() {
         Alert.alert('发送失败，请重试');
       } finally {
         sendingRef.current = false;
-        setSending(false);
       }
     },
-    [agentName, effectiveSessionId, isMockSession, isNewSession, queryClient, realSessionId, router, sessionId],
+    [
+      agentName,
+      effectiveSessionId,
+      isMockSession,
+      isNewSession,
+      isWorking,
+      queryClient,
+      realSessionId,
+      router,
+      sessionId,
+    ],
   );
 
   return (
@@ -173,12 +189,11 @@ export default function SessionDetailScreen() {
           { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight },
         ]}
       >
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-          <Text style={[styles.backText, { color: colors.accent }]}>‹ 返回</Text>
-        </TouchableOpacity>
+        <BackButton style={styles.back} />
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {displayTitle}
         </Text>
+        <View style={styles.back} />
       </View>
 
       <ContentPanGestureArea onOpenRight={() => setTodoSidebarOpen(true)}>
@@ -191,16 +206,26 @@ export default function SessionDetailScreen() {
           <ConversationView
             sessionId={isMockSession ? null : effectiveSessionId}
             errorBanner={banner}
-            onBannerAction={() => router.push('/settings')}
+            bannerActionLabel={bannerActionLabel}
+            onBannerAction={() => {
+              if (banner?.code === 'no_llm_provider') {
+                router.push('/settings/providers');
+                return;
+              }
+              router.push('/settings');
+            }}
             renderScrollComponent={renderScrollComponent}
           />
 
           <KeyboardStickyView offset={stickyOffset} style={styles.stickyComposer}>
             <Composer
               sessionId={effectiveSessionId}
-              isWorking={sending}
+              isWorking={isWorking}
               onSend={handleSend}
-              onStop={async () => {}}
+              onStop={async () => {
+                if (!effectiveSessionId) return;
+                await cancelTurn(effectiveSessionId);
+              }}
             />
           </KeyboardStickyView>
         </KeyboardGestureArea>
@@ -231,9 +256,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 12,
   },
-  back: { padding: 8, marginRight: 4 },
-  backText: { fontSize: 16 },
-  title: { flex: 1, fontSize: 15, fontWeight: '600' },
+  back: { width: 72 },
+  title: { flex: 1, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   gestureArea: { flex: 1 },
   stickyComposer: {
     position: 'absolute',

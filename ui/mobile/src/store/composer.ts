@@ -1,46 +1,120 @@
+import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import type { StateStorage } from 'zustand/middleware';
+import type { ThinkingEffort } from '../types';
 
 const DRAFT_KEY = '__draft__';
+const STORAGE_KEY = 'sebastian_composer_v2';
 
-interface ComposerStore {
-  thinkingBySession: Record<string, boolean>;
-  getThinking: (sessionId: string | null) => boolean;
-  setThinking: (sessionId: string | null, v: boolean) => void;
-  migrateDraftToSession: (newSessionId: string) => void;
-  clearSession: (sessionId: string) => void;
+const secureStorage: StateStorage = {
+  getItem: (name) => SecureStore.getItemAsync(name),
+  setItem: (name, value) => SecureStore.setItemAsync(name, value),
+  removeItem: (name) => SecureStore.deleteItemAsync(name),
+};
+
+export interface ClampReport {
+  /** 第一项被降级时返回 from→to，否则不返回（表示无降级发生） */
+  from: ThinkingEffort;
+  to: ThinkingEffort;
 }
 
-export const useComposerStore = create<ComposerStore>((set, get) => ({
-  thinkingBySession: {},
+interface ComposerStore {
+  effortBySession: Record<string, ThinkingEffort>;
+  lastUserChoice: ThinkingEffort;
 
-  getThinking(sessionId) {
-    const key = sessionId ?? DRAFT_KEY;
-    return get().thinkingBySession[key] ?? false;
-  },
+  getEffort: (sessionId: string | null) => ThinkingEffort;
+  setEffort: (sessionId: string | null, effort: ThinkingEffort) => void;
+  migrateDraftToSession: (newSessionId: string) => void;
+  clearSession: (sessionId: string) => void;
+  resetServerBoundState: () => void;
+  clampAllToCapability: (allowedEfforts: readonly ThinkingEffort[]) => ClampReport | null;
+}
 
-  setThinking(sessionId, v) {
-    const key = sessionId ?? DRAFT_KEY;
-    set((s) => ({
-      thinkingBySession: { ...s.thinkingBySession, [key]: v },
-    }));
-  },
+function clampOne(
+  current: ThinkingEffort,
+  allowed: readonly ThinkingEffort[],
+): ThinkingEffort {
+  // always_on / none：UI 不读 effort，固化为 off 避免脏 state
+  if (allowed.length === 0) return 'off';
+  if (allowed.includes(current)) return current;
+  if (allowed.includes('on')) {
+    return current === 'off' ? 'off' : 'on';
+  }
+  if (current === 'max' && allowed.includes('high')) return 'high';
+  if (current === 'on' && allowed.includes('medium')) return 'medium';
+  if (allowed.includes('off')) return 'off';
+  return allowed[0] ?? 'off';
+}
 
-  migrateDraftToSession(newSessionId) {
-    set((s) => {
-      const draftVal = s.thinkingBySession[DRAFT_KEY];
-      if (draftVal === undefined) return s;
-      const next = { ...s.thinkingBySession };
-      if (draftVal) next[newSessionId] = true;
-      delete next[DRAFT_KEY];
-      return { thinkingBySession: next };
-    });
-  },
+export const useComposerStore = create<ComposerStore>()(
+  persist(
+    (set, get) => ({
+      effortBySession: {},
+      lastUserChoice: 'off',
 
-  clearSession(sessionId) {
-    set((s) => {
-      const next = { ...s.thinkingBySession };
-      delete next[sessionId];
-      return { thinkingBySession: next };
-    });
-  },
-}));
+      getEffort(sessionId) {
+        const key = sessionId ?? DRAFT_KEY;
+        return get().effortBySession[key] ?? get().lastUserChoice;
+      },
+
+      setEffort(sessionId, effort) {
+        const key = sessionId ?? DRAFT_KEY;
+        set((s) => ({
+          effortBySession: { ...s.effortBySession, [key]: effort },
+          lastUserChoice: effort,
+        }));
+      },
+
+      migrateDraftToSession(newSessionId) {
+        set((s) => {
+          const draftVal = s.effortBySession[DRAFT_KEY];
+          if (draftVal === undefined) return s;
+          const next = { ...s.effortBySession };
+          next[newSessionId] = draftVal;
+          delete next[DRAFT_KEY];
+          return { effortBySession: next };
+        });
+      },
+
+      clearSession(sessionId) {
+        set((s) => {
+          const next = { ...s.effortBySession };
+          delete next[sessionId];
+          return { effortBySession: next };
+        });
+      },
+
+      resetServerBoundState() {
+        set({ effortBySession: {} });
+      },
+
+      clampAllToCapability(allowedEfforts) {
+        const s = get();
+        let report: ClampReport | null = null;
+        const nextMap: Record<string, ThinkingEffort> = {};
+        for (const [k, v] of Object.entries(s.effortBySession)) {
+          const clamped = clampOne(v, allowedEfforts);
+          nextMap[k] = clamped;
+          if (clamped !== v && report === null) {
+            report = { from: v, to: clamped };
+          }
+        }
+        const clampedLast = clampOne(s.lastUserChoice, allowedEfforts);
+        if (clampedLast !== s.lastUserChoice && report === null) {
+          report = { from: s.lastUserChoice, to: clampedLast };
+        }
+        set({
+          effortBySession: nextMap,
+          lastUserChoice: clampedLast,
+        });
+        return report;
+      },
+    }),
+    {
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => secureStorage),
+      partialize: (s) => ({ lastUserChoice: s.lastUserChoice }),
+    },
+  ),
+);

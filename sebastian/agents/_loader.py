@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 @dataclass
 class AgentConfig:
     agent_type: str
-    name: str                              # agent class name (e.g. "CodeAgent")
-    display_name: str                      # user-facing name (e.g. "铁匠")
+    name: str  # agent class name (e.g. "CodeAgent")
+    display_name: str  # user-facing name (e.g. "铁匠")
     description: str
-    max_children: int                      # max concurrent depth=3 sessions
-    stalled_threshold_minutes: int         # stalled detection threshold in minutes
+    max_children: int  # max concurrent depth=3 sessions
+    stalled_threshold_minutes: int  # stalled detection threshold in minutes
     agent_class: type[BaseAgent]
     allowed_tools: list[str] | None = None
     allowed_skills: list[str] | None = None

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 
 def test_encrypt_decrypt_roundtrip(monkeypatch) -> None:
     monkeypatch.setattr("sebastian.config.settings.sebastian_jwt_secret", "test-secret-abc")

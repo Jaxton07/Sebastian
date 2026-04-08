@@ -114,7 +114,9 @@ def test_send_turn_returns_immediate_session_metadata(client):
     assert "response" not in data
     assert len(scheduled_coroutines) == 1
     mock_create_task.assert_called_once()
-    mock_run_streaming.assert_called_once_with("Hello Sebastian", fake_session.id)
+    mock_run_streaming.assert_called_once_with(
+        "Hello Sebastian", fake_session.id, thinking_effort=None
+    )
     assert mock_run_streaming.await_count == 0
 
 
@@ -157,3 +159,28 @@ def test_agents_endpoint_returns_list_format(client):
         assert "name" in agent
         assert "active_session_count" in agent
         assert "max_children" in agent
+
+
+def test_post_turns_accepts_thinking_effort_and_passes_to_agent(client):
+    http_client, mock_run_streaming, fake_session = client
+    token = _login(http_client)
+    scheduled_coroutines = []
+
+    def capture_background_task(coroutine):
+        scheduled_coroutines.append(coroutine)
+        coroutine.close()
+        return MagicMock()
+
+    with patch(
+        "sebastian.gateway.routes.turns.asyncio.create_task",
+        side_effect=capture_background_task,
+    ):
+        response = http_client.post(
+            "/api/v1/turns",
+            json={"content": "hello", "thinking_effort": "high"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200, response.text
+    mock_run_streaming.assert_called_once_with("hello", fake_session.id, thinking_effort="high")
+    assert len(scheduled_coroutines) == 1

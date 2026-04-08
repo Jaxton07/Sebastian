@@ -73,7 +73,9 @@ async def _check_stalled_sessions(
                 )
 
             stalled_ids.append(session_id)
-            logger.warning("Session %s marked as stalled (inactive %s min)", session_id, threshold_minutes)
+            logger.warning(
+                "Session %s marked as stalled (inactive %s min)", session_id, threshold_minutes
+            )
 
     return stalled_ids
 

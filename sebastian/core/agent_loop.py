@@ -86,6 +86,7 @@ class AgentLoop:
         system_prompt: str,
         messages: list[dict[str, Any]],
         task_id: str | None = None,
+        thinking_effort: str | None = None,
     ) -> AsyncGenerator[LLMStreamEvent, ToolResult | None]:
         """Yield LLM stream events; accept tool results injected via asend()."""
         if self._provider is None:
@@ -111,6 +112,7 @@ class AgentLoop:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 block_id_prefix=f"b{iteration}_",
+                thinking_effort=thinking_effort,
             ):
                 _llm_stream_logger.debug(
                     "stream_event type=%s task_id=%s", type(event).__name__, task_id
@@ -122,7 +124,13 @@ class AgentLoop:
 
                 if isinstance(event, ThinkingBlockStop):
                     if not is_openai:
-                        assistant_blocks.append({"type": "thinking", "thinking": event.thinking})
+                        block_dict: dict[str, Any] = {
+                            "type": "thinking",
+                            "thinking": event.thinking,
+                        }
+                        if event.signature is not None:
+                            block_dict["signature"] = event.signature
+                        assistant_blocks.append(block_dict)
                     yield event
 
                 elif isinstance(event, TextBlockStop):

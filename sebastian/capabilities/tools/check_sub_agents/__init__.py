@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from types import ModuleType
+
 from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
 
 
-def _get_state():
+def _get_state() -> ModuleType:
     import sebastian.gateway.state as state
+
     return state
 
 
@@ -30,7 +33,8 @@ async def check_sub_agents() -> ToolResult:
     else:
         # Leader: show only this leader's own depth=3 children
         sessions = [
-            s for s in all_sessions
+            s
+            for s in all_sessions
             if s.get("depth") == 3
             and s.get("agent_type") == ctx.agent_type
             and s.get("parent_session_id") == ctx.session_id

@@ -1,19 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { useSettingsStore } from '../../store/settings';
+import { getServerConfigInputValue, useSettingsStore } from '../../store/settings';
 import { checkHealth } from '../../api/auth';
 import { useTheme } from '../../theme/ThemeContext';
 
 export function ServerConfig() {
   const colors = useTheme();
-  const { serverUrl, setServerUrl } = useSettingsStore();
+  const { serverUrl, isLoaded, setServerUrl, connectionStatus, setConnectionStatus } = useSettingsStore();
   const [input, setInput] = useState(serverUrl);
-  const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+
+  useEffect(() => {
+    setInput((current) => getServerConfigInputValue(current, serverUrl, isLoaded));
+  }, [serverUrl, isLoaded]);
 
   async function handleSave() {
     await setServerUrl(input.trim());
     const ok = await checkHealth();
-    setStatus(ok ? 'ok' : 'fail');
+    await setConnectionStatus(ok ? 'ok' : 'fail');
   }
 
   return (
@@ -25,12 +28,12 @@ export function ServerConfig() {
           <Text
             style={[
               styles.statusText,
-              status === 'ok' && { color: colors.success, fontWeight: '600' },
-              status === 'fail' && { color: colors.error, fontWeight: '600' },
-              status === 'idle' && { color: colors.textSecondary },
+              connectionStatus === 'ok' && { color: colors.success, fontWeight: '600' },
+              connectionStatus === 'fail' && { color: colors.error, fontWeight: '600' },
+              connectionStatus === 'idle' && { color: colors.textSecondary },
             ]}
           >
-            {status === 'ok' ? '已连接' : status === 'fail' ? '失败' : '未测试'}
+            {connectionStatus === 'ok' ? '已连接' : connectionStatus === 'fail' ? '失败' : '未测试'}
           </Text>
         </View>
         <View style={styles.inputBlock}>

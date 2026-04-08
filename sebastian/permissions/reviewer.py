@@ -56,9 +56,7 @@ class PermissionReviewer:
         try:
             provider, model = await self._llm_registry.get_default_with_model()
         except RuntimeError:
-            logger.warning(
-                "PermissionReviewer: no LLM provider configured, defaulting to escalate"
-            )
+            logger.warning("PermissionReviewer: no LLM provider configured, defaulting to escalate")
             return ReviewDecision(
                 decision="escalate",
                 explanation="未配置 LLM Provider，无法自动审查工具调用，请人工批准。",

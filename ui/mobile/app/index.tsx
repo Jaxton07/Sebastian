@@ -12,6 +12,7 @@ import { useSessionStore } from '@/src/store/session';
 import { useSessions } from '@/src/hooks/useSessions';
 import { sendTurn, cancelTurn } from '@/src/api/turns';
 import { deleteSession } from '@/src/api/sessions';
+import type { ThinkingEffort } from '@/src/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '@/src/components/common/Sidebar';
 import { ContentPanGestureArea } from '@/src/components/common/ContentPanGestureArea';
@@ -45,6 +46,17 @@ export default function ChatScreen() {
     currentSessionId ? (s.sessions[currentSessionId]?.errorBanner ?? null) : s.draftErrorBanner,
   );
 
+  function handleBannerAction() {
+    if (currentBanner?.code === 'no_llm_provider') {
+      router.push('/settings/providers');
+      return;
+    }
+    router.push('/settings');
+  }
+
+  const bannerActionLabel =
+    currentBanner?.code === 'no_llm_provider' ? '前往模型与 Provider' : '前往设置';
+
   // KeyboardStickyView offset: when keyboard opens, Composer bottom sits at keyboard top.
   // insets.bottom compensates for SafeAreaView's bottom padding (which would double-stack
   // without this offset when keyboard is visible).
@@ -67,9 +79,9 @@ export default function ChatScreen() {
     [insets.bottom],
   );
 
-  async function handleSend(text: string, _opts: { thinking: boolean }) {
+  async function handleSend(text: string, opts: { effort: ThinkingEffort }) {
     try {
-      const { sessionId } = await sendTurn(currentSessionId, text);
+      const { sessionId } = await sendTurn(currentSessionId, text, opts.effort);
       if (!currentSessionId) {
         persistSession({
           id: sessionId,
@@ -173,7 +185,8 @@ export default function ChatScreen() {
               <View style={styles.emptyContainer}>
                 <ErrorBanner
                   message={currentBanner.message}
-                  onAction={() => router.push('/settings')}
+                  actionLabel={bannerActionLabel}
+                  onAction={handleBannerAction}
                 />
               </View>
             ) : (
@@ -183,7 +196,8 @@ export default function ChatScreen() {
             <ConversationView
               sessionId={currentSessionId}
               errorBanner={currentBanner}
-              onBannerAction={() => router.push('/settings')}
+              bannerActionLabel={bannerActionLabel}
+              onBannerAction={handleBannerAction}
               renderScrollComponent={renderScrollComponent}
             />
           )}

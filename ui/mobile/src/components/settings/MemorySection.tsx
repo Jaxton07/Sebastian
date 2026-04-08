@@ -13,7 +13,9 @@ export function MemorySection() {
             <Text style={[styles.rowTitle, { color: colors.text }]}>Memory 管理</Text>
             <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>Episodic / Semantic 配置将随后开放</Text>
           </View>
-          <Text style={[styles.placeholder, { color: colors.textSecondary }]}>即将推出</Text>
+          <View accessibilityState={{ disabled: true }}>
+            <Text style={[styles.placeholder, { color: colors.textSecondary }]}>即将推出</Text>
+          </View>
         </View>
       </View>
     </View>

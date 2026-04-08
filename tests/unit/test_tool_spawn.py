@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from sebastian.core.tool_context import _current_tool_ctx
 from sebastian.permissions.types import ToolCallContext
 
@@ -28,7 +30,9 @@ async def test_spawn_sub_agent_success():
 
     token = _current_tool_ctx.set(ctx)
     try:
-        with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
+        with patch(
+            "sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state
+        ):
             result = await spawn_sub_agent(goal="write unit tests", context="")
     finally:
         _current_tool_ctx.reset(token)
@@ -53,12 +57,18 @@ async def test_spawn_sub_agent_over_limit():
     )
 
     ctx = ToolCallContext(
-        task_goal="task", session_id="parent", task_id=None, agent_type="code", depth=2,
+        task_goal="task",
+        session_id="parent",
+        task_id=None,
+        agent_type="code",
+        depth=2,
     )
 
     token = _current_tool_ctx.set(ctx)
     try:
-        with patch("sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state):
+        with patch(
+            "sebastian.capabilities.tools.spawn_sub_agent._get_state", return_value=mock_state
+        ):
             result = await spawn_sub_agent(goal="another task")
     finally:
         _current_tool_ctx.reset(token)

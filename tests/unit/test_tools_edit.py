@@ -5,10 +5,9 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_registry():
+    import sebastian.capabilities.tools.edit  # noqa: F401
     from sebastian.capabilities.tools import _file_state
     from sebastian.core import tool as tool_module
-
-    import sebastian.capabilities.tools.edit  # noqa: F401
 
     _file_state._file_mtimes.clear()
     saved = dict(tool_module._tools)
@@ -46,9 +45,7 @@ async def test_edit_fails_when_not_found(tmp_path):
     f.write_text("hello world")
     record_read(str(f))
 
-    result = await call_tool(
-        "Edit", file_path=str(f), old_string="xyz", new_string="abc"
-    )
+    result = await call_tool("Edit", file_path=str(f), old_string="xyz", new_string="abc")
     assert not result.ok
     assert "not found" in result.error
 
@@ -62,9 +59,7 @@ async def test_edit_fails_on_multiple_matches(tmp_path):
     f.write_text("foo\nfoo\nbar\n")
     record_read(str(f))
 
-    result = await call_tool(
-        "Edit", file_path=str(f), old_string="foo", new_string="baz"
-    )
+    result = await call_tool("Edit", file_path=str(f), old_string="foo", new_string="baz")
     assert not result.ok
     assert "2" in result.error  # mentions count
 
@@ -186,6 +181,7 @@ async def test_edit_rejects_stale_mtime(tmp_path, isolated_registry) -> None:
 async def test_edit_relative_path_resolves_to_workspace(tmp_path):
     """相对路径应解析到 workspace_dir。"""
     from unittest.mock import patch
+
     from sebastian.capabilities.tools._file_state import record_read
     from sebastian.core.tool import call_tool
 

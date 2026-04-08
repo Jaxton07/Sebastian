@@ -90,17 +90,31 @@ async def grep(
     use_rg = _check_rg()
 
     if use_rg:
-        cmd = _build_rg_cmd(pattern, search_path, glob_pattern=glob, ignore_case=ignore_case, context_lines=context_lines)
+        cmd = _build_rg_cmd(
+            pattern,
+            search_path,
+            glob_pattern=glob,
+            ignore_case=ignore_case,
+            context_lines=context_lines,
+        )
         backend = "ripgrep"
     else:
-        cmd = _build_grep_cmd(pattern, search_path, glob_pattern=glob, ignore_case=ignore_case, context_lines=context_lines)
+        cmd = _build_grep_cmd(
+            pattern,
+            search_path,
+            glob_pattern=glob,
+            ignore_case=ignore_case,
+            context_lines=context_lines,
+        )
         backend = "grep"
 
     output, stderr_output, returncode = await _run_cmd(cmd)
 
     # returncode=2 indicates a real error (invalid pattern, permission denied, etc.)
     if returncode is not None and returncode >= 2:
-        return ToolResult(ok=False, error=stderr_output.strip() or f"Search failed with exit code {returncode}")
+        return ToolResult(
+            ok=False, error=stderr_output.strip() or f"Search failed with exit code {returncode}"
+        )
 
     lines = output.splitlines(keepends=True)
     truncated = len(lines) > effective_limit

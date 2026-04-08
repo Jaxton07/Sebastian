@@ -37,19 +37,21 @@ class EventBus:
         )
         if not handlers:
             return
-        awaitables = []
-        awaitable_indices = []
+        awaitables: list[Awaitable[None]] = []
+        awaitable_indices: list[int] = []
         for i, h in enumerate(handlers):
             result = h(event)
             if inspect.isawaitable(result):
                 awaitables.append(result)
                 awaitable_indices.append(i)
         if awaitables:
-            results = await asyncio.gather(*awaitables, return_exceptions=True)
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
+            gathered = await asyncio.gather(*awaitables, return_exceptions=True)
+            for i, gathered_result in enumerate(gathered):
+                if isinstance(gathered_result, Exception):
                     handler_idx = awaitable_indices[i]
-                    logger.warning("Event handler %s raised: %s", handlers[handler_idx], result)
+                    logger.warning(
+                        "Event handler %s raised: %s", handlers[handler_idx], gathered_result
+                    )
 
 
 # Global singleton

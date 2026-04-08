@@ -1,137 +1,104 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
+import { router } from 'expo-router';
+import { checkHealth, logout } from '@/src/api/auth';
+import { SettingsCategoryCard } from '@/src/components/settings/SettingsCategoryCard';
+import { SettingsScreenLayout } from '@/src/components/settings/SettingsScreenLayout';
 import {
-  ScrollView, View, Text, TextInput,
-  TouchableOpacity, StyleSheet,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  getAdvancedSummary,
+  getAppearanceSummary,
+  getConnectionSummary,
+  getProviderSummary,
+} from '@/src/components/settings/settingsSummary';
+import { useLLMProvidersStore } from '@/src/store/llmProviders';
 import { useSettingsStore } from '@/src/store/settings';
-import { login, logout } from '@/src/api/auth';
-import { ServerConfig } from '@/src/components/settings/ServerConfig';
-import { LLMProviderConfig } from '@/src/components/settings/LLMProviderConfig';
-import { ThemeSettings } from '@/src/components/settings/ThemeSettings';
-import { MemorySection } from '@/src/components/settings/MemorySection';
-import { DebugLogging } from '@/src/components/settings/DebugLogging';
-import { useTheme } from '@/src/theme/ThemeContext';
+import { useIsDark } from '@/src/theme/ThemeContext';
 
 export default function SettingsScreen() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const colors = useTheme();
-  const { jwtToken, setJwtToken } = useSettingsStore();
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const {
+    connectionStatus,
+    isLoaded,
+    jwtToken,
+    serverUrl,
+    setConnectionStatus,
+    setJwtToken,
+    themeMode,
+  } = useSettingsStore();
+  const { providers, loading, initialized, error, fetch } = useLLMProvidersStore();
+  const isDark = useIsDark();
 
-  async function handleLogin() {
-    try {
-      const token = await login(password);
-      await setJwtToken(token);
-      setPassword('');
-      setError('');
-    } catch {
-      setError('登录失败，请检查密码');
+  useEffect(() => {
+    if (jwtToken && !loading && !initialized) {
+      void fetch();
     }
+  }, [fetch, initialized, jwtToken, loading]);
+
+  async function handleTestConnection() {
+    const ok = await checkHealth();
+    await setConnectionStatus(ok ? 'ok' : 'fail');
   }
 
   async function handleLogout() {
-    try { await logout(); } catch { /* ignore */ }
+    try {
+      await logout();
+    } catch {
+      // allow local logout even if server call fails
+    }
     await setJwtToken(null);
   }
 
+  const connectionSummary = getConnectionSummary({
+    serverUrl,
+    connectionStatus,
+    isLoggedIn: !!jwtToken,
+  });
+  const providerSummary = getProviderSummary({
+    providers,
+    isLoggedIn: !!jwtToken,
+    initialized,
+    isLoading: loading,
+    error,
+  });
+  const appearanceSummary = getAppearanceSummary({ themeMode, isDark });
+  const advancedSummary = getAdvancedSummary({ isLoggedIn: !!jwtToken });
+
   return (
-    <ScrollView
-      style={[styles.screen, { backgroundColor: colors.settingsBackground }]}
-      contentContainerStyle={[
-        styles.container,
-        { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 },
-      ]}
+    <SettingsScreenLayout
+      title="设置"
+      subtitle="查看当前状态，并进入对应分类完成详细配置。"
     >
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-        <Text style={[styles.backText, { color: colors.accent }]}>‹ 返回</Text>
-      </TouchableOpacity>
+      <SettingsCategoryCard
+        label="Connection"
+        title={isLoaded ? connectionSummary.title : '正在加载'}
+        subtitle={isLoaded ? connectionSummary.subtitle : '正在读取本地设置…'}
+        onPress={() => router.push('/settings/connection')}
+        actions={[
+          { key: 'test-connection', label: '测试连接', onPress: handleTestConnection },
+          ...(jwtToken
+            ? [{ key: 'logout', label: '退出登录', onPress: handleLogout, tone: 'destructive' as const }]
+            : []),
+        ]}
+      />
 
-      <View style={styles.hero}>
-        <Text style={[styles.heroTitle, { color: colors.text }]}>设置</Text>
-        <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
-          配置 Sebastian 的连接、登录状态和模型提供商。
-        </Text>
-      </View>
+      <SettingsCategoryCard
+        label="Models"
+        title={isLoaded ? providerSummary.title : '正在加载'}
+        subtitle={isLoaded ? providerSummary.subtitle : '正在读取 Provider 状态…'}
+        onPress={() => router.push('/settings/providers')}
+      />
 
-      <ServerConfig />
-      {jwtToken ? (
-        <View style={styles.group}>
-          <Text style={[styles.groupLabel, { color: colors.textSecondary }]}>账户</Text>
-          <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
-            <View style={[styles.row, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.rowTitle, { color: colors.text }]}>Owner 登录</Text>
-              <Text style={[styles.statusOk, { color: colors.success }]}>已连接</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.destructiveButton, { backgroundColor: colors.destructiveBg }]}
-              onPress={handleLogout}
-            >
-              <Text style={[styles.destructiveButtonText, { color: colors.error }]}>退出登录</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.group}>
-          <Text style={[styles.groupLabel, { color: colors.textSecondary }]}>账户</Text>
-          <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
-            <View style={[styles.row, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.rowTitle, { color: colors.text }]}>Owner 登录</Text>
-              <Text style={[styles.statusIdle, { color: colors.textSecondary }]}>未登录</Text>
-            </View>
-            <View style={styles.inputBlock}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>密码</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text }]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="输入 Owner 密码"
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-              />
-            </View>
-            {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.accent }]}
-              onPress={handleLogin}
-            >
-              <Text style={styles.primaryButtonText}>登录</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      <LLMProviderConfig />
-      <ThemeSettings />
-      <MemorySection />
-      <DebugLogging />
-    </ScrollView>
+      <SettingsCategoryCard
+        label="Appearance"
+        title={appearanceSummary.title}
+        subtitle={appearanceSummary.subtitle}
+        onPress={() => router.push('/settings/appearance')}
+      />
+
+      <SettingsCategoryCard
+        label="Advanced"
+        title={advancedSummary.title}
+        subtitle={advancedSummary.subtitle}
+        onPress={() => router.push('/settings/advanced')}
+      />
+    </SettingsScreenLayout>
   );
 }
-
-const styles = StyleSheet.create({
-  screen:                { flex: 1 },
-  container:             { paddingHorizontal: 16 },
-  backBtn:               { marginBottom: 8 },
-  backText:              { fontSize: 16 },
-  hero:                  { marginBottom: 18, paddingHorizontal: 4 },
-  heroTitle:             { fontSize: 34, fontWeight: '700' },
-  heroSubtitle:          { marginTop: 6, fontSize: 15, lineHeight: 21 },
-  group:                 { marginBottom: 28 },
-  groupLabel:            { marginBottom: 8, paddingHorizontal: 4, fontSize: 13, fontWeight: '600', textTransform: 'uppercase' },
-  card:                  { borderRadius: 14, overflow: 'hidden' },
-  row:                   { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
-  rowTitle:              { fontSize: 17 },
-  statusOk:              { fontSize: 15, fontWeight: '600' },
-  statusIdle:            { fontSize: 15 },
-  inputBlock:            { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
-  inputLabel:            { marginBottom: 8, fontSize: 13 },
-  input:                 { minHeight: 46, borderRadius: 12, paddingHorizontal: 14, fontSize: 17 },
-  error:                 { paddingHorizontal: 16, paddingBottom: 10, fontSize: 13 },
-  primaryButton:         { marginHorizontal: 16, marginBottom: 16, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryButtonText:     { fontSize: 17, fontWeight: '600', color: '#FFFFFF' },
-  destructiveButton:     { margin: 16, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  destructiveButtonText: { fontSize: 17, fontWeight: '600' },
-});

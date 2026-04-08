@@ -26,7 +26,7 @@ async def test_llm_provider_record_roundtrip(db_session) -> None:
     result = await db_session.execute(select(LLMProviderRecord).where(LLMProviderRecord.is_default))
     loaded = result.scalar_one()
     assert loaded.name == "Claude Home"
-    assert loaded.api_key_enc != "sk-ant-test"   # stored encrypted
+    assert loaded.api_key_enc != "sk-ant-test"  # stored encrypted
     assert decrypt(loaded.api_key_enc) == "sk-ant-test"  # round-trip works
     assert loaded.provider_type == "anthropic"
     assert loaded.is_default is True

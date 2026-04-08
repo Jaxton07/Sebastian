@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -80,6 +79,7 @@ async def test_reviewer_defaults_to_escalate_on_provider_error() -> None:
         async def _gen():
             raise RuntimeError("API error")
             yield  # pragma: no cover
+
         return _gen()
 
     provider.stream = _raising
@@ -202,8 +202,9 @@ async def test_reviewer_escalates_on_empty_response() -> None:
 @pytest.mark.asyncio
 async def test_reviewer_system_prompt_contains_workspace_dir() -> None:
     """review() 构建的 system prompt 包含真实 workspace_dir 路径。"""
-    from unittest.mock import patch
     from pathlib import Path
+    from unittest.mock import patch
+
     from sebastian.permissions.reviewer import PermissionReviewer
 
     fake_workspace = Path("/fake/workspace/path")

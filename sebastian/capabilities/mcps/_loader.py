@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 try:
     import tomllib  # Python 3.11+
 except ImportError:
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # type: ignore[no-redef,import-not-found]
 
 
 def load_mcps() -> list[Any]:

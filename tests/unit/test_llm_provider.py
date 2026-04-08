@@ -26,6 +26,7 @@ def test_llm_provider_stream_signature_accepted_by_subclass() -> None:
             model: str,
             max_tokens: int,
             block_id_prefix: str = "",
+            thinking_effort: str | None = None,
         ) -> AsyncGenerator[LLMStreamEvent, None]:
             return
             yield  # make it an async generator
@@ -167,3 +168,34 @@ async def test_openai_compat_provider_streams_text_and_ends() -> None:
         TextBlockStop(block_id="b0_0", text="Hello world"),
         ProviderCallEnd(stop_reason="end_turn"),
     ]
+
+
+def test_thinking_block_stop_has_signature_field() -> None:
+    from sebastian.core.stream_events import ThinkingBlockStop
+
+    ev = ThinkingBlockStop(block_id="b0_0", thinking="thought", signature="sig_abc")
+    assert ev.signature == "sig_abc"
+
+    ev2 = ThinkingBlockStop(block_id="b0_0", thinking="thought")
+    assert ev2.signature is None
+
+
+def test_llm_provider_record_has_thinking_capability_field() -> None:
+    from sebastian.store.models import LLMProviderRecord
+
+    record = LLMProviderRecord(
+        name="test",
+        provider_type="anthropic",
+        api_key_enc="fake",
+        model="claude-opus-4-6",
+        thinking_capability="adaptive",
+    )
+    assert record.thinking_capability == "adaptive"
+
+    record2 = LLMProviderRecord(
+        name="test2",
+        provider_type="openai",
+        api_key_enc="fake",
+        model="gpt-4o",
+    )
+    assert record2.thinking_capability is None

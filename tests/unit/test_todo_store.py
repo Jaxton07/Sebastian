@@ -55,11 +55,13 @@ async def test_write_overwrites_previous(store: TodoStore) -> None:
 @pytest.mark.asyncio
 async def test_agent_type_isolation(store: TodoStore) -> None:
     await store.write(
-        "sebastian", "same-id",
+        "sebastian",
+        "same-id",
         [TodoItem(content="main", active_form="main", status=TodoStatus.PENDING)],
     )
     await store.write(
-        "code", "same-id",
+        "code",
+        "same-id",
         [TodoItem(content="sub", active_form="sub", status=TodoStatus.PENDING)],
     )
 
@@ -72,7 +74,8 @@ async def test_agent_type_isolation(store: TodoStore) -> None:
 @pytest.mark.asyncio
 async def test_write_creates_parent_directories(store: TodoStore, tmp_path: Path) -> None:
     await store.write(
-        "sebastian", "brand-new-session",
+        "sebastian",
+        "brand-new-session",
         [TodoItem(content="x", active_form="x", status=TodoStatus.PENDING)],
     )
     expected = tmp_path / "sessions" / "sebastian" / "brand-new-session" / "todos.json"

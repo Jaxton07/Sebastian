@@ -24,10 +24,11 @@ async def run_agent_session(
     session_store: SessionStore,
     index_store: IndexStore,
     event_bus: EventBus | None = None,
+    thinking_effort: str | None = None,
 ) -> None:
     """Run an agent on a session asynchronously. Sets status on completion/failure."""
     try:
-        await agent.run_streaming(goal, session.id)
+        await agent.run_streaming(goal, session.id, thinking_effort=thinking_effort)
         session.status = SessionStatus.COMPLETED
     except asyncio.CancelledError:
         session.status = SessionStatus.CANCELLED

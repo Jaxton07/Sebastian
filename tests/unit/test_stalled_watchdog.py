@@ -1,6 +1,8 @@
-import pytest
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from sebastian.core.stalled_watchdog import _check_stalled_sessions
 
 
@@ -10,14 +12,26 @@ async def test_marks_stalled_session():
     old = (now - timedelta(minutes=10)).isoformat()
 
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s1", "agent_type": "code", "status": "active", "last_activity_at": old, "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s1",
+                "agent_type": "code",
+                "status": "active",
+                "last_activity_at": old,
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
-    session_store.get_session = AsyncMock(return_value=MagicMock(
-        id="s1", status="active", last_activity_at=now - timedelta(minutes=10),
-        goal="analyze stock market",
-    ))
+    session_store.get_session = AsyncMock(
+        return_value=MagicMock(
+            id="s1",
+            status="active",
+            last_activity_at=now - timedelta(minutes=10),
+            goal="analyze stock market",
+        )
+    )
     event_bus = AsyncMock()
     registry = {"code": MagicMock(stalled_threshold_minutes=5)}
 
@@ -37,9 +51,17 @@ async def test_completed_session_not_marked() -> None:
     old = (now - timedelta(minutes=10)).isoformat()
 
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s1", "agent_type": "code", "status": "completed", "last_activity_at": old, "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s1",
+                "agent_type": "code",
+                "status": "completed",
+                "last_activity_at": old,
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
     event_bus = AsyncMock()
     registry = {"code": MagicMock(stalled_threshold_minutes=5)}
@@ -57,9 +79,17 @@ async def test_threshold_boundary_below_not_stalled() -> None:
     recent = (now - timedelta(minutes=4, seconds=59)).isoformat()
 
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s1", "agent_type": "code", "status": "active", "last_activity_at": recent, "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s1",
+                "agent_type": "code",
+                "status": "active",
+                "last_activity_at": recent,
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
     event_bus = AsyncMock()
     registry = {"code": MagicMock(stalled_threshold_minutes=5)}
@@ -76,15 +106,26 @@ async def test_threshold_boundary_above_stalled() -> None:
     old = (now - timedelta(minutes=5, seconds=1)).isoformat()
 
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s2", "agent_type": "code", "status": "active", "last_activity_at": old, "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s2",
+                "agent_type": "code",
+                "status": "active",
+                "last_activity_at": old,
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
-    session_store.get_session = AsyncMock(return_value=MagicMock(
-        id="s2", status="active",
-        last_activity_at=now - timedelta(minutes=5, seconds=1),
-        goal="test goal",
-    ))
+    session_store.get_session = AsyncMock(
+        return_value=MagicMock(
+            id="s2",
+            status="active",
+            last_activity_at=now - timedelta(minutes=5, seconds=1),
+            goal="test goal",
+        )
+    )
     event_bus = AsyncMock()
     registry = {"code": MagicMock(stalled_threshold_minutes=5)}
 
@@ -99,9 +140,17 @@ async def test_threshold_boundary_above_stalled() -> None:
 async def test_empty_last_activity_at_skipped() -> None:
     """last_activity_at 为空字符串时跳过，不报错。"""
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s1", "agent_type": "code", "status": "active", "last_activity_at": "", "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s1",
+                "agent_type": "code",
+                "status": "active",
+                "last_activity_at": "",
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
     event_bus = AsyncMock()
     registry = {"code": MagicMock(stalled_threshold_minutes=5)}
@@ -119,9 +168,17 @@ async def test_get_session_none_skipped() -> None:
     old = (now - timedelta(minutes=10)).isoformat()
 
     index_store = AsyncMock()
-    index_store.list_all = AsyncMock(return_value=[
-        {"id": "s1", "agent_type": "code", "status": "active", "last_activity_at": old, "depth": 2},
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "s1",
+                "agent_type": "code",
+                "status": "active",
+                "last_activity_at": old,
+                "depth": 2,
+            },
+        ]
+    )
     session_store = AsyncMock()
     session_store.get_session = AsyncMock(return_value=None)
     event_bus = AsyncMock()

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from sebastian.core.types import Session
 from sebastian.store.session_store import SessionStore

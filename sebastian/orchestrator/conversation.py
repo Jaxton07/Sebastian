@@ -70,7 +70,7 @@ class ConversationManager:
 
         try:
             return await asyncio.wait_for(future, timeout=300.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(approval_id, None)
             logger.warning("Approval request %s timed out after 300s, denying.", approval_id)
             return False

@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState, Platform, ToastAndroid } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,6 +8,9 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { getApprovals, registerDevice } from '@/src/api/approvals';
+import { syncCurrentThinkingCapability } from '@/src/api/llm';
+import { registerDevicePushToken } from '@/src/api/pushRegistration';
+import { setUnauthorizedHandler } from '@/src/api/runtime';
 import { ApprovalModal } from '@/src/components/common/ApprovalModal';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useApprovalStore } from '@/src/store/approval';
@@ -50,17 +53,43 @@ function AppInit({ children }: { children: ReactNode }) {
   }, [load]);
 
   useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await useSettingsStore.getState().setJwtToken(null);
+      router.push('/settings');
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!jwtToken) return;
-    void (async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') return;
-      const token = (await Notifications.getDevicePushTokenAsync()).data;
-      await registerDevice(token).catch(() => {});
-    })();
+    void registerDevicePushToken({
+      notifications: Notifications,
+      registerDevice,
+      onError: () => {
+        // 开发期常见于未配置 FCM；忽略即可，避免启动时抛未处理异常。
+      },
+    });
   }, [jwtToken]);
 
   useEffect(() => {
     void hydratePendingApproval();
+  }, [jwtToken]);
+
+  useEffect(() => {
+    if (!jwtToken) return;
+    void syncCurrentThinkingCapability((report) => {
+      const msg = `${report.from} 在新模型下不可用，已切换为 ${report.to}`;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(msg, ToastAndroid.SHORT);
+      } else {
+        Alert.alert('思考档位已调整', msg);
+      }
+    }).catch(() => {
+      // 拉失败时 currentThinkingCapability 保持 null，UI 按 disabled 兜底
+    });
   }, [jwtToken]);
 
   useEffect(() => {

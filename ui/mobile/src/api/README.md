@@ -11,7 +11,9 @@
 ```
 api/
 ├── client.ts          # axios 实例、请求拦截（baseURL / JWT）、401 自动跳转
+├── runtime.ts         # API 运行时配置（serverUrl / JWT / 401 回调），用于解耦 client 与 store
 ├── auth.ts            # 登录、健康检查、登出
+├── pushRegistration.ts # 推送 token 注册封装（权限、原生 token、错误吞吐）
 ├── turns.ts           # 主对话发送（POST /sessions/:id/turns）
 ├── sessions.ts        # Session 列表、详情、任务列表
 ├── agents.ts          # Sub-Agent 列表相关接口
@@ -27,7 +29,9 @@ api/
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 修改认证 Token 逻辑 / 401 处理 | [auth.ts](auth.ts)、[client.ts](client.ts) |
+| 修改 API 运行时状态注入 / 未授权回调 | [runtime.ts](runtime.ts)、[client.ts](client.ts) |
 | 修改请求 baseURL 或公共 Header | [client.ts](client.ts) |
+| 修改推送 token 注册或原生 token 失败处理 | [pushRegistration.ts](pushRegistration.ts) |
 | 修改主对话发送接口 | [turns.ts](turns.ts) |
 | 修改 Session 列表 / 详情 / 消息接口 | [sessions.ts](sessions.ts) |
 | 修改 Sub-Agent 列表接口 | [agents.ts](agents.ts) |
