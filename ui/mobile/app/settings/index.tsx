@@ -3,7 +3,6 @@ import {
   ScrollView, View, Text, TextInput,
   TouchableOpacity, StyleSheet,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '@/src/store/settings';
 import { login, logout } from '@/src/api/auth';
@@ -12,11 +11,11 @@ import { LLMProviderConfig } from '@/src/components/settings/LLMProviderConfig';
 import { ThemeSettings } from '@/src/components/settings/ThemeSettings';
 import { MemorySection } from '@/src/components/settings/MemorySection';
 import { DebugLogging } from '@/src/components/settings/DebugLogging';
+import { BackButton } from '@/src/components/common/BackButton';
 import { useTheme } from '@/src/theme/ThemeContext';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const colors = useTheme();
   const { jwtToken, setJwtToken } = useSettingsStore();
   const [password, setPassword] = useState('');
@@ -46,9 +45,7 @@ export default function SettingsScreen() {
         { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 },
       ]}
     >
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-        <Text style={[styles.backText, { color: colors.accent }]}>‹ 返回</Text>
-      </TouchableOpacity>
+      <BackButton style={styles.backBtn} />
 
       <View style={styles.hero}>
         <Text style={[styles.heroTitle, { color: colors.text }]}>设置</Text>
@@ -114,8 +111,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   screen:                { flex: 1 },
   container:             { paddingHorizontal: 16 },
-  backBtn:               { marginBottom: 8 },
-  backText:              { fontSize: 16 },
+  backBtn:               { alignSelf: 'flex-start', marginBottom: 8 },
   hero:                  { marginBottom: 18, paddingHorizontal: 4 },
   heroTitle:             { fontSize: 34, fontWeight: '700' },
   heroSubtitle:          { marginTop: 6, fontSize: 15, lineHeight: 21 },

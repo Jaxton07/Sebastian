@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View, type ScrollViewProps } from 'react-native';
+import { Alert, StyleSheet, Text, View, type ScrollViewProps } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ import { ConversationView } from '../../../src/components/conversation';
 import { ErrorBanner } from '../../../src/components/conversation/ErrorBanner';
 import { COMPOSER_DEFAULT_HEIGHT } from '../../../src/components/composer/constants';
 import { ContentPanGestureArea } from '../../../src/components/common/ContentPanGestureArea';
+import { BackButton } from '../../../src/components/common/BackButton';
 import { TodoSidebar } from '../../../src/components/chat/TodoSidebar';
 import { Sidebar } from '../../../src/components/common/Sidebar';
 import { useTheme } from '../../../src/theme/ThemeContext';
@@ -174,12 +175,11 @@ export default function SessionDetailScreen() {
           { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight },
         ]}
       >
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-          <Text style={[styles.backText, { color: colors.accent }]}>‹ 返回</Text>
-        </TouchableOpacity>
+        <BackButton style={styles.back} />
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {displayTitle}
         </Text>
+        <View style={styles.back} />
       </View>
 
       <ContentPanGestureArea onOpenRight={() => setTodoSidebarOpen(true)}>
@@ -232,9 +232,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 12,
   },
-  back: { padding: 8, marginRight: 4 },
-  backText: { fontSize: 16 },
-  title: { flex: 1, fontSize: 15, fontWeight: '600' },
+  back: { width: 72 },
+  title: { flex: 1, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   gestureArea: { flex: 1 },
   stickyComposer: {
     position: 'absolute',

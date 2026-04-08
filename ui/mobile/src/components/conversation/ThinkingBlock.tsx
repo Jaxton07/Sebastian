@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useTheme } from '../../theme/ThemeContext';
 import { MarkdownContent } from './MarkdownContent';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function ThinkingBlock({ text, done }: Props) {
+  const colors = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   const label = done ? '思考过程' : '思考中…';
@@ -15,28 +17,36 @@ export function ThinkingBlock({ text, done }: Props) {
   if (!expanded) {
     return (
       <TouchableOpacity
-        style={styles.pill}
+        style={[
+          styles.pill,
+          { backgroundColor: colors.secondaryBackground, borderColor: colors.border },
+        ]}
         onPress={() => setExpanded(true)}
         activeOpacity={0.7}
       >
         <Text style={styles.pillIcon}>💭</Text>
-        <Text style={styles.pillLabel}>{label}</Text>
-        <Text style={styles.pillChevron}>›</Text>
+        <Text style={[styles.pillLabel, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[styles.pillChevron, { color: colors.textMuted }]}>›</Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, borderColor: colors.border },
+      ]}
+    >
       {/* Header — same pill style, click to collapse */}
       <TouchableOpacity
-        style={styles.header}
+        style={[styles.header, { backgroundColor: colors.secondaryBackground }]}
         onPress={() => setExpanded(false)}
         activeOpacity={0.7}
       >
         <Text style={styles.pillIcon}>💭</Text>
-        <Text style={styles.pillLabel}>{label}</Text>
-        <Text style={styles.pillChevron}>⌄</Text>
+        <Text style={[styles.pillLabel, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[styles.pillChevron, { color: colors.textMuted }]}>⌄</Text>
       </TouchableOpacity>
       {/* Content — connected to header, same container */}
       <View style={styles.body}>
@@ -52,9 +62,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#1a1a2e',
     borderWidth: 1,
-    borderColor: '#2a2a4e',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -64,16 +72,13 @@ const styles = StyleSheet.create({
   // Expanded: outer container merges header + body
   container: {
     borderWidth: 1,
-    borderColor: '#2a2a4e',
     borderRadius: 12,
     overflow: 'hidden',
     marginVertical: 4,
-    backgroundColor: '#111120',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a2e',
     paddingHorizontal: 14,
     paddingVertical: 8,
     gap: 6,
@@ -83,6 +88,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   pillIcon: { fontSize: 14 },
-  pillLabel: { color: '#6060a0', fontSize: 13, flex: 1 },
-  pillChevron: { color: '#3a3a5a', fontSize: 16 },
+  pillLabel: { fontSize: 13, flex: 1 },
+  pillChevron: { fontSize: 16 },
 });

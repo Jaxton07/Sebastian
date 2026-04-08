@@ -57,7 +57,15 @@ export function SessionList({ sessions, onSelect, onDelete }: Props) {
           }
         >
           <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.borderLight }]}
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.cardBackground,
+                borderColor: colors.borderLight,
+                shadowColor: colors.shadowColor,
+              },
+            ]}
+            activeOpacity={0.85}
             onPress={() => onSelect(item)}
           >
             <View style={styles.topRow}>
@@ -107,12 +115,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   deleteText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  content: { paddingHorizontal: 16, paddingBottom: 24 },
+  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
   card: {
     marginBottom: 12,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   topRow: {
     flexDirection: 'row',
