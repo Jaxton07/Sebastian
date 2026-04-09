@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-09
+
 ### Fixed
 - 一键安装脚本在 bash `set -u` 下误把中文全角字符当成变量名的一部分导致
   `unbound variable` 报错：`scripts/install.sh` 的 Python 版本检查和
