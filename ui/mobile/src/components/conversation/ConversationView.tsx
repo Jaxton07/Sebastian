@@ -1,5 +1,5 @@
-import { useCallback, useRef } from 'react';
-import { FlatList, View, StyleSheet, type ScrollViewProps } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { FlatList, View, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { useConversation } from '../../hooks/useConversation';
 import { useConversationStore } from '../../store/conversation';
 import { useTheme } from '../../theme/ThemeContext';
@@ -38,6 +38,8 @@ export function ConversationView({
   const colors = useTheme();
 
   const flatListRef = useRef<FlatList>(null);
+  const isNearBottom = useRef(true);
+  const isStreaming = useRef(false);
 
   const session = useConversationStore((s) =>
     sessionId ? s.sessions[sessionId] : undefined,
@@ -45,6 +47,32 @@ export function ConversationView({
 
   const messages = session?.messages ?? [];
   const activeTurn = session?.activeTurn ?? null;
+
+  // Track streaming state for scroll behavior
+  isStreaming.current = activeTurn !== null && activeTurn.blocks.length > 0;
+
+  // When a new user message is sent, reset to auto-follow
+  const messageCount = messages.length;
+  const prevMessageCount = useRef(messageCount);
+  useEffect(() => {
+    if (messageCount > prevMessageCount.current) {
+      isNearBottom.current = true;
+    }
+    prevMessageCount.current = messageCount;
+  }, [messageCount]);
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    isNearBottom.current = distFromBottom < 150;
+  }, []);
+
+  const handleContentSizeChange = useCallback(() => {
+    if (isNearBottom.current) {
+      // During streaming use no animation to avoid queued animations conflicting
+      flatListRef.current?.scrollToEnd({ animated: !isStreaming.current });
+    }
+  }, []);
 
   const items: ListItem[] = [
     ...messages.map((m) => ({ kind: 'message' as const, message: m })),
@@ -84,9 +112,9 @@ export function ConversationView({
         renderItem={renderItem}
         renderScrollComponent={renderScrollComponent}
         contentContainerStyle={{ paddingTop: 12, paddingBottom: LIST_BOTTOM_PADDING }}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }
+        onScroll={handleScroll}
+        scrollEventThrottle={64}
+        onContentSizeChange={handleContentSizeChange}
         ListFooterComponent={
           errorBanner ? (
             <ErrorBanner
