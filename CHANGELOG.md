@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-09
+
 ### Added
 - `sebastian update` 子命令：自托管部署一行命令升级到最新 release。复用
   bootstrap.sh 的 302 重定向 + SHA256 校验流程，下载 tarball 后原地替换
