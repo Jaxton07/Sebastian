@@ -1,5 +1,6 @@
 import Markdown from 'react-native-markdown-display';
 import { useTheme, useIsDark } from '../../theme/ThemeContext';
+import { CodeBlock } from './CodeBlock';
 
 interface Props {
   content: string;
@@ -18,21 +19,21 @@ export function MarkdownContent({ content }: Props) {
     heading3: { color: colors.text, fontSize: 15, fontWeight: '600' as const, marginBottom: 4 },
     strong: { color: colors.text, fontWeight: '700' as const },
     em: { fontStyle: 'italic' as const },
-    // 行内代码：彩色等宽字体，不用背景（Android Text 不支持 borderRadius 裁剪）
     code_inline: {
-      backgroundColor: 'transparent',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
       color: isDark ? '#a8d8a8' : '#007AFF',
       fontFamily: 'monospace',
       fontSize: 13,
     },
+    // fence/code_block styles kept as fallback; actual rendering overridden by rules
     fence: {
-      backgroundColor: '#111120',
+      backgroundColor: isDark ? '#1E1E2E' : '#F6F8FA',
       padding: 12,
       borderRadius: 8,
       marginVertical: 8,
     },
     code_block: {
-      color: '#a8d8a8',
+      color: isDark ? '#D4D4D4' : '#383A42',
       fontFamily: 'monospace',
       fontSize: 13,
       lineHeight: 20,
@@ -54,7 +55,15 @@ export function MarkdownContent({ content }: Props) {
     td: { padding: 8, color: colors.text, borderTopWidth: 1, borderTopColor: colors.border },
   };
 
+  const rules = {
+    fence: (node: any) => {
+      const code = node.content ?? '';
+      const language = node.sourceInfo ?? '';
+      return <CodeBlock key={node.key} code={code} language={language} />;
+    },
+  };
+
   return (
-    <Markdown style={mdStyles}>{content}</Markdown>
+    <Markdown style={mdStyles} rules={rules}>{content}</Markdown>
   );
 }
