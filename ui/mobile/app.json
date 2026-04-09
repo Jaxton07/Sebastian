@@ -2,9 +2,12 @@
   "expo": {
     "name": "Sebastian",
     "slug": "sebastian",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "scheme": "sebastian",
-    "platforms": ["android", "ios"],
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -32,8 +35,16 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-notifications", { "icon": "./assets/notification-icon.png", "color": "#ffffff" }]
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
