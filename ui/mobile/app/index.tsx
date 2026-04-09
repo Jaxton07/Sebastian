@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, Alert, TouchableOpacity, Text, type ScrollViewProps } from 'react-native';
+import { ConfirmDialog } from '@/src/components/common/ConfirmDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import axios from 'axios';
@@ -33,6 +34,7 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [todoSidebarOpen, setTodoSidebarOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const {
     currentSessionId, draftSession,
@@ -123,25 +125,19 @@ export default function ChatScreen() {
     if (currentSessionId) await cancelTurn(currentSessionId);
   }
 
-  async function handleDeleteSession(id: string) {
-    Alert.alert('删除对话', '确认删除这条对话记录？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteSession(id);
-            if (currentSessionId === id) setCurrentSession(null);
-            useComposerStore.getState().clearSession(id);
-            queryClient.invalidateQueries({ queryKey: ['sessions'] });
-            queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
-          } catch {
-            Alert.alert('删除失败，请重试');
-          }
-        },
-      },
-    ]);
+  async function confirmDeleteSession() {
+    const id = deleteTarget;
+    if (!id) return;
+    setDeleteTarget(null);
+    try {
+      await deleteSession(id);
+      if (currentSessionId === id) setCurrentSession(null);
+      useComposerStore.getState().clearSession(id);
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['agent-sessions'] });
+    } catch {
+      Alert.alert('删除失败，请重试');
+    }
   }
 
   const isEmpty = !currentSessionId && !draftSession;
@@ -224,7 +220,7 @@ export default function ChatScreen() {
           draftSession={draftSession}
           onSelect={(id) => { setCurrentSession(id); setSidebarOpen(false); }}
           onNewChat={() => { startDraft(); setSidebarOpen(false); }}
-          onDelete={handleDeleteSession}
+          onDelete={setDeleteTarget}
           onClose={() => setSidebarOpen(false)}
         />
       </Sidebar>
@@ -241,6 +237,15 @@ export default function ChatScreen() {
           onClose={() => setTodoSidebarOpen(false)}
         />
       </Sidebar>
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="删除对话"
+        message="确认删除这条对话记录？"
+        confirmText="删除"
+        destructive
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteSession}
+      />
     </SafeAreaView>
   );
 }

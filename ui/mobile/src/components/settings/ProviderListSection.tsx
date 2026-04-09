@@ -1,31 +1,28 @@
+import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { useLLMProvidersStore } from '@/src/store/llmProviders';
 import { useTheme } from '@/src/theme/ThemeContext';
+import { ConfirmDialog } from '@/src/components/common/ConfirmDialog';
 import type { LLMProvider } from '@/src/types';
 
 export function ProviderListSection() {
   const colors = useTheme();
   const { providers, loading, error, remove } = useLLMProvidersStore();
+  const [deleteTarget, setDeleteTarget] = useState<LLMProvider | null>(null);
 
-  async function handleDelete(provider: LLMProvider) {
-    Alert.alert('删除 Provider', `确认删除 "${provider.name}"？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await remove(provider.id);
-          } catch (error) {
-            Alert.alert(
-              '删除失败',
-              error instanceof Error ? error.message : '删除 Provider 时发生未知错误。',
-            );
-          }
-        },
-      },
-    ]);
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    try {
+      await remove(target.id);
+    } catch (err) {
+      Alert.alert(
+        '删除失败',
+        err instanceof Error ? err.message : '删除 Provider 时发生未知错误。',
+      );
+    }
   }
 
   if (loading) {
@@ -81,7 +78,7 @@ export function ProviderListSection() {
               >
                 <Text style={[styles.actionText, { color: colors.accent }]}>编辑</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(provider)} style={styles.actionBtn}>
+              <TouchableOpacity onPress={() => setDeleteTarget(provider)} style={styles.actionBtn}>
                 <Text style={[styles.actionText, { color: colors.error }]}>删除</Text>
               </TouchableOpacity>
             </View>
@@ -95,6 +92,16 @@ export function ProviderListSection() {
       >
         <Text style={[styles.addButtonText, { color: colors.accent }]}>+ 添加 Provider</Text>
       </TouchableOpacity>
+
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="删除 Provider"
+        message={`确认删除 "${deleteTarget?.name ?? ''}"？`}
+        confirmText="删除"
+        destructive
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </View>
   );
 }
