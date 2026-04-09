@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-09
+
 ### Added
 - `sebastian serve -d`：后台 daemon 模式运行，写 PID 到 `~/.sebastian/sebastian.pid`，
   stdout/stderr 重定向到 `~/.sebastian/logs/sebastian.log`。
