@@ -6,3 +6,4 @@ export { ToolCallGroup } from './ToolCallGroup';
 export { ToolCallRow } from './ToolCallRow';
 export { CollapsibleContent } from './CollapsibleContent';
 export { MarkdownContent } from './MarkdownContent';
+export { CodeBlock } from './CodeBlock';
