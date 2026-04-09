@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-09
+
 ### Added
 - 完整 CI/CD 工作流（质量门禁 + 手动触发发版）
 - 一键安装脚本 `bootstrap.sh` 与 `scripts/install.sh`
