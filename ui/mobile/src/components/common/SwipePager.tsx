@@ -1,5 +1,5 @@
-import { forwardRef, useImperativeHandle, useMemo, type ReactNode } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { forwardRef, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -62,7 +62,10 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     const minSnap = snapPoints[snapPoints.length - 1];
     const maxSnap = snapPoints[0];
 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
     function fireOnPanelChange(snapValue: number) {
+      setIsSidebarOpen(snapValue !== snapPoints[centerIndex]);
       if (!onPanelChange) return;
       if (hasLeft && snapValue === snapPoints[0]) {
         onPanelChange('left');
@@ -188,6 +191,12 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
               {children}
               {(hasLeft || hasRight) && (
                 <Animated.View style={[styles.dimOverlay, dimStyle]} pointerEvents="none" />
+              )}
+              {isSidebarOpen && (
+                <Pressable
+                  style={StyleSheet.absoluteFillObject}
+                  onPress={() => navigateTo(snapPoints[centerIndex])}
+                />
               )}
             </View>
             {hasRight && (
