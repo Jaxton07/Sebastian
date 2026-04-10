@@ -33,7 +33,7 @@ fi
 if [[ -d "${PROJECT_ROOT}/.venv" ]]; then
   # shellcheck disable=SC1091
   source "${PROJECT_ROOT}/.venv/bin/activate"
-elif [[ -z "${VIRTUAL_ENV:-}" ]]; then
+elif [[ -z "${VIRTUAL_ENV:-}" && -z "${CONDA_DEFAULT_ENV:-}" ]]; then
   color_ylw "⚠ 未检测到 .venv 且未激活虚拟环境，使用系统 Python"
 fi
 
