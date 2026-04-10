@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, type ReactNode } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -8,7 +8,6 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const DEFAULT_SIDEBAR_RATIO = 0.8;
 const VELOCITY_THRESHOLD = 500;
 const SPRING_CONFIG = { damping: 22, stiffness: 220, mass: 0.8 };
@@ -32,14 +31,15 @@ export interface SwipePagerRef {
 
 export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
   function SwipePager({ left, right, children, sidebarWidth = DEFAULT_SIDEBAR_RATIO, onPanelChange }, ref) {
+    const { width: screenWidth } = useWindowDimensions();
     const hasLeft = left !== undefined;
     const hasRight = right !== undefined;
-    const sidebarPx = Math.round(SCREEN_WIDTH * sidebarWidth);
+    const sidebarPx = Math.round(screenWidth * sidebarWidth);
 
     const snapPoints = useMemo(() => {
       if (hasLeft && hasRight) {
         // [leftSnap, centerSnap, rightSnap]
-        return [0, -sidebarPx, -(sidebarPx + sidebarPx)];
+        return [0, -sidebarPx, -(sidebarPx + screenWidth)];
       }
       if (hasLeft) {
         return [0, -sidebarPx];
@@ -48,7 +48,7 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
         return [0, -sidebarPx];
       }
       return [0];
-    }, [hasLeft, hasRight, sidebarPx]);
+    }, [hasLeft, hasRight, sidebarPx, screenWidth]);
 
     // Center snap is always the "home" position
     const centerIndex = hasLeft ? 1 : 0;
@@ -162,7 +162,7 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
               {left}
             </View>
           )}
-          <View style={[styles.panel, { width: SCREEN_WIDTH }]}>
+          <View style={[styles.panel, { width: screenWidth }]}>
             {children}
           </View>
           {hasRight && (
