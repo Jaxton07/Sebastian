@@ -62,18 +62,38 @@ export function ConversationView({
     prevMessageCount.current = messageCount;
   }, [messageCount]);
 
-  // Fire as soon as the user's finger starts dragging — before onScroll fires.
-  // This immediately disables auto-follow so the next streaming delta doesn't
-  // snap the list back to bottom while the user is actively scrolling up.
+  // True while the user's finger is on the screen dragging the list.
+  // While dragging, onScroll must NOT re-enable isNearBottom — otherwise every
+  // 64 ms tick before the user has moved 200 px would flip it back to true and
+  // the next streaming delta would immediately snap the list back to bottom.
+  const userIsDraggingRef = useRef(false);
+
   const handleScrollBeginDrag = useCallback(() => {
+    userIsDraggingRef.current = true;
     isNearBottom.current = false;
   }, []);
 
-  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  // Drag lifted: re-evaluate position. Momentum may still be running, so we
+  // also check in onMomentumScrollEnd for the final resting place.
+  const handleScrollEndDrag = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    userIsDraggingRef.current = false;
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    const distFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-    // Re-engage auto-follow only when user scrolls back close to the bottom.
-    isNearBottom.current = distFromBottom < 200;
+    const dist = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    isNearBottom.current = dist < 200;
+  }, []);
+
+  const handleMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const dist = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    isNearBottom.current = dist < 200;
+  }, []);
+
+  // onScroll: only update isNearBottom during programmatic scrolls (not drag).
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (userIsDraggingRef.current) return;
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const dist = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    isNearBottom.current = dist < 200;
   }, []);
 
   // Non-streaming: scroll to end when a completed message is appended.
@@ -144,6 +164,8 @@ export function ConversationView({
         renderScrollComponent={renderScrollComponent}
         contentContainerStyle={{ paddingTop: 12, paddingBottom: LIST_BOTTOM_PADDING }}
         onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
         onScroll={handleScroll}
         scrollEventThrottle={64}
         onContentSizeChange={handleContentSizeChange}
