@@ -72,7 +72,7 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     function snapTo(target: number) {
       'worklet';
       translateX.value = withSpring(target, SPRING_CONFIG);
-      if (onPanelChange) runOnJS(fireOnPanelChange)(target);
+      runOnJS(fireOnPanelChange)(target);
     }
 
     // JS-thread version for imperative API (called from useImperativeHandle)
