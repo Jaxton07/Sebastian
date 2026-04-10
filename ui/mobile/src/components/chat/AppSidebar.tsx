@@ -31,14 +31,13 @@ export function AppSidebar({
   const colors = useTheme();
 
   function handleNav(path: string) {
-    onClose();
     router.push(path as any);
   }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.secondaryBackground }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.borderLight }]}>
+      <View style={[styles.header]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Sebastian</Text>
       </View>
 
@@ -124,7 +123,7 @@ export function AppSidebar({
 
 const styles = StyleSheet.create({
   container:              { flex: 1 },
-  header:                 { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  header:                 { paddingHorizontal: 16, paddingVertical: 14 },
   headerTitle:            { fontSize: 18, fontWeight: '700' },
   sectionLabel:           { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   featureSection:         { padding: 12, borderBottomWidth: 1 },

@@ -11,8 +11,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from sebastian.config import settings
-
 _pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 _bearer = HTTPBearer()
 
@@ -34,19 +32,16 @@ class JwtSigner:
         secret_key_path: Path,
         algorithm: str,
         expire_minutes: int,
-        fallback_secret: str = "",
     ) -> None:
         self._algorithm = algorithm
         self._expire_minutes = expire_minutes
 
-        if secret_key_path.exists():
-            self._secret = secret_key_path.read_text(encoding="utf-8").strip()
-        elif fallback_secret:
-            self._secret = fallback_secret
-        else:
+        if not secret_key_path.exists():
             raise RuntimeError(
-                f"No JWT secret available (file {secret_key_path} missing and no fallback provided)"
+                f"Secret key file not found: {secret_key_path}. "
+                "Run `sebastian serve` to initialize."
             )
+        self._secret = secret_key_path.read_text(encoding="utf-8").strip()
 
     def encode(self, payload: dict[str, Any]) -> str:
         data = payload.copy()
@@ -70,11 +65,12 @@ def get_signer() -> JwtSigner:
     """Lazy-loaded global JwtSigner, refreshed by reset_signer()."""
     global _signer
     if _signer is None:
+        from sebastian.config import settings
+
         _signer = JwtSigner(
             secret_key_path=settings.resolved_secret_key_path(),
             algorithm=settings.sebastian_jwt_algorithm,
             expire_minutes=settings.sebastian_jwt_expire_minutes,
-            fallback_secret=settings.sebastian_jwt_secret,
         )
     return _signer
 

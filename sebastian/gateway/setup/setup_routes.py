@@ -400,6 +400,7 @@ def create_setup_router(
 
         async def _exit() -> None:
             await asyncio.sleep(2)
+            print("\n✅ 初始化完成！请重新启动 Sebastian。\n")
             os._exit(0)
 
         asyncio.create_task(_exit())

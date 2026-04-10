@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, useIsDark } from '../../theme/ThemeContext';
 import { useComposerStore } from '../../store/composer';
 import type { ThinkingEffort } from '../../types';
 import { InputTextArea } from './InputTextArea';
@@ -23,6 +23,7 @@ export function Composer({
   onStop,
 }: ComposerProps) {
   const colors = useTheme();
+  const isDark = useIsDark();
 
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -96,12 +97,13 @@ export function Composer({
     <View
       style={[
         styles.container,
-        {
-          backgroundColor: colors.cardBackground,
-          borderColor: colors.borderLight,
-          shadowColor: colors.shadowColor,
-        },
+        isDark
+          ? { backgroundColor: 'rgba(38, 38, 42, 0.97)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' }
+          : { backgroundColor: 'rgba(242, 242, 247, 0.95)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
       ]}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
     >
       <InputTextArea
         value={text}
@@ -124,12 +126,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 24,
     padding: 12,
-    borderWidth: 1,
     // iOS shadow
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    // Android shadow
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    // Android shadow (low to avoid halo glow on dark backgrounds)
     elevation: 3,
   },
 });

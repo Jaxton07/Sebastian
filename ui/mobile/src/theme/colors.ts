@@ -82,8 +82,8 @@ export const lightColors: ThemeColors = {
 };
 
 export const darkColors: ThemeColors = {
-  background: '#1C1C1E',
-  secondaryBackground: '#2C2C2E',
+  background: '#000000',
+  secondaryBackground: '#111113',
   settingsBackground: '#000000',
   cardBackground: '#2C2C2E',
   inputBackground: '#2C2C2E',
@@ -99,8 +99,8 @@ export const darkColors: ThemeColors = {
   error: '#FF453A',
   success: '#30D158',
 
-  userBubbleBg: '#E5E5E5',
-  userBubbleText: '#111111',
+  userBubbleBg: '#35353A',
+  userBubbleText: '#FFFFFF',
 
   inputBorder: '#38383A',
 
