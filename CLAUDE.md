@@ -16,6 +16,9 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 - `sebastian/README.md`：后端主包结构、模块职责、常见开发入口
 - `ui/mobile/README.md`：移动端目录结构、页面导航、前端模块说明
 
+**踩坑记录**：
+- `docs/mobile-dev-gotchas.md`：移动端平台行为坑与修复结论（Android touch、布局等）
+
 ## 1) 项目概览
 
 - 主语言：Python 3.12+
