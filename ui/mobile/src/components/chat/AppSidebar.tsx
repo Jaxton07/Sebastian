@@ -31,7 +31,6 @@ export function AppSidebar({
   const colors = useTheme();
 
   function handleNav(path: string) {
-    onClose();
     router.push(path as any);
   }
 
