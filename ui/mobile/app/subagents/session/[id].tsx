@@ -195,7 +195,7 @@ export default function SessionDetailScreen() {
         <View
           style={[
             styles.header,
-            { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.borderLight },
+            { paddingTop: insets.top, backgroundColor: colors.background },
           ]}
         >
           <BackButton style={styles.back} />
@@ -245,7 +245,6 @@ export default function SessionDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 48,

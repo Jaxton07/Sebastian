@@ -12,6 +12,7 @@ const DEFAULT_SIDEBAR_RATIO = 0.8;
 const VELOCITY_THRESHOLD = 500;
 const SPRING_CONFIG = { damping: 22, stiffness: 220, mass: 0.8 };
 const RUBBER_BAND_FACTOR = 0.3;
+const DIM_OPACITY = 0.35;
 
 export type PanelPosition = 'left' | 'center' | 'right';
 
@@ -39,7 +40,9 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     const snapPoints = useMemo(() => {
       if (hasLeft && hasRight) {
         // [leftSnap, centerSnap, rightSnap]
-        return [0, -sidebarPx, -(sidebarPx + screenWidth)];
+        // Track layout: [left(sidebarPx)] [center(screenWidth)] [right(sidebarPx)]
+        // rightSnap: translateX = -(sidebarPx + sidebarPx) so right panel left edge aligns at screenWidth - sidebarPx
+        return [0, -sidebarPx, -(sidebarPx + sidebarPx)];
       }
       if (hasLeft) {
         return [0, -sidebarPx];
@@ -48,12 +51,13 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
         return [0, -sidebarPx];
       }
       return [0];
-    }, [hasLeft, hasRight, sidebarPx, screenWidth]);
+    }, [hasLeft, hasRight, sidebarPx]);
 
     // Center snap is always the "home" position
     const centerIndex = hasLeft ? 1 : 0;
     const translateX = useSharedValue(snapPoints[centerIndex]);
     const startX = useSharedValue(0);
+    const startPanelIndex = useSharedValue(0);
 
     const minSnap = snapPoints[snapPoints.length - 1];
     const maxSnap = snapPoints[0];
@@ -115,6 +119,7 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
       .onStart(() => {
         'worklet';
         startX.value = translateX.value;
+        startPanelIndex.value = findCurrentIndex(translateX.value);
       })
       .onUpdate((e) => {
         'worklet';
@@ -130,23 +135,38 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
       })
       .onEnd((e) => {
         'worklet';
-        const currentIdx = findCurrentIndex(translateX.value);
+        const startIdx = startPanelIndex.value;
+        const allowedMin = Math.max(0, startIdx - 1);
+        const allowedMax = Math.min(snapPoints.length - 1, startIdx + 1);
 
-        // Fast fling: jump to next/previous panel
+        let targetIdx: number;
         if (Math.abs(e.velocityX) > VELOCITY_THRESHOLD) {
-          const direction = e.velocityX > 0 ? -1 : 1; // positive velocity = swipe right = go to previous panel
-          const targetIdx = Math.max(0, Math.min(snapPoints.length - 1, currentIdx + direction));
-          snapTo(snapPoints[targetIdx]);
-          return;
+          const direction = e.velocityX > 0 ? -1 : 1;
+          targetIdx = Math.max(allowedMin, Math.min(allowedMax, startIdx + direction));
+        } else {
+          targetIdx = startIdx;
+          let minDist = Math.abs(translateX.value - snapPoints[startIdx]);
+          for (let i = allowedMin; i <= allowedMax; i++) {
+            const dist = Math.abs(translateX.value - snapPoints[i]);
+            if (dist < minDist) {
+              minDist = dist;
+              targetIdx = i;
+            }
+          }
         }
-
-        // Otherwise snap to nearest
-        snapTo(findNearestSnap(translateX.value));
+        snapTo(snapPoints[targetIdx]);
       });
 
     const animatedStyle = useAnimatedStyle(() => ({
       transform: [{ translateX: translateX.value }],
     }));
+
+    const centerSnapValue = snapPoints[centerIndex];
+    const dimStyle = useAnimatedStyle(() => {
+      const distFromCenter = Math.abs(translateX.value - centerSnapValue);
+      const ratio = Math.min(distFromCenter / sidebarPx, 1);
+      return { opacity: ratio * DIM_OPACITY };
+    });
 
     useImperativeHandle(ref, () => ({
       goToCenter: () => navigateTo(snapPoints[centerIndex]),
@@ -161,13 +181,18 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
             {hasLeft && (
               <View style={[styles.panel, { width: sidebarPx }]}>
                 {left}
+                <View style={styles.panelSepRight} pointerEvents="none" />
               </View>
             )}
             <View style={[styles.panel, { width: screenWidth }]}>
               {children}
+              {(hasLeft || hasRight) && (
+                <Animated.View style={[styles.dimOverlay, dimStyle]} pointerEvents="none" />
+              )}
             </View>
             {hasRight && (
               <View style={[styles.panel, { width: sidebarPx }]}>
+                <View style={styles.panelSepLeft} pointerEvents="none" />
                 {right}
               </View>
             )}
@@ -189,5 +214,25 @@ const styles = StyleSheet.create({
   panel: {
     height: '100%',
     overflow: 'hidden',
+  },
+  dimOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+  },
+  panelSepRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+  panelSepLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
   },
 });

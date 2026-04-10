@@ -172,7 +172,6 @@ export default function ChatScreen() {
             {
               paddingTop: insets.top,
               backgroundColor: colors.background,
-              borderBottomColor: colors.borderLight,
             },
           ]}
         >
@@ -241,7 +240,6 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1 },
   header: {
     minHeight: 48,
-    borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
