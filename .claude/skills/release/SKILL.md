@@ -17,12 +17,34 @@ description: 发布新版本。同步 dev 到 main，通过 GitHub Actions relea
 
 ## 前置条件（人工完成）
 
-1. 相关改动已合并到 `main`（通过 PR squash merge）
-2. `CHANGELOG.md` 的 `[Unreleased]` 段有本次变更记录
+1. 相关改动已通过 PR squash merge 合入 `main`
 
-## CHANGELOG 写法
+> CHANGELOG 若尚未填写，步骤 3 会处理。
 
-CHANGELOG.md 遵循 [Keep a Changelog](https://keepachangelog.com/) 格式。Release workflow 会自动将 `[Unreleased]` 段翻为带版本号和日期的段落，因此只需维护 Unreleased 部分。
+## CHANGELOG 机制说明（必读）
+
+Release workflow（`.github/workflows/release.yml`）处理 CHANGELOG 的方式：
+
+```python
+# 伪代码，见 release.yml sync-version job
+content.replace("## [Unreleased]", "## [Unreleased]\n\n## [0.2.6] - 2026-04-10", 1)
+```
+
+即：**在 `## [Unreleased]` 后面插入一行版本标题，Unreleased 段下面的条目原封不动保留**。
+
+因此正确的 CHANGELOG 格式是：
+
+```markdown
+## [Unreleased]
+
+### Added
+- 新功能描述...
+
+### Fixed
+- 修复描述...
+```
+
+**严禁**在 Unreleased 段内自己写 `## [0.2.6]` 这样的版本标题，否则 workflow 运行后会出现重复标题。
 
 ### 分类
 
@@ -40,28 +62,9 @@ CHANGELOG.md 遵循 [Keep a Changelog](https://keepachangelog.com/) 格式。Rel
 - Breaking change 在条目前加 `**[breaking]**` 标记
 - 条目粒度：一个用户可感知的变更一条，相关的小改动合并写
 
-### 示例
-
-```markdown
-## [Unreleased]
-
-### Added
-- `sebastian serve -d`：后台 daemon 模式运行，写 PID 到 `~/.sebastian/sebastian.pid`，
-  stdout/stderr 重定向到 `~/.sebastian/logs/sebastian.log`。
-- `sebastian stop` / `sebastian status` / `sebastian logs`：配套进程管理命令。
-
-### Fixed
-- 修复退出 App 重新打开历史对话时 thinking 折叠块不显示的问题。
-
-### Changed
-- **[breaking]** 默认网关端口由 `8000` 改为 `8823`。已部署的用户升级后需把
-  App Server URL 里的 `:8000` 改成 `:8823`，或在 `.env` 里设置
-  `SEBASTIAN_GATEWAY_PORT=8000` 保留旧行为。
-```
-
 ### 何时写
 
-每次向 dev 提交功能/修复时就更新 `[Unreleased]`，不要攒到发版前一次性补。步骤 3 会读取此段内容来建议版本号。
+每次向 dev 提交功能/修复时就更新 `[Unreleased]`，不要攒到发版前一次性补。
 
 ## 执行步骤
 
@@ -77,20 +80,41 @@ git branch --show-current
 
 ### 步骤 2：同步 dev 到 main
 
+**注意**：本项目使用 squash merge，PR 合并后 dev 的所有历史 commit 已被压缩进 main 的一个新 commit。此时 `git rebase` 会产生大量虚假冲突，必须用 `reset --hard`：
+
 ```bash
 git fetch origin main
-git rebase origin/main
-```
-
-若 rebase 有冲突，**终止**并提示用户手动解决。
-
-rebase 成功后推送：
-
-```bash
+git reset --hard origin/main
 git push --force-with-lease
 ```
 
-### 步骤 3：确定版本号
+### 步骤 3：确认 CHANGELOG
+
+读取 `CHANGELOG.md` 的 `[Unreleased]` 段内容：
+
+```bash
+awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md
+```
+
+**情况 A：Unreleased 有内容** → 直接进入步骤 4。
+
+**情况 B：Unreleased 为空** → 需要先补充 CHANGELOG，再合并到 main：
+
+1. 读取 `git log` 找出上个版本 tag 之后的所有 commit，归纳用户可感知的变更
+2. 按格式写入 `## [Unreleased]` 段（**只写条目，不写版本号标题**）
+3. 提交到 dev 并 push：
+   ```bash
+   git add CHANGELOG.md
+   git commit -m "docs(changelog): 补充 Unreleased 发版记录"
+   git push
+   ```
+4. 创建 PR 并等待用户合并到 main（CI 须全绿）：
+   ```bash
+   gh pr create --base main --head dev --title "docs(changelog): 补充 Unreleased 发版记录"
+   ```
+5. 用户合并后，重新执行步骤 2（reset --hard）同步 dev
+
+### 步骤 4：确定版本号
 
 若用户通过参数指定了版本号，直接使用。
 
@@ -100,13 +124,13 @@ git push --force-with-lease
 grep -m1 '^version' pyproject.toml
 ```
 
-读取 `CHANGELOG.md` 的 `[Unreleased]` 内容，根据变更类型建议版本号：
+根据 Unreleased 内容建议版本号：
 - 有 `### Added` 或 `### Changed`（含 breaking）→ minor bump
 - 仅 `### Fixed` → patch bump
 
 向用户展示建议版本号和 Unreleased 内容摘要，**等待用户确认或修改**。
 
-### 步骤 4：验证 CI 状态
+### 步骤 5：验证 CI 状态
 
 ```bash
 gh run list --branch main --limit 3 --json status,conclusion,displayTitle,url
@@ -115,7 +139,7 @@ gh run list --branch main --limit 3 --json status,conclusion,displayTitle,url
 - 最近一次 `conclusion` 为 `success`：继续
 - 其他状态：**警告**用户，展示具体状态，询问是否继续
 
-### 步骤 5：输出确认摘要
+### 步骤 6：输出确认摘要
 
 打印发布摘要，**暂停并等待用户确认**：
 
@@ -128,7 +152,7 @@ gh run list --branch main --limit 3 --json status,conclusion,displayTitle,url
 
   Workflow 将自动：
   - 更新 pyproject.toml + ui/mobile/app.json 版本号
-  - 将 CHANGELOG.md [Unreleased] 翻为 [{version}] - YYYY-MM-DD
+  - 将 CHANGELOG.md [Unreleased] 段插入 [{version}] - YYYY-MM-DD 版本标题
   - commit + tag + push 到 main
   - 构建 backend tarball + 签名 Android APK
   - 发布 GitHub Release
@@ -138,7 +162,7 @@ gh run list --branch main --limit 3 --json status,conclusion,displayTitle,url
 
 **等待用户明确确认后再继续。**
 
-### 步骤 6：触发 release workflow
+### 步骤 7：触发 release workflow
 
 ```bash
 gh workflow run release.yml -f version={version} --ref main
@@ -147,24 +171,25 @@ gh workflow run release.yml -f version={version} --ref main
 获取 run ID 并开始跟踪：
 
 ```bash
+gh run list --workflow=release.yml --limit 1 --json databaseId,status,url
 gh run watch {run_id} --exit-status
 ```
 
 Android 构建约 20 分钟，使用后台模式跟踪，完成后通知用户。
 
-### 步骤 7：发版后同步 dev
+### 步骤 8：发版后同步 dev
 
-workflow 完成后，将 dev rebase 到最新 main（release workflow 会在 main 上产生新 commit）：
+workflow 完成后，release workflow 在 main 上产生了新 commit（`chore(release): v{version}`）。同样用 reset --hard 同步：
 
 ```bash
 git fetch origin main
-git rebase origin/main
+git reset --hard origin/main
 git push --force-with-lease
 ```
 
-CHANGELOG 冲突时保留 main 版本（workflow 已正确处理了 Unreleased 段）。
+### 步骤 9：输出结果
 
-### 步骤 8：输出结果
+用 `gh repo view --json nameWithOwner` 获取 `{owner}/{repo}`，然后输出：
 
 ```
 v{version} 发布成功！
@@ -181,13 +206,12 @@ https://github.com/{owner}/{repo}/releases/tag/v{version}
 全新安装：curl -fsSL https://raw.githubusercontent.com/{owner}/{repo}/main/bootstrap.sh | bash
 ```
 
-用 `gh repo view --json nameWithOwner` 获取 `{owner}/{repo}`。
-
 ## 注意事项
 
 - **严禁** 在非 `main` ref 上触发 release workflow
 - **严禁** `git push --force` 到 main
+- **严禁** 在 Unreleased 段写版本号标题（如 `## [0.2.6]`），workflow 会自动插入
+- squash merge 后同步 dev 必须用 `reset --hard origin/main`，不能用 `rebase`（会产生虚假冲突）
 - Release workflow 使用 `RELEASE_TOKEN`（admin PAT）push tag 和 commit，绕过分支保护
 - tag `v*.*.*` 只有 admin 和 `github-actions[bot]` 可创建
 - 若需要回滚，在 GitHub 上删除 release + tag，然后 revert main 上的版本 commit
-- 发版完成后 dev 的 CHANGELOG 可能与 main 冲突，步骤 7 的 rebase 会自动处理
