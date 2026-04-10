@@ -1,17 +1,17 @@
-import { forwardRef, useImperativeHandle, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { PanResponder, Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  runOnJS,
+  cancelAnimation,
 } from 'react-native-reanimated';
 
 const DEFAULT_SIDEBAR_RATIO = 0.8;
-const VELOCITY_THRESHOLD = 500;
+const VELOCITY_THRESHOLD = 0.5; // PanResponder vx is px/ms; 0.5 = 500 px/s
 const SPRING_CONFIG = { damping: 22, stiffness: 220, mass: 0.8 };
 const RUBBER_BAND_FACTOR = 0.3;
+const SWIPE_THRESHOLD = 10;
 const DIM_OPACITY = 0.35;
 
 export type PanelPosition = 'left' | 'center' | 'right';
@@ -37,11 +37,6 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     const hasRight = right !== undefined;
     const sidebarPx = Math.round(screenWidth * sidebarWidth);
 
-    // GestureDetector on Android adds an internal wrapper View whose height is
-    // auto-sized (content-height) rather than inheriting the parent's flex: 1.
-    // This breaks the FlatList height chain and prevents scrolling.
-    // Fix: measure the container's actual pixel height via onLayout and pass it
-    // explicitly to the track and panels so FlatList gets a bounded height.
     const [containerHeight, setContainerHeight] = useState(screenHeight);
 
     function handleContainerLayout(e: LayoutChangeEvent) {
@@ -49,45 +44,44 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
       if (h > 0) setContainerHeight(h);
     }
 
+    // translateX drives all sidebar animations:
+    //   hasLeft+hasRight: snapPoints = [0, -sidebarPx, -2*sidebarPx]
+    //   left or right only: snapPoints = [0, -sidebarPx]
+    // centerIndex = 1 when hasLeft, else 0
     const snapPoints = useMemo(() => {
-      if (hasLeft && hasRight) {
-        return [0, -sidebarPx, -(sidebarPx + sidebarPx)];
-      }
-      if (hasLeft) {
-        return [0, -sidebarPx];
-      }
-      if (hasRight) {
-        return [0, -sidebarPx];
-      }
+      if (hasLeft && hasRight) return [0, -sidebarPx, -(sidebarPx + sidebarPx)];
+      if (hasLeft || hasRight) return [0, -sidebarPx];
       return [0];
     }, [hasLeft, hasRight, sidebarPx]);
 
     const centerIndex = hasLeft ? 1 : 0;
     const translateX = useSharedValue(snapPoints[centerIndex]);
-    const startX = useSharedValue(0);
-    const startPanelIndex = useSharedValue(0);
+    const gesture = useRef({ startX: 0, startIdx: 0 });
 
     const minSnap = snapPoints[snapPoints.length - 1];
     const maxSnap = snapPoints[0];
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [activePanel, setActivePanel] = useState<PanelPosition>('center');
 
     function fireOnPanelChange(snapValue: number) {
-      setIsSidebarOpen(snapValue !== snapPoints[centerIndex]);
-      if (!onPanelChange) return;
+      let panel: PanelPosition = 'center';
       if (hasLeft && snapValue === snapPoints[0]) {
-        onPanelChange('left');
-      } else if (snapValue === snapPoints[centerIndex]) {
-        onPanelChange('center');
-      } else {
-        onPanelChange('right');
+        panel = 'left';
+      } else if (snapValue !== snapPoints[centerIndex]) {
+        panel = 'right';
       }
+      setActivePanel(panel);
+      if (onPanelChange) onPanelChange(panel);
     }
 
-    function snapTo(target: number) {
-      'worklet';
-      translateX.value = withSpring(target, SPRING_CONFIG);
-      runOnJS(fireOnPanelChange)(target);
+    function findCurrentIndex(x: number): number {
+      let idx = 0;
+      let best = Math.abs(x - snapPoints[0]);
+      for (let i = 1; i < snapPoints.length; i++) {
+        const d = Math.abs(x - snapPoints[i]);
+        if (d < best) { best = d; idx = i; }
+      }
+      return idx;
     }
 
     function navigateTo(target: number) {
@@ -95,31 +89,17 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
       fireOnPanelChange(target);
     }
 
-    function findCurrentIndex(x: number): number {
-      'worklet';
-      let idx = 0;
-      let minDist = Math.abs(x - snapPoints[0]);
-      for (let i = 1; i < snapPoints.length; i++) {
-        const dist = Math.abs(x - snapPoints[i]);
-        if (dist < minDist) {
-          minDist = dist;
-          idx = i;
-        }
-      }
-      return idx;
-    }
-
-    const panGesture = Gesture.Pan()
-      .activeOffsetX([-10, 10])
-      .failOffsetY([-5, 5])
-      .onStart(() => {
-        'worklet';
-        startX.value = translateX.value;
-        startPanelIndex.value = findCurrentIndex(translateX.value);
-      })
-      .onUpdate((e) => {
-        'worklet';
-        const raw = startX.value + e.translationX;
+    // PanResponder only claims horizontal swipes; vertical touches pass through to FlatList.
+    const panResponder = useMemo(() => PanResponder.create({
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD,
+      onPanResponderGrant: () => {
+        cancelAnimation(translateX);
+        gesture.current.startX = translateX.value;
+        gesture.current.startIdx = findCurrentIndex(translateX.value);
+      },
+      onPanResponderMove: (_, { dx }) => {
+        const raw = gesture.current.startX + dx;
         if (raw > maxSnap) {
           translateX.value = maxSnap + (raw - maxSnap) * RUBBER_BAND_FACTOR;
         } else if (raw < minSnap) {
@@ -127,33 +107,40 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
         } else {
           translateX.value = raw;
         }
-      })
-      .onEnd((e) => {
-        'worklet';
-        const startIdx = startPanelIndex.value;
+      },
+      onPanResponderRelease: (_, { vx }) => {
+        const startIdx = gesture.current.startIdx;
         const allowedMin = Math.max(0, startIdx - 1);
         const allowedMax = Math.min(snapPoints.length - 1, startIdx + 1);
 
         let targetIdx: number;
-        if (Math.abs(e.velocityX) > VELOCITY_THRESHOLD) {
-          const direction = e.velocityX > 0 ? -1 : 1;
+        if (Math.abs(vx) > VELOCITY_THRESHOLD) {
+          const direction = vx > 0 ? -1 : 1;
           targetIdx = Math.max(allowedMin, Math.min(allowedMax, startIdx + direction));
         } else {
           targetIdx = startIdx;
-          let minDist = Math.abs(translateX.value - snapPoints[startIdx]);
+          let best = Math.abs(translateX.value - snapPoints[startIdx]);
           for (let i = allowedMin; i <= allowedMax; i++) {
-            const dist = Math.abs(translateX.value - snapPoints[i]);
-            if (dist < minDist) {
-              minDist = dist;
-              targetIdx = i;
-            }
+            const d = Math.abs(translateX.value - snapPoints[i]);
+            if (d < best) { best = d; targetIdx = i; }
           }
         }
-        snapTo(snapPoints[targetIdx]);
-      });
+        translateX.value = withSpring(snapPoints[targetIdx], SPRING_CONFIG);
+        fireOnPanelChange(snapPoints[targetIdx]);
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [snapPoints, sidebarPx, minSnap, maxSnap]);
 
-    const animatedStyle = useAnimatedStyle(() => ({
+    // Left sidebar slides with translateX directly (it was at offset 0 in the old flex track).
+    const leftPanelAnimStyle = useAnimatedStyle(() => ({
       transform: [{ translateX: translateX.value }],
+    }));
+
+    // Right sidebar offset = (hasLeft ? sidebarPx : 0) + screenWidth
+    // At center snap, this puts the right panel exactly at x=screenWidth (off-screen).
+    const rightPanelBaseOffset = (hasLeft ? sidebarPx : 0) + screenWidth;
+    const rightPanelAnimStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: translateX.value + rightPanelBaseOffset }],
     }));
 
     const centerSnapValue = snapPoints[centerIndex];
@@ -170,35 +157,42 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     }));
 
     return (
-      <View style={styles.container} onLayout={handleContainerLayout}>
-        <GestureDetector gesture={panGesture}>
-          <Animated.View style={[styles.track, { height: containerHeight }, animatedStyle]}>
-            {hasLeft && (
-              <View style={{ width: sidebarPx, height: containerHeight, overflow: 'hidden' }}>
-                {left}
-                <View style={styles.panelSepRight} pointerEvents="none" />
-              </View>
-            )}
-            <View style={{ width: screenWidth, height: containerHeight, overflow: 'hidden' }}>
-              {children}
-              {(hasLeft || hasRight) && (
-                <Animated.View style={[styles.dimOverlay, dimStyle]} pointerEvents="none" />
-              )}
-              {isSidebarOpen && (
-                <Pressable
-                  style={StyleSheet.absoluteFillObject}
-                  onPress={() => navigateTo(snapPoints[centerIndex])}
-                />
-              )}
-            </View>
-            {hasRight && (
-              <View style={{ width: sidebarPx, height: containerHeight, overflow: 'hidden' }}>
-                <View style={styles.panelSepLeft} pointerEvents="none" />
-                {right}
-              </View>
-            )}
+      <View style={styles.container} onLayout={handleContainerLayout} {...panResponder.panHandlers}>
+        {/* Center panel: always at layout x=0 so touch hit-testing works correctly on Android. */}
+        <View style={{ width: screenWidth, height: containerHeight, overflow: 'hidden' }}>
+          {children}
+          {(hasLeft || hasRight) && (
+            <Animated.View style={[styles.dimOverlay, dimStyle]} pointerEvents="none" />
+          )}
+          {activePanel !== 'center' && (
+            <Pressable
+              style={StyleSheet.absoluteFillObject}
+              onPress={() => navigateTo(snapPoints[centerIndex])}
+            />
+          )}
+        </View>
+
+        {/* Left sidebar: absolutely positioned, slides over center panel. */}
+        {hasLeft && (
+          <Animated.View
+            style={[styles.sidebar, { width: sidebarPx, height: containerHeight }, leftPanelAnimStyle]}
+            pointerEvents={activePanel === 'left' ? 'auto' : 'none'}
+          >
+            {left}
+            <View style={styles.panelSepRight} pointerEvents="none" />
           </Animated.View>
-        </GestureDetector>
+        )}
+
+        {/* Right sidebar: absolutely positioned, slides over center panel from the right. */}
+        {hasRight && (
+          <Animated.View
+            style={[styles.sidebar, { width: sidebarPx, height: containerHeight }, rightPanelAnimStyle]}
+            pointerEvents={activePanel === 'right' ? 'auto' : 'none'}
+          >
+            <View style={styles.panelSepLeft} pointerEvents="none" />
+            {right}
+          </Animated.View>
+        )}
       </View>
     );
   },
@@ -208,8 +202,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  track: {
-    flexDirection: 'row',
+  sidebar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    overflow: 'hidden',
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,

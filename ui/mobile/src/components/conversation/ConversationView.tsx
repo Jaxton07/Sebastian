@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { FlatList, View, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, View, StyleSheet, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { useConversation } from '../../hooks/useConversation';
 import { useConversationStore } from '../../store/conversation';
 import { useTheme } from '../../theme/ThemeContext';
@@ -40,6 +40,14 @@ export function ConversationView({
   const flatListRef = useRef<FlatList>(null);
   const isNearBottom = useRef(true);
   const isStreaming = useRef(false);
+
+  // Measure the container's actual pixel height so FlatList always has
+  // a bounded scroll region, even if the flex chain above is broken.
+  const [containerH, setContainerH] = useState(0);
+  const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0) setContainerH(h);
+  }, []);
 
   const session = useConversationStore((s) =>
     sessionId ? s.sessions[sessionId] : undefined,
@@ -101,10 +109,13 @@ export function ConversationView({
   }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[styles.container, { backgroundColor: colors.background }]}
+      onLayout={handleContainerLayout}
+    >
       <FlatList
         ref={flatListRef}
-        style={{ flex: 1 }}
+        style={containerH > 0 ? { height: containerH } : { flex: 1 }}
         data={items}
         keyExtractor={(item, index) =>
           item.kind === 'message' ? item.message.id : `streaming-${index}`
