@@ -117,8 +117,8 @@ export const SwipePager = forwardRef<SwipePagerRef, SwipePagerProps>(
     }
 
     const panGesture = Gesture.Pan()
-      .activeOffsetX([-15, 15])
-      .failOffsetY([-10, 10])
+      .activeOffsetX([-10, 10])
+      .failOffsetY([-5, 5])
       .onStart(() => {
         'worklet';
         startX.value = translateX.value;
@@ -221,8 +221,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   panel: {
-    height: '100%',
+    // alignSelf: 'stretch' (default) handles height in the row track
     overflow: 'hidden',
+    flexShrink: 0,
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
