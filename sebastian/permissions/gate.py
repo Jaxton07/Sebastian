@@ -87,12 +87,13 @@ class PolicyGate:
 
         token = _current_tool_ctx.set(context)
         try:
-            # Workspace 边界检查：MODEL_DECIDES 工具含 file_path 时，
-            # 路径在 workspace 外直接请求用户审批（跳过 LLM reviewer）
-            if tier == PermissionTier.MODEL_DECIDES and "file_path" in inputs:
-                resolved = resolve_path(inputs["file_path"])
+            # Workspace 边界检查：所有 tier 的工具，只要含 file_path 或 path 参数，
+            # 且路径在 workspace 外，直接请求用户审批（跳过 LLM reviewer）
+            path_param = inputs.get("file_path") or inputs.get("path")
+            if path_param is not None:
+                resolved = resolve_path(str(path_param))
                 if not resolved.is_relative_to(settings.workspace_dir.resolve()):
-                    reason = inputs.pop("reason", "")  # 与常规 MODEL_DECIDES 路径一致
+                    inputs.pop("reason", None)  # 避免 reason 混入 tool 调用参数
                     granted = await self._approval_manager.request_approval(
                         approval_id=uuid.uuid4().hex,
                         task_id=context.task_id or "",
