@@ -5,6 +5,7 @@ import copy
 import logging
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sebastian.capabilities.registry import CapabilityRegistry
@@ -32,6 +33,18 @@ _DANGEROUS_BASH_CHECKS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"curl\b.+[|]\s*(?:bash|sh|zsh)\b"),  "curl | bash（远程代码执行）"),
     (re.compile(r"wget\b.+[|]\s*(?:bash|sh|zsh)\b"),  "wget | bash（远程代码执行）"),
 ]
+
+
+def _normalize_path_inputs(inputs: dict[str, Any]) -> None:
+    """将 inputs 中的路径参数就地解析为绝对路径。
+
+    统一处理 file_path 和 path 参数，确保所有工具收到的是绝对路径，
+    防止工具内部用相对路径时因进程 CWD 不同产生不一致行为。
+    """
+    for key in ("file_path", "path"):
+        val = inputs.get(key)
+        if val is not None:
+            inputs[key] = str(resolve_path(str(val)))
 
 
 def _match_dangerous_bash(command: str) -> str | None:
@@ -126,12 +139,16 @@ class PolicyGate:
 
         token = _current_tool_ctx.set(context)
         try:
-            # Stage 1: workspace 边界检查（所有 tier 共用）
+            # Stage 1: 路径规范化（所有 tier 共用）
+            # 将 file_path/path 参数统一解析为绝对路径，工具无需自行处理相对路径。
+            _normalize_path_inputs(inputs)
+
+            # Stage 2: workspace 边界检查（所有 tier 共用）
             boundary_result = await self._check_workspace_boundary(tool_name, inputs, context)
             if boundary_result is not None:
                 return boundary_result
 
-            # Stage 2: tier 分派
+            # Stage 3: tier 分派
             if tier == PermissionTier.LOW:
                 return await self._registry.call(tool_name, **inputs)
 
@@ -168,7 +185,7 @@ class PolicyGate:
         if path_param is None:
             return None
 
-        resolved = resolve_path(str(path_param))
+        resolved = Path(str(path_param))
         if resolved.is_relative_to(settings.workspace_dir.resolve()):
             return None
 
