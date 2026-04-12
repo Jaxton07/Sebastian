@@ -1,5 +1,5 @@
 [versions]
-agp = "8.8.0"
+agp = "8.9.0"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.29"
 hilt = "2.52"
@@ -14,7 +14,7 @@ moshi = "1.15.2"
 coil = "2.7.0"
 markwon = "4.6.2"
 datastore = "1.1.1"
-security-crypto = "1.1.0-alpha06"
+security-crypto = "1.0.0"
 coroutines = "1.8.0"
 turbine = "1.1.0"
 
