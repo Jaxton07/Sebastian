@@ -17,9 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.AnimatedPane
-import androidx.compose.material3.adaptive.layout.SupportingPaneScaffold
-import androidx.compose.material3.adaptive.layout.SupportingPaneScaffoldRole
-import androidx.compose.material3.adaptive.navigation.rememberSupportingPaneScaffoldNavigator
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneScaffold
+import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -51,7 +51,7 @@ fun ChatScreen(
     val chatState by chatViewModel.uiState.collectAsState()
     val sessionState by sessionViewModel.uiState.collectAsState()
     val settingsState by settingsViewModel.uiState.collectAsState()
-    val navigator = rememberSupportingPaneScaffoldNavigator<Nothing>()
+    val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
     val scope = rememberCoroutineScope()
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -76,10 +76,26 @@ fun ChatScreen(
         )
     }
 
-    SupportingPaneScaffold(
-        directive = navigator.scaffoldDirective,
-        value = navigator.scaffoldValue,
-        mainPane = {
+    NavigableListDetailPaneScaffold(
+        navigator = navigator,
+        listPane = {
+            AnimatedPane {
+                SessionPanel(
+                    sessions = sessionState.sessions,
+                    activeSessionId = chatState.activeSessionId,
+                    onSessionClick = { session ->
+                        chatViewModel.switchSession(session.id)
+                        scope.launch {
+                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
+                        }
+                    },
+                    onNewSession = sessionViewModel::createSession,
+                    onNavigateToSettings = { navController.navigate(Route.Settings) { launchSingleTop = true } },
+                    onNavigateToSubAgents = { navController.navigate(Route.SubAgents) { launchSingleTop = true } },
+                )
+            }
+        },
+        detailPane = {
             AnimatedPane {
                 Scaffold(
                     topBar = {
@@ -88,7 +104,7 @@ fun ChatScreen(
                             navigationIcon = {
                                 IconButton(onClick = {
                                     scope.launch {
-                                        navigator.navigateTo(SupportingPaneScaffoldRole.Supporting)
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.List)
                                     }
                                 }) {
                                     Icon(Icons.Default.Menu, contentDescription = "会话列表")
@@ -97,7 +113,7 @@ fun ChatScreen(
                             actions = {
                                 IconButton(onClick = {
                                     scope.launch {
-                                        navigator.navigateTo(SupportingPaneScaffoldRole.Extra)
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Extra)
                                     }
                                 }) {
                                     Icon(Icons.Default.Checklist, contentDescription = "待办事项")
@@ -154,23 +170,6 @@ fun ChatScreen(
                         )
                     }
                 }
-            }
-        },
-        supportingPane = {
-            AnimatedPane {
-                SessionPanel(
-                    sessions = sessionState.sessions,
-                    activeSessionId = chatState.activeSessionId,
-                    onSessionClick = { session ->
-                        chatViewModel.switchSession(session.id)
-                        scope.launch {
-                            navigator.navigateTo(SupportingPaneScaffoldRole.Main)
-                        }
-                    },
-                    onNewSession = sessionViewModel::createSession,
-                    onNavigateToSettings = { navController.navigate(Route.Settings) { launchSingleTop = true } },
-                    onNavigateToSubAgents = { navController.navigate(Route.SubAgents) { launchSingleTop = true } },
-                )
             }
         },
         extraPane = {
