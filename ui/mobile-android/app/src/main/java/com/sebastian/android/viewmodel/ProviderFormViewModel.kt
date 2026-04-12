@@ -3,7 +3,9 @@ package com.sebastian.android.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sebastian.android.data.repository.SettingsRepository
+import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,13 +28,14 @@ data class ProviderFormUiState(
 @HiltViewModel
 class ProviderFormViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    @IoDispatcher private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderFormUiState())
     val uiState: StateFlow<ProviderFormUiState> = _uiState.asStateFlow()
 
     fun loadProvider(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatcher) {
             val provider = repository.providersFlow().first().find { it.id == id } ?: return@launch
             _uiState.update {
                 it.copy(
@@ -56,7 +59,7 @@ class ProviderFormViewModel @Inject constructor(
             _uiState.update { it.copy(error = "名称不能为空") }
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true, error = null) }
             val result = if (existingId == null) {
                 repository.createProvider(
