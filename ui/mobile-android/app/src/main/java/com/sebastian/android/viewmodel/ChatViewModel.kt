@@ -244,6 +244,12 @@ class ChatViewModel @Inject constructor(
 
     fun cancelTurn() {
         _uiState.update { it.copy(composerState = ComposerState.CANCELLING) }
+        viewModelScope.launch(dispatcher) {
+            chatRepository.cancelTurn("main")
+                .onFailure { e ->
+                    _uiState.update { it.copy(composerState = ComposerState.IDLE_EMPTY, error = e.message) }
+                }
+        }
     }
 
     fun setEffort(effort: ThinkingEffort) {
@@ -253,12 +259,14 @@ class ChatViewModel @Inject constructor(
     fun grantApproval(approvalId: String) {
         viewModelScope.launch(dispatcher) {
             chatRepository.grantApproval(approvalId)
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
         }
     }
 
     fun denyApproval(approvalId: String) {
         viewModelScope.launch(dispatcher) {
             chatRepository.denyApproval(approvalId)
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
         }
     }
 
