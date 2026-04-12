@@ -76,6 +76,8 @@ private fun AssistantMessageBlocks(
 
     LaunchedEffect(blocks.size) {
         val newBlocks = blocks.filter { it.blockId !in knownIds }
+        // 顺序淡入（staggered reveal）：每个 block 等前一个完成后再淡入，营造逐步展开感
+        // 并行淡入可将 animateTo 改为并发 launch { } 块
         for (block in newBlocks) {
             knownIds.add(block.blockId)
             val anim = Animatable(0f)

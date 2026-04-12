@@ -1,10 +1,7 @@
 package com.sebastian.android.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -26,7 +23,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -40,19 +38,30 @@ fun ThinkingCard(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "thinking_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = AnimationTokens.THINKING_PULSE_MIN_ALPHA,
-        targetValue = AnimationTokens.THINKING_PULSE_MAX_ALPHA,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = AnimationTokens.THINKING_PULSE_DURATION_MS,
-                easing = AnimationTokens.THINKING_PULSE_EASING,
-            ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "thinking_alpha",
-    )
+    val pulseAlpha = remember { Animatable(AnimationTokens.THINKING_PULSE_MIN_ALPHA) }
+
+    LaunchedEffect(block.done) {
+        if (!block.done) {
+            while (true) {
+                pulseAlpha.animateTo(
+                    targetValue = AnimationTokens.THINKING_PULSE_MAX_ALPHA,
+                    animationSpec = tween(
+                        durationMillis = AnimationTokens.THINKING_PULSE_DURATION_MS,
+                        easing = AnimationTokens.THINKING_PULSE_EASING,
+                    ),
+                )
+                pulseAlpha.animateTo(
+                    targetValue = AnimationTokens.THINKING_PULSE_MIN_ALPHA,
+                    animationSpec = tween(
+                        durationMillis = AnimationTokens.THINKING_PULSE_DURATION_MS,
+                        easing = AnimationTokens.THINKING_PULSE_EASING,
+                    ),
+                )
+            }
+        } else {
+            pulseAlpha.snapTo(1f)
+        }
+    }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -73,7 +82,7 @@ fun ThinkingCard(
                     imageVector = Icons.Default.Psychology,
                     contentDescription = "思考",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = if (!block.done) Modifier.alpha(pulseAlpha) else Modifier,
+                    modifier = if (!block.done) Modifier.alpha(pulseAlpha.value) else Modifier,
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(

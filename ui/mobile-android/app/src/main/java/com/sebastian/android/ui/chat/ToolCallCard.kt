@@ -1,10 +1,7 @@
 package com.sebastian.android.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -29,7 +26,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,16 +42,24 @@ fun ToolCallCard(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "tool_pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = AnimationTokens.WORKING_PULSE_DURATION_MS),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "tool_alpha",
-    )
+    val pulseAlpha = remember { Animatable(AnimationTokens.WORKING_PULSE_MIN_ALPHA) }
+
+    LaunchedEffect(block.status) {
+        if (block.status == ToolStatus.RUNNING) {
+            while (true) {
+                pulseAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = AnimationTokens.WORKING_PULSE_DURATION_MS),
+                )
+                pulseAlpha.animateTo(
+                    targetValue = AnimationTokens.WORKING_PULSE_MIN_ALPHA,
+                    animationSpec = tween(durationMillis = AnimationTokens.WORKING_PULSE_DURATION_MS),
+                )
+            }
+        } else {
+            pulseAlpha.snapTo(1f)
+        }
+    }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -74,7 +80,7 @@ fun ToolCallCard(
                     ToolStatus.PENDING, ToolStatus.RUNNING -> CircularProgressIndicator(
                         modifier = Modifier
                             .size(20.dp)
-                            .alpha(if (block.status == ToolStatus.RUNNING) pulseAlpha else 1f),
+                            .alpha(if (block.status == ToolStatus.RUNNING) pulseAlpha.value else 1f),
                         strokeWidth = 2.dp,
                     )
                     ToolStatus.DONE -> Icon(
