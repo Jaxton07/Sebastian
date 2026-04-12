@@ -253,8 +253,7 @@ object AnimationTokens {
     val thinkingPulseMaxAlpha = 1.0f
     val thinkingPulseEasing = FastOutSlowInEasing
 
-    // Streaming：光标闪烁
-    val cursorBlinkDuration = 530          // ms
+    // Streaming：chunk 淡入（光标闪烁为 Phase 2，暂不实现）
     val streamingChunkFadeIn = 200         // ms，新 chunk 淡入
 
     // Working（工具调用进行中）：脉冲环
@@ -272,7 +271,7 @@ object AnimationTokens {
 |------|---------|------|
 | `idle` | 无进行中操作 | 无动画，静止 |
 | `thinking` | `thinking_block.start` 到 `thinking_block.stop` | Header 图标慢速呼吸光晕（alpha 0.4 → 1.0，2s 周期，`InfiniteTransition`）|
-| `streaming` | `text_block.start` 到 `text_block.stop` | 消息末尾光标闪烁 + 逐块淡入 |
+| `streaming` | `text_block.start` 到 `text_block.stop` | 逐块淡入（光标闪烁 Phase 2）|
 | `working` | `tool.running` 到 `tool.executed` | 工具卡片左侧脉冲圆点（橙色跳动），工具组 Header 转动进度环 |
 
 状态切换通过 `AnimatedContent` 完成，各状态之间 crossfade 300ms，不跳变。

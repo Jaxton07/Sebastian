@@ -126,10 +126,10 @@ ThreePaneScaffold(
 
 ```
 NavHost（根）
-├── Chat（起始目的地，三面板）
+├── Chat（起始目的地，三面板：SessionPanel + 主对话 + TodoPanel）
 ├── SubAgents（Stack push，顶部返回键）
 │   └── AgentSessions/{agentId}
-│       └── SessionDetail/{sessionId}（三面板，同 Chat 结构）
+│       └── SessionDetail/{sessionId}（两面板：主对话 + 右侧边栏，SupportingPaneScaffold）
 └── Settings（Stack push）
     ├── SettingsConnection
     ├── SettingsProviders
