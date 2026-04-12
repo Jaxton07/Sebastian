@@ -1,6 +1,7 @@
 package com.sebastian.android.viewmodel
 
 import app.cash.turbine.test
+import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
@@ -36,16 +37,20 @@ class ChatViewModelTest {
 
     private lateinit var chatRepository: ChatRepository
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var networkMonitor: NetworkMonitor
     private lateinit var viewModel: ChatViewModel
     private val dispatcher = StandardTestDispatcher()
     private val sseFlow = MutableSharedFlow<StreamEvent>(extraBufferCapacity = 64)
     private val serverUrlFlow = MutableStateFlow("http://test.local:8823")
+    private val onlineFlow = MutableStateFlow(true)
 
     @Before
     fun setup() {
         Dispatchers.setMain(dispatcher)
         chatRepository = mock()
         settingsRepository = mock()
+        networkMonitor = mock()
+        whenever(networkMonitor.isOnline).thenReturn(onlineFlow)
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
         whenever(chatRepository.sessionStream(any(), any(), any())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
@@ -55,7 +60,10 @@ class ChatViewModelTest {
             whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
         }
-        viewModel = ChatViewModel(chatRepository, settingsRepository, dispatcher)
+        viewModel = object : ChatViewModel(chatRepository, settingsRepository, networkMonitor, dispatcher) {
+            override fun bindAppLifecycle() = Unit
+        }
+        dispatcher.scheduler.advanceUntilIdle()
     }
 
     @After
@@ -272,6 +280,19 @@ class ChatViewModelTest {
             val state = awaitItem()
             assertEquals(ComposerState.CANCELLING, state.composerState)
             runBlocking { verify(chatRepository).cancelTurn("main") }
+        }
+    }
+
+    @Test
+    fun `isOffline becomes true when network is lost`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            onlineFlow.emit(false)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = awaitItem()
+            assertTrue(state.isOffline)
         }
     }
 }

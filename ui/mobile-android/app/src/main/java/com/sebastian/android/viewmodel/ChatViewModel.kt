@@ -1,7 +1,11 @@
 package com.sebastian.android.viewmodel
 
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
@@ -13,6 +17,7 @@ import com.sebastian.android.data.repository.SettingsRepository
 import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,27 +49,60 @@ data class ChatUiState(
 )
 
 @HiltViewModel
-class ChatViewModel @Inject constructor(
+open class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val settingsRepository: SettingsRepository,
+    private val networkMonitor: NetworkMonitor,
     @IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private var sseJob: Job? = null
     private var currentAssistantMessageId: String? = null
     private var pendingTurnSessionId: String? = null
 
     init {
-        startSseCollection()
+        observeNetwork()
+        bindAppLifecycle()
+    }
+
+    private fun observeNetwork() {
+        viewModelScope.launch(dispatcher) {
+            networkMonitor.isOnline.collect { isOnline ->
+                _uiState.update { it.copy(isOffline = !isOnline) }
+                if (isOnline && sseJob?.isActive != true) {
+                    startSseCollection()
+                }
+            }
+        }
+    }
+
+    internal open fun bindAppLifecycle() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                if (sseJob?.isActive != true && !_uiState.value.isOffline) {
+                    startSseCollection()
+                }
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                sseJob?.cancel()
+                sseJob = null
+            }
+        })
     }
 
     private fun startSseCollection() {
-        viewModelScope.launch(dispatcher) {
+        sseJob = viewModelScope.launch(dispatcher) {
             val baseUrl = settingsRepository.serverUrl.first()
-            chatRepository.sessionStream(baseUrl, "main", "").collect { event ->
-                handleEvent(event)
+            try {
+                chatRepository.sessionStream(baseUrl, "main", "").collect { event ->
+                    handleEvent(event)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isOffline = true) }
             }
         }
     }
