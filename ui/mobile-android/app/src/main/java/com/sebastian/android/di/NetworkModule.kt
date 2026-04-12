@@ -10,14 +10,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import java.util.concurrent.atomic.AtomicReference
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -49,13 +44,8 @@ object NetworkModule {
             chain.proceed(req)
         }
 
-        // 动态 BaseUrl：后台协程订阅 serverUrl，interceptor 直接读缓存，避免阻塞 OkHttp 线程
-        val cachedUrl = AtomicReference<String>("")
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            settingsDataStore.serverUrl.collect { url -> cachedUrl.set(url) }
-        }
         val baseUrlInterceptor = Interceptor { chain ->
-            val serverUrl = cachedUrl.get().trimEnd('/')
+            val serverUrl = settingsDataStore.serverUrl.value.trimEnd('/')
             val original = chain.request()
             if (serverUrl.isEmpty()) return@Interceptor chain.proceed(original)
             val base = "$serverUrl/".toHttpUrlOrNull()

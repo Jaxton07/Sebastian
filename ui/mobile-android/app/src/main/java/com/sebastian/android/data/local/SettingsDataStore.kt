@@ -7,8 +7,14 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,9 +30,11 @@ class SettingsDataStore @Inject constructor(
         val THEME = stringPreferencesKey("theme")
     }
 
-    val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[SERVER_URL] ?: ""
-    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    val serverUrl: StateFlow<String> = context.dataStore.data
+        .map { prefs -> prefs[SERVER_URL] ?: "" }
+        .stateIn(scope, SharingStarted.Eagerly, "")
 
     val activeProviderId: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[ACTIVE_PROVIDER_ID]
