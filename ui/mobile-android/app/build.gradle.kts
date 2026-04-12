@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.markwon.core)
     implementation(libs.markwon.strikethrough)
     implementation(libs.markwon.tables)
+    implementation(libs.serialization.json)
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
     debugImplementation(libs.compose.ui.tooling)
