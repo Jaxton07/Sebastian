@@ -114,16 +114,17 @@ private fun AssistantMessageBlocks(
                         .alpha(alpha),
                 )
                 is ContentBlock.TextBlock -> {
-                    if (block.done) {
+                    if (block.done && block.renderedMarkdown != null) {
                         MarkdownView(
-                            markdown = block.text,
+                            markdown = block.renderedMarkdown,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .alpha(alpha),
                         )
                     } else {
+                        // Streaming in progress OR parse pending — show plain text
                         Text(
-                            text = block.text + "▍",
+                            text = block.text,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier

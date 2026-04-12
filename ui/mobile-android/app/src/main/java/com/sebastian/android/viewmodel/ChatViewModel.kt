@@ -2,6 +2,7 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sebastian.android.data.local.MarkdownParser
 import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 
@@ -51,6 +53,7 @@ class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val settingsRepository: SettingsRepository,
     private val networkMonitor: NetworkMonitor,
+    private val markdownParser: MarkdownParser,
     @IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -137,9 +140,20 @@ class ChatViewModel @Inject constructor(
             }
 
             is StreamEvent.TextBlockStop -> {
-                updateBlockInCurrentMessage(event.blockId) { existing ->
-                    if (existing is ContentBlock.TextBlock) existing.copy(done = true)
-                    else existing
+                viewModelScope.launch(dispatcher) {
+                    val msgId = currentAssistantMessageId ?: return@launch
+                    val rawText = _uiState.value.messages
+                        .find { it.id == msgId }
+                        ?.blocks?.find { it.blockId == event.blockId }
+                        ?.let { (it as? ContentBlock.TextBlock)?.text } ?: ""
+                    val rendered = withContext(dispatcher) {
+                        markdownParser.parse(rawText)
+                    }
+                    updateBlockInCurrentMessage(event.blockId) { existing ->
+                        if (existing is ContentBlock.TextBlock)
+                            existing.copy(done = true, renderedMarkdown = rendered)
+                        else existing
+                    }
                 }
             }
 
