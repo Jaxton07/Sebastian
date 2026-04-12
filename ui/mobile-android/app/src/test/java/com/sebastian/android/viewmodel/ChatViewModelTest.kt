@@ -5,6 +5,7 @@ import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
 import com.sebastian.android.data.model.StreamEvent
+import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,11 +16,15 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +44,11 @@ class ChatViewModelTest {
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
         whenever(chatRepository.sessionStream(any(), any(), any())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
+        runBlocking {
+            whenever(chatRepository.sendTurn(any(), any())).thenReturn(Result.success(Unit))
+            whenever(chatRepository.grantApproval(any())).thenReturn(Result.success(Unit))
+            whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
+        }
         viewModel = ChatViewModel(chatRepository, settingsRepository, dispatcher)
     }
 
@@ -172,6 +182,71 @@ class ChatViewModelTest {
             val state = awaitItem()
             assertEquals(1, state.pendingApprovals.size)
             assertEquals("ap_1", state.pendingApprovals[0].approvalId)
+        }
+    }
+
+    @Test
+    fun `sendMessage adds user message and sets composerState SENDING`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            viewModel.sendMessage("你好")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = awaitItem()
+            assertEquals(ComposerState.SENDING, state.composerState)
+            assertEquals(ScrollFollowState.FOLLOWING, state.scrollFollowState)
+            val userMsg = state.messages.lastOrNull { it.role == MessageRole.USER }
+            assertTrue(userMsg != null)
+            assertEquals("你好", userMsg!!.text)
+        }
+    }
+
+    @Test
+    fun `grantApproval calls chatRepository grantApproval`() = runTest(dispatcher) {
+        viewModel.grantApproval("ap_42")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        runBlocking { verify(chatRepository).grantApproval("ap_42") }
+    }
+
+    @Test
+    fun `clearError clears error from uiState`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            // Inject an error via sendMessage failure
+            runBlocking {
+                whenever(chatRepository.sendTurn(any(), any()))
+                    .thenReturn(Result.failure(RuntimeException("网络错误")))
+            }
+            viewModel.sendMessage("test")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            // Consume SENDING state
+            awaitItem()
+            // Consume error state
+            val errorState = awaitItem()
+            assertEquals("网络错误", errorState.error)
+
+            viewModel.clearError()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val clearedState = awaitItem()
+            assertNull(clearedState.error)
+        }
+    }
+
+    @Test
+    fun `onUserScrolled sets scrollFollowState DETACHED`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial (FOLLOWING)
+
+            viewModel.onUserScrolled()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = awaitItem()
+            assertEquals(ScrollFollowState.DETACHED, state.scrollFollowState)
         }
     }
 }

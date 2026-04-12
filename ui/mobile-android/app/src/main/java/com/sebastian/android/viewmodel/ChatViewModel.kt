@@ -6,15 +6,13 @@ import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
 import com.sebastian.android.data.model.StreamEvent
+import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.model.ToolStatus
 import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,7 +37,7 @@ data class ChatUiState(
     val composerState: ComposerState = ComposerState.IDLE_EMPTY,
     val scrollFollowState: ScrollFollowState = ScrollFollowState.FOLLOWING,
     val agentAnimState: AgentAnimState = AgentAnimState.IDLE,
-    val activeThinkingEffort: String? = null,
+    val activeThinkingEffort: ThinkingEffort = ThinkingEffort.AUTO,
     val isOffline: Boolean = false,
     val pendingApprovals: List<PendingApproval> = emptyList(),
     val error: String? = null,
@@ -57,19 +55,13 @@ class ChatViewModel @Inject constructor(
 
     private var currentAssistantMessageId: String? = null
     private var pendingTurnSessionId: String? = null
-    private val sseScope = CoroutineScope(dispatcher + SupervisorJob())
 
     init {
         startSseCollection()
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        sseScope.cancel()
-    }
-
     private fun startSseCollection() {
-        sseScope.launch {
+        viewModelScope.launch(dispatcher) {
             val baseUrl = settingsRepository.serverUrl.first()
             chatRepository.sessionStream(baseUrl, "main", "").collect { event ->
                 handleEvent(event)
@@ -143,10 +135,9 @@ class ChatViewModel @Inject constructor(
 
             is StreamEvent.ToolBlockStop -> {
                 updateBlockInCurrentMessage(event.blockId) { existing ->
-                    if (existing is ContentBlock.ToolBlock) {
-                        existing.copy(inputs = event.inputs, status = ToolStatus.RUNNING)
-                    } else existing
+                    if (existing is ContentBlock.ToolBlock) existing.copy(inputs = event.inputs) else existing
                 }
+                // Status stays PENDING until ToolRunning event
             }
 
             is StreamEvent.ToolRunning -> {
@@ -211,6 +202,90 @@ class ChatViewModel @Inject constructor(
             }
 
             else -> Unit
+        }
+    }
+
+    // ── Public mutation surface ──────────────────────────────────────────────
+
+    fun sendMessage(text: String) {
+        if (text.isBlank()) return
+        val userMsg = Message(
+            id = UUID.randomUUID().toString(),
+            sessionId = "main",
+            role = MessageRole.USER,
+            text = text,
+        )
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages + userMsg,
+                composerState = ComposerState.SENDING,
+                scrollFollowState = ScrollFollowState.FOLLOWING,
+            )
+        }
+        viewModelScope.launch(dispatcher) {
+            chatRepository.sendTurn(text, _uiState.value.activeThinkingEffort)
+                .onFailure { e ->
+                    _uiState.update { it.copy(composerState = ComposerState.IDLE_READY, error = e.message) }
+                }
+        }
+    }
+
+    fun cancelTurn() {
+        _uiState.update { it.copy(composerState = ComposerState.CANCELLING) }
+    }
+
+    fun setEffort(effort: ThinkingEffort) {
+        _uiState.update { it.copy(activeThinkingEffort = effort) }
+    }
+
+    fun grantApproval(approvalId: String) {
+        viewModelScope.launch(dispatcher) {
+            chatRepository.grantApproval(approvalId)
+        }
+    }
+
+    fun denyApproval(approvalId: String) {
+        viewModelScope.launch(dispatcher) {
+            chatRepository.denyApproval(approvalId)
+        }
+    }
+
+    fun onUserScrolled() {
+        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.DETACHED) }
+    }
+
+    fun onScrolledNearBottom() {
+        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.NEAR_BOTTOM) }
+    }
+
+    fun onScrolledToBottom() {
+        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.FOLLOWING) }
+    }
+
+    fun toggleThinkingBlock(blockId: String) {
+        updateBlock(blockId) { block ->
+            if (block is ContentBlock.ThinkingBlock) block.copy(expanded = !block.expanded) else block
+        }
+    }
+
+    fun toggleToolBlock(blockId: String) {
+        updateBlock(blockId) { block ->
+            if (block is ContentBlock.ToolBlock) block.copy(expanded = !block.expanded) else block
+        }
+    }
+
+    fun clearError() = _uiState.update { it.copy(error = null) }
+
+    // ── Private helpers ──────────────────────────────────────────────────────
+
+    /** Update a block by [blockId] across all messages. */
+    private fun updateBlock(blockId: String, transform: (ContentBlock) -> ContentBlock) {
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages.map { msg ->
+                    msg.copy(blocks = msg.blocks.map { b -> if (b.blockId == blockId) transform(b) else b })
+                },
+            )
         }
     }
 
