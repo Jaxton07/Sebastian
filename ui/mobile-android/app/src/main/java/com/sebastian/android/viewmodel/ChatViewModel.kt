@@ -232,7 +232,7 @@ class ChatViewModel @Inject constructor(
         if (text.isBlank()) return
         val userMsg = Message(
             id = UUID.randomUUID().toString(),
-            sessionId = "main",
+            sessionId = _uiState.value.activeSessionId,
             role = MessageRole.USER,
             text = text,
         )
