@@ -18,9 +18,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
@@ -39,6 +43,7 @@ class ChatViewModelTest {
 
     @Before
     fun setup() {
+        Dispatchers.setMain(dispatcher)
         chatRepository = mock()
         settingsRepository = mock()
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
@@ -48,8 +53,14 @@ class ChatViewModelTest {
             whenever(chatRepository.sendTurn(any(), any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.grantApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
+            whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
         }
         viewModel = ChatViewModel(chatRepository, settingsRepository, dispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
     }
 
     @Test
@@ -247,6 +258,20 @@ class ChatViewModelTest {
 
             val state = awaitItem()
             assertEquals(ScrollFollowState.DETACHED, state.scrollFollowState)
+        }
+    }
+
+    @Test
+    fun `cancelTurn sets state CANCELLING and calls repository`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            viewModel.cancelTurn()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = awaitItem()
+            assertEquals(ComposerState.CANCELLING, state.composerState)
+            runBlocking { verify(chatRepository).cancelTurn("main") }
         }
     }
 }
