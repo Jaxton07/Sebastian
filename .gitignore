@@ -14,7 +14,7 @@ build/
 .superpowers/
 
 # Data & secrets
-data/
+/data/
 *.db
 *.sqlite
 .env.local
