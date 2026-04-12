@@ -59,6 +59,7 @@ fun SessionDetailScreen(
                 onUserScrolled = chatViewModel::onUserScrolled,
                 onScrolledNearBottom = chatViewModel::onScrolledNearBottom,
                 onScrolledToBottom = chatViewModel::onScrolledToBottom,
+                onScrollToBottom = chatViewModel::onScrolledToBottom,
                 onToggleThinking = chatViewModel::toggleThinkingBlock,
                 onToggleTool = chatViewModel::toggleToolBlock,
                 modifier = Modifier.weight(1f),
