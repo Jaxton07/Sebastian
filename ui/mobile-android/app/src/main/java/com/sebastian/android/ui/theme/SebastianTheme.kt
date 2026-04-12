@@ -26,11 +26,20 @@ private val DarkColors = darkColorScheme(
     background = BackgroundDark,
 )
 
+/**
+ * @param themeMode "system" | "light" | "dark"
+ */
 @Composable
 fun SebastianTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = "system",
     content: @Composable () -> Unit,
 ) {
+    val darkTheme = when (themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
+
     val colorScheme = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current

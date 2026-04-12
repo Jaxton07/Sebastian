@@ -20,6 +20,7 @@ data class SettingsUiState(
     val theme: String = "system",
     val providers: List<Provider> = emptyList(),
     val currentProvider: Provider? = null,
+    val isLoggedIn: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
     val connectionTestResult: ConnectionTestResult? = null,
@@ -46,13 +47,16 @@ class SettingsViewModel @Inject constructor(
                 repository.theme,
                 repository.providersFlow(),
                 repository.currentProvider,
-            ) { url, theme, providers, currentProvider ->
+                repository.isLoggedIn,
+            ) { args ->
+                @Suppress("UNCHECKED_CAST")
                 _uiState.update {
                     it.copy(
-                        serverUrl = url,
-                        theme = theme,
-                        providers = providers,
-                        currentProvider = currentProvider,
+                        serverUrl = args[0] as String,
+                        theme = args[1] as String,
+                        providers = args[2] as List<Provider>,
+                        currentProvider = args[3] as Provider?,
+                        isLoggedIn = args[4] as Boolean,
                     )
                 }
             }.collect {}
@@ -101,6 +105,25 @@ class SettingsViewModel @Inject constructor(
                 .onFailure { e ->
                     _uiState.update { it.copy(error = e.message) }
                 }
+        }
+    }
+
+    fun login(password: String) {
+        viewModelScope.launch(dispatcher) {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            repository.login(password)
+                .onSuccess {
+                    _uiState.update { it.copy(isLoading = false) }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isLoading = false, error = "登录失败，请检查密码") }
+                }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch(dispatcher) {
+            repository.logout()
         }
     }
 

@@ -23,7 +23,7 @@ class ChatRepositoryImpl @Inject constructor(
         sseClient.globalStream(baseUrl, lastEventId)
 
     override suspend fun getMessages(sessionId: String): Result<List<Message>> = runCatching {
-        apiService.getMessages(sessionId).map { it.toDomain() }
+        apiService.getSession(sessionId).messages.map { it.toDomain() }
     }
 
     override suspend fun sendTurn(content: String, effort: ThinkingEffort): Result<Unit> = runCatching {

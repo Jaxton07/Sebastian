@@ -8,6 +8,9 @@ interface ApiService {
     @POST("api/v1/auth/login")
     suspend fun login(@Body body: Map<String, String>): Map<String, String>
 
+    @POST("api/v1/auth/logout")
+    suspend fun logout(): Map<String, Any>
+
     // 主对话 turn
     @POST("api/v1/turns")
     suspend fun sendTurn(@Body body: SendTurnRequest): TurnDto
@@ -24,16 +27,13 @@ interface ApiService {
     suspend fun getSessions(): SessionListResponse
 
     @GET("api/v1/sessions/{sessionId}")
-    suspend fun getSession(@Path("sessionId") sessionId: String): SessionDto
+    suspend fun getSession(@Path("sessionId") sessionId: String): SessionDetailResponse
 
     @DELETE("api/v1/sessions/{sessionId}")
     suspend fun deleteSession(@Path("sessionId") sessionId: String): OkResponse
 
     @POST("api/v1/sessions/{sessionId}/cancel")
     suspend fun cancelSession(@Path("sessionId") sessionId: String): OkResponse
-
-    @GET("api/v1/messages")
-    suspend fun getMessages(@Query("session_id") sessionId: String): List<MessageDto>
 
     // SubAgent sessions
     @GET("api/v1/agents/{agentType}/sessions")
@@ -50,20 +50,17 @@ interface ApiService {
     suspend fun getAgents(): List<Map<String, Any>>
 
     // Providers
-    @GET("api/v1/llm/providers")
-    suspend fun getProviders(): List<ProviderDto>
+    @GET("api/v1/llm-providers")
+    suspend fun getProviders(): ProviderListResponse
 
-    @POST("api/v1/llm/providers")
+    @POST("api/v1/llm-providers")
     suspend fun createProvider(@Body body: ProviderDto): ProviderDto
 
-    @PUT("api/v1/llm/providers/{id}")
+    @PUT("api/v1/llm-providers/{id}")
     suspend fun updateProvider(@Path("id") id: String, @Body body: ProviderDto): ProviderDto
 
-    @DELETE("api/v1/llm/providers/{id}")
+    @DELETE("api/v1/llm-providers/{id}")
     suspend fun deleteProvider(@Path("id") id: String): OkResponse
-
-    @POST("api/v1/llm/providers/{id}/set-default")
-    suspend fun setDefaultProvider(@Path("id") id: String): OkResponse
 
     // Approvals
     @GET("api/v1/approvals")

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +52,12 @@ fun SettingsScreen(navController: NavController) {
                 onClick = { navController.navigate(Route.SettingsProviders) { launchSingleTop = true } },
             )
             HorizontalDivider()
+            SettingsItem(
+                title = "外观",
+                subtitle = "主题模式",
+                onClick = { navController.navigate(Route.SettingsAppearance) { launchSingleTop = true } },
+            )
+            HorizontalDivider()
         }
     }
 }
@@ -66,9 +71,6 @@ private fun SettingsItem(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(subtitle) },
-        trailingContent = {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-        },
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),

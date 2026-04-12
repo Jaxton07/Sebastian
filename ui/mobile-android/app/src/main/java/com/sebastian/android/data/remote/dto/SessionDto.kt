@@ -38,3 +38,9 @@ data class AgentSessionListResponse(
     @Json(name = "agent_type") val agentType: String,
     @Json(name = "sessions") val sessions: List<SessionDto>,
 )
+
+@JsonClass(generateAdapter = true)
+data class SessionDetailResponse(
+    @Json(name = "session") val session: SessionDto,
+    @Json(name = "messages") val messages: List<MessageDto>,
+)

@@ -30,4 +30,7 @@ sealed class Route {
 
     @Serializable
     data class SettingsProvidersEdit(val providerId: String) : Route()
+
+    @Serializable
+    data object SettingsAppearance : Route()
 }

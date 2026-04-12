@@ -5,6 +5,7 @@ data class Provider(
     val name: String,
     val type: String,         // "anthropic" | "openai" | "ollama"
     val baseUrl: String?,
+    val model: String? = null,
     val isDefault: Boolean,
     val thinkingCapability: ThinkingCapability,
 )

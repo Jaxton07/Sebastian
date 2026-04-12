@@ -1,5 +1,6 @@
 package com.sebastian.android.data.repository
 
+import com.sebastian.android.data.local.SecureTokenStore
 import com.sebastian.android.data.local.SettingsDataStore
 import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.remote.ApiService
@@ -20,12 +21,16 @@ import javax.inject.Singleton
 class SettingsRepositoryImpl @Inject constructor(
     private val dataStore: SettingsDataStore,
     private val apiService: ApiService,
+    private val tokenStore: SecureTokenStore,
     private val okHttpClient: OkHttpClient,
     @IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : SettingsRepository {
 
     override val serverUrl: Flow<String> = dataStore.serverUrl
     override val theme: Flow<String> = dataStore.theme
+
+    private val _isLoggedIn = MutableStateFlow(tokenStore.getToken() != null)
+    override val isLoggedIn: Flow<Boolean> = _isLoggedIn.asStateFlow()
 
     private val _providers = MutableStateFlow<List<Provider>>(emptyList())
 
@@ -39,23 +44,32 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun saveTheme(theme: String) = dataStore.saveTheme(theme)
 
     override suspend fun getProviders(): Result<List<Provider>> = runCatching {
-        val dtos = apiService.getProviders()
-        val providers = dtos.map { it.toDomain() }
+        val providers = apiService.getProviders().providers.map { it.toDomain() }
         _providers.value = providers
         providers
     }
 
-    override suspend fun createProvider(name: String, type: String, baseUrl: String?, apiKey: String?): Result<Provider> = runCatching {
-        val dto = apiService.createProvider(ProviderDto(name = name, type = type, baseUrl = baseUrl, apiKey = apiKey))
+    override suspend fun createProvider(name: String, type: String, baseUrl: String?, apiKey: String?, model: String?, thinkingCapability: String?, isDefault: Boolean): Result<Provider> = runCatching {
+        val dto = apiService.createProvider(ProviderDto(name = name, providerType = type, baseUrl = baseUrl, apiKey = apiKey, model = model, thinkingCapability = thinkingCapability, isDefault = isDefault))
         val provider = dto.toDomain()
-        _providers.value = _providers.value + provider
+        if (isDefault) {
+            _providers.value = _providers.value.map { it.copy(isDefault = false) } + provider
+        } else {
+            _providers.value = _providers.value + provider
+        }
         provider
     }
 
-    override suspend fun updateProvider(id: String, name: String, type: String, baseUrl: String?, apiKey: String?): Result<Provider> = runCatching {
-        val dto = apiService.updateProvider(id, ProviderDto(name = name, type = type, baseUrl = baseUrl, apiKey = apiKey))
+    override suspend fun updateProvider(id: String, name: String, type: String, baseUrl: String?, apiKey: String?, model: String?, thinkingCapability: String?, isDefault: Boolean): Result<Provider> = runCatching {
+        val dto = apiService.updateProvider(id, ProviderDto(name = name, providerType = type, baseUrl = baseUrl, apiKey = apiKey, model = model, thinkingCapability = thinkingCapability, isDefault = isDefault))
         val provider = dto.toDomain()
-        _providers.value = _providers.value.map { if (it.id == id) provider else it }
+        _providers.value = _providers.value.map {
+            when {
+                it.id == id -> provider
+                isDefault -> it.copy(isDefault = false)
+                else -> it
+            }
+        }
         provider
     }
 
@@ -65,9 +79,37 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setDefaultProvider(id: String): Result<Unit> = runCatching {
-        apiService.setDefaultProvider(id)
+        // 服务端没有独立的 set-default 端点，通过 PUT 更新 is_default 字段
+        val current = _providers.value.firstOrNull { it.id == id }
+            ?: throw Exception("Provider not found")
+        apiService.updateProvider(
+            id,
+            ProviderDto(
+                name = current.name,
+                providerType = current.type,
+                baseUrl = current.baseUrl,
+                isDefault = true,
+            ),
+        )
         _providers.value = _providers.value.map { it.copy(isDefault = it.id == id) }
         dataStore.saveActiveProviderId(id)
+    }
+
+    override suspend fun login(password: String): Result<Unit> = runCatching {
+        val response = apiService.login(mapOf("password" to password))
+        val token = response["access_token"] ?: throw Exception("未返回 token")
+        tokenStore.saveToken(token)
+        _isLoggedIn.value = true
+    }
+
+    override suspend fun logout(): Result<Unit> = runCatching {
+        try {
+            apiService.logout()
+        } catch (_: Exception) {
+            // 忽略 logout 网络错误，确保本地能清除
+        }
+        tokenStore.clearToken()
+        _isLoggedIn.value = false
     }
 
     override suspend fun testConnection(url: String): Result<Unit> = runCatching {
