@@ -39,6 +39,7 @@ class ProviderFormViewModel @Inject constructor(
                     name = provider.name,
                     type = provider.type,
                     baseUrl = provider.baseUrl ?: "",
+                    // apiKey 不回填：编辑时要求重新输入（安全策略，避免明文展示已存储密钥）
                 )
             }
         }

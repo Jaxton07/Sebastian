@@ -73,7 +73,12 @@ fun ProviderListPage(
     ) { innerPadding ->
         when {
             uiState.isLoading && uiState.providers.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
                     CircularProgressIndicator()
                 }
             }
@@ -116,11 +121,12 @@ private fun ProviderItem(
             Text("${provider.type}${if (provider.baseUrl != null) " · ${provider.baseUrl}" else ""}")
         },
         leadingContent = {
-            if (provider.isDefault) {
+            IconButton(onClick = onSetDefault) {
                 Icon(
                     Icons.Default.CheckCircle,
-                    contentDescription = "默认",
-                    tint = MaterialTheme.colorScheme.primary,
+                    contentDescription = if (provider.isDefault) "当前默认" else "设为默认",
+                    tint = if (provider.isDefault) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
