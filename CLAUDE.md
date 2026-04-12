@@ -14,7 +14,7 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 
 **目录 README 索引**：
 - `sebastian/README.md`：后端主包结构、模块职责、常见开发入口
-- `ui/mobile/README.md`：移动端目录结构、页面导航、前端模块说明
+- `ui/mobile-android/README.md`：Android 原生 App 目录结构、页面导航、前端模块说明
 
 **踩坑记录**：
 - `docs/mobile-dev-gotchas.md`：移动端平台行为坑与修复结论（Android touch、布局等）
@@ -40,14 +40,14 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 - `sebastian/identity/` — 身份与权限（Phase 5，当前仅 JWT）
 - `sebastian/trigger/` — 主动触发引擎（Phase 4）
 - `sebastian/sandbox/` — 代码执行沙箱（Docker 隔离）
-- `ui/mobile/` — React Native App（Android 优先）
+- `ui/mobile-android/` — Android 原生 App（Kotlin + Jetpack Compose）
 - `ui/web/` — React Web UI（辅助管理）
 
 ### 模块 README 导航
 
 在针对某模块工作前，优先读对应 README（若存在）以快速获取上下文，避免全量搜索引入无关内容：
 - `sebastian/README.md`
-- `ui/mobile/README.md`
+- `ui/mobile-android/README.md`
 - `sebastian/core/README.md`
 - `sebastian/llm/README.md`
 - `sebastian/gateway/README.md`
