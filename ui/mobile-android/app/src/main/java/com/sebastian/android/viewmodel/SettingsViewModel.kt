@@ -73,6 +73,7 @@ class SettingsViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = e.message) }
                 }
                 .onSuccess {
+                    // 数据更新通过 providersFlow() 流式传递，此处只清除 loading 状态
                     _uiState.update { it.copy(isLoading = false) }
                 }
         }

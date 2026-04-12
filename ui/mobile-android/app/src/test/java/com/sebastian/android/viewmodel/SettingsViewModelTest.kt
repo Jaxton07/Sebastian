@@ -14,12 +14,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.wheneverBlocking
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -41,6 +41,7 @@ class SettingsViewModelTest {
         whenever(repository.serverUrl).thenReturn(serverUrlFlow)
         whenever(repository.theme).thenReturn(themeFlow)
         whenever(repository.providersFlow()).thenReturn(providersFlow)
+        wheneverBlocking { repository.getProviders() }.thenReturn(Result.success(emptyList()))
         viewModel = SettingsViewModel(repository, dispatcher)
     }
 
@@ -92,7 +93,15 @@ class SettingsViewModelTest {
         providersFlow.emit(listOf(provider))
         whenever(repository.deleteProvider("p1")).thenReturn(Result.success(Unit))
         viewModel.deleteProvider("p1")
-        advanceUntilIdle()
-        assertTrue(true) // behavior verified: repository.deleteProvider was called
+        dispatcher.scheduler.advanceUntilIdle()
+        verify(repository).deleteProvider("p1")
+    }
+
+    @Test
+    fun `deleteProvider propagates error to uiState on failure`() = runTest(dispatcher) {
+        whenever(repository.deleteProvider("p1")).thenReturn(Result.failure(Exception("删除失败")))
+        viewModel.deleteProvider("p1")
+        dispatcher.scheduler.advanceUntilIdle()
+        assertEquals("删除失败", viewModel.uiState.value.error)
     }
 }
