@@ -59,6 +59,7 @@ class ChatViewModelTest {
             whenever(chatRepository.grantApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
+            whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
         }
         viewModel = ChatViewModel(chatRepository, settingsRepository, networkMonitor, dispatcher)
         dispatcher.scheduler.advanceUntilIdle()
@@ -291,6 +292,33 @@ class ChatViewModelTest {
 
             val state = awaitItem()
             assertTrue(state.isOffline)
+        }
+    }
+
+    @Test
+    fun `switchSession clears messages and sets activeSessionId`() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            // Pre-populate a message
+            sseFlow.emit(StreamEvent.TurnReceived("s1"))
+            sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
+            dispatcher.scheduler.advanceUntilIdle()
+            awaitItem() // streaming state
+
+            viewModel.switchSession("session-42")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            var found = false
+            while (!found) {
+                val state = awaitItem()
+                if (state.activeSessionId == "session-42") {
+                    found = true
+                    assertTrue(state.messages.isEmpty())
+                    cancelAndIgnoreRemainingEvents()
+                }
+            }
+            assertTrue(found)
         }
     }
 }

@@ -40,6 +40,7 @@ data class ChatUiState(
     val scrollFollowState: ScrollFollowState = ScrollFollowState.FOLLOWING,
     val agentAnimState: AgentAnimState = AgentAnimState.IDLE,
     val activeThinkingEffort: ThinkingEffort = ThinkingEffort.AUTO,
+    val activeSessionId: String = "main",
     val isOffline: Boolean = false,
     val pendingApprovals: List<PendingApproval> = emptyList(),
     val error: String? = null,
@@ -78,8 +79,9 @@ class ChatViewModel @Inject constructor(
     private fun startSseCollection() {
         sseJob = viewModelScope.launch(dispatcher) {
             val baseUrl = settingsRepository.serverUrl.first()
+            val sessionId = _uiState.value.activeSessionId
             try {
-                chatRepository.sessionStream(baseUrl, "main", "").collect { event ->
+                chatRepository.sessionStream(baseUrl, sessionId, "").collect { event ->
                     handleEvent(event)
                 }
             } catch (e: Exception) {
@@ -264,10 +266,36 @@ class ChatViewModel @Inject constructor(
     fun cancelTurn() {
         _uiState.update { it.copy(composerState = ComposerState.CANCELLING) }
         viewModelScope.launch(dispatcher) {
-            chatRepository.cancelTurn("main")
+            chatRepository.cancelTurn(_uiState.value.activeSessionId)
                 .onFailure { e ->
                     _uiState.update { it.copy(composerState = ComposerState.IDLE_EMPTY, error = e.message) }
                 }
+        }
+    }
+
+    fun switchSession(sessionId: String) {
+        sseJob?.cancel()
+        sseJob = null
+        currentAssistantMessageId = null
+        pendingTurnSessionId = null
+        _uiState.update {
+            it.copy(
+                activeSessionId = sessionId,
+                messages = emptyList(),
+                composerState = ComposerState.IDLE_EMPTY,
+                agentAnimState = AgentAnimState.IDLE,
+                pendingApprovals = emptyList(),
+            )
+        }
+        viewModelScope.launch(dispatcher) {
+            chatRepository.getMessages(sessionId)
+                .onSuccess { history ->
+                    _uiState.update { it.copy(messages = history) }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(error = e.message) }
+                }
+            startSseCollection()
         }
     }
 
