@@ -2,21 +2,16 @@
 package com.sebastian.android.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -30,15 +25,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.sebastian.android.ui.common.ApprovalDialog
+import com.sebastian.android.ui.common.ErrorBanner
 import com.sebastian.android.ui.composer.Composer
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.ChatViewModel
@@ -56,6 +50,7 @@ fun ChatScreen(
 ) {
     val chatState by chatViewModel.uiState.collectAsState()
     val sessionState by sessionViewModel.uiState.collectAsState()
+    val settingsState by settingsViewModel.uiState.collectAsState()
     val navigator = rememberSupportingPaneScaffoldNavigator<Nothing>()
     val scope = rememberCoroutineScope()
 
@@ -117,21 +112,25 @@ fun ChatScreen(
                             .padding(innerPadding)
                             .imePadding(),
                     ) {
-                        AnimatedVisibility(visible = chatState.isOffline) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.errorContainer)
-                                    .padding(vertical = 4.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "网络已断开，重连中…",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    textAlign = TextAlign.Center,
-                                )
-                            }
+                        // 未配置服务器地址
+                        AnimatedVisibility(visible = chatState.isServerNotConfigured) {
+                            ErrorBanner(message = "请先在设置中配置服务器地址")
+                        }
+                        // 网络断开
+                        AnimatedVisibility(visible = chatState.isOffline && !chatState.isServerNotConfigured) {
+                            ErrorBanner(message = "网络已断开，重连中…")
+                        }
+                        // SSE 连接失败
+                        AnimatedVisibility(
+                            visible = chatState.connectionFailed &&
+                                !chatState.isOffline &&
+                                !chatState.isServerNotConfigured,
+                        ) {
+                            ErrorBanner(
+                                message = "连接失败，请检查服务器地址",
+                                actionLabel = "重试",
+                                onAction = chatViewModel::retryConnection,
+                            )
                         }
                         MessageList(
                             messages = chatState.messages,
@@ -145,11 +144,9 @@ fun ChatScreen(
                             onToggleTool = chatViewModel::toggleToolBlock,
                             modifier = Modifier.weight(1f),
                         )
-                        val providers by settingsViewModel.uiState.collectAsState()
-
                         Composer(
                             state = chatState.composerState,
-                            activeProvider = providers.providers.firstOrNull { it.isDefault },
+                            activeProvider = settingsState.currentProvider,
                             effort = chatState.activeThinkingEffort,
                             onEffortChange = chatViewModel::setEffort,
                             onSend = chatViewModel::sendMessage,
