@@ -19,4 +19,7 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindSessionRepository(impl: SessionRepositoryImpl): SessionRepository
+
+    @Binds @Singleton
+    abstract fun bindAgentRepository(impl: AgentRepositoryImpl): AgentRepository
 }
