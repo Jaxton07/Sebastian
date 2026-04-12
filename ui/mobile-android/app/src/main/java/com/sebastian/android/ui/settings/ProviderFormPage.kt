@@ -1,6 +1,5 @@
 package com.sebastian.android.ui.settings
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -58,8 +58,8 @@ import com.sebastian.android.viewmodel.ProviderFormViewModel
 private val PROVIDER_TYPES = listOf("anthropic", "openai")
 
 private val MODEL_PLACEHOLDERS = mapOf(
-    "anthropic" to "claude-opus-4-1 / claude-sonnet-4-5",
-    "openai" to "gpt-4o / o3 / o4-mini",
+    "anthropic" to "claude-sonnet-4-5",
+    "openai" to "gpt-4o",
 )
 
 private data class CapabilityOption(
@@ -295,57 +295,22 @@ fun ProviderFormPage(
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Surface(
-                        onClick = { viewModel.onIsDefaultChange(!uiState.isDefault) },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        border = BorderStroke(
-                            1.dp,
-                            if (uiState.isDefault) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant,
-                        ),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                                Text(
-                                    "设为当前默认 Provider",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    if (uiState.isDefault) "保存后 Sebastian 会优先使用它，其他默认项会自动取消。"
-                                    else "不设为默认时，这条 Provider 只作为可选配置保留。",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = if (uiState.isDefault) MaterialTheme.colorScheme.primary
-                                       else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                ) {
-                                    Text(
-                                        if (uiState.isDefault) "已选中" else "未选中",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (uiState.isDefault) MaterialTheme.colorScheme.onPrimary
-                                               else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "设为默认 Provider",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = uiState.isDefault,
+                        onCheckedChange = viewModel::onIsDefaultChange,
+                    )
                 }
             }
 

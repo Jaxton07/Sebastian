@@ -61,7 +61,17 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateProvider(id: String, name: String, type: String, baseUrl: String?, apiKey: String?, model: String?, thinkingCapability: String?, isDefault: Boolean): Result<Provider> = runCatching {
-        val dto = apiService.updateProvider(id, ProviderDto(name = name, providerType = type, baseUrl = baseUrl, apiKey = apiKey, model = model, thinkingCapability = thinkingCapability, isDefault = isDefault))
+        // 只发送有值的字段，避免用 null 覆盖服务端已有数据（如 api_key）
+        val body = buildMap<String, Any> {
+            put("name", name)
+            put("provider_type", type)
+            put("is_default", isDefault)
+            baseUrl?.let { put("base_url", it) }
+            apiKey?.let { put("api_key", it) }
+            model?.let { put("model", it) }
+            thinkingCapability?.let { put("thinking_capability", it) }
+        }
+        val dto = apiService.updateProvider(id, body)
         val provider = dto.toDomain()
         _providers.value = _providers.value.map {
             when {
@@ -79,18 +89,15 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setDefaultProvider(id: String): Result<Unit> = runCatching {
-        // 服务端没有独立的 set-default 端点，通过 PUT 更新 is_default 字段
         val current = _providers.value.firstOrNull { it.id == id }
             ?: throw Exception("Provider not found")
-        apiService.updateProvider(
-            id,
-            ProviderDto(
-                name = current.name,
-                providerType = current.type,
-                baseUrl = current.baseUrl,
-                isDefault = true,
-            ),
-        )
+        val body = buildMap<String, Any> {
+            put("name", current.name)
+            put("provider_type", current.type)
+            put("is_default", true)
+            current.baseUrl?.let { put("base_url", it) }
+        }
+        apiService.updateProvider(id, body)
         _providers.value = _providers.value.map { it.copy(isDefault = it.id == id) }
         dataStore.saveActiveProviderId(id)
     }
