@@ -35,12 +35,6 @@ enum class ComposerState { IDLE_EMPTY, IDLE_READY, SENDING, STREAMING, CANCELLIN
 enum class ScrollFollowState { FOLLOWING, DETACHED, NEAR_BOTTOM }
 enum class AgentAnimState { IDLE, THINKING, STREAMING, WORKING }
 
-data class PendingApproval(
-    val approvalId: String,
-    val sessionId: String,
-    val description: String,
-)
-
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val composerState: ComposerState = ComposerState.IDLE_EMPTY,
@@ -49,7 +43,6 @@ data class ChatUiState(
     val activeThinkingEffort: ThinkingEffort = ThinkingEffort.AUTO,
     val activeSessionId: String? = null,       // null = 新对话
     val isOffline: Boolean = false,
-    val pendingApprovals: List<PendingApproval> = emptyList(),
     val error: String? = null,
     val isServerNotConfigured: Boolean = false,
     val connectionFailed: Boolean = false,
@@ -271,27 +264,6 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
-            is StreamEvent.ApprovalRequested -> {
-                val approval = PendingApproval(
-                    approvalId = event.approvalId,
-                    sessionId = event.sessionId,
-                    description = event.description,
-                )
-                _uiState.update { it.copy(pendingApprovals = it.pendingApprovals + approval) }
-            }
-
-            is StreamEvent.ApprovalGranted -> {
-                _uiState.update {
-                    it.copy(pendingApprovals = it.pendingApprovals.filter { a -> a.approvalId != event.approvalId })
-                }
-            }
-
-            is StreamEvent.ApprovalDenied -> {
-                _uiState.update {
-                    it.copy(pendingApprovals = it.pendingApprovals.filter { a -> a.approvalId != event.approvalId })
-                }
-            }
-
             else -> Unit
         }
     }
@@ -338,6 +310,49 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun sendAgentMessage(agentId: String, text: String) {
+        if (text.isBlank()) return
+        val currentSessionId = _uiState.value.activeSessionId
+        val userMsg = Message(
+            id = UUID.randomUUID().toString(),
+            sessionId = currentSessionId ?: "pending",
+            role = MessageRole.USER,
+            text = text,
+        )
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages + userMsg,
+                composerState = ComposerState.SENDING,
+                scrollFollowState = ScrollFollowState.FOLLOWING,
+            )
+        }
+        viewModelScope.launch(dispatcher) {
+            if (currentSessionId == null) {
+                // New agent session: create + start SSE
+                sessionRepository.createAgentSession(agentId, text)
+                    .onSuccess { session ->
+                        _uiState.update { it.copy(activeSessionId = session.id) }
+                        startSseCollection(replayFromStart = true)
+                        sessionRepository.loadAgentSessions(agentId)
+                    }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(composerState = ComposerState.IDLE_READY, error = e.message) }
+                    }
+            } else {
+                // Existing session: send turn
+                chatRepository.sendSessionTurn(currentSessionId, text, _uiState.value.activeThinkingEffort)
+                    .onSuccess {
+                        if (sseJob?.isActive != true) {
+                            startSseCollection(replayFromStart = true)
+                        }
+                    }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(composerState = ComposerState.IDLE_READY, error = e.message) }
+                    }
+            }
+        }
+    }
+
     fun sendSessionMessage(sessionId: String, text: String) {
         if (text.isBlank()) return
         val userMsg = Message(id = UUID.randomUUID().toString(), sessionId = sessionId, role = MessageRole.USER, text = text)
@@ -375,7 +390,6 @@ class ChatViewModel @Inject constructor(
                 messages = emptyList(),
                 composerState = ComposerState.IDLE_EMPTY,
                 agentAnimState = AgentAnimState.IDLE,
-                pendingApprovals = emptyList(),
             )
         }
         viewModelScope.launch(dispatcher) {
@@ -405,7 +419,6 @@ class ChatViewModel @Inject constructor(
                 messages = emptyList(),
                 composerState = ComposerState.IDLE_EMPTY,
                 agentAnimState = AgentAnimState.IDLE,
-                pendingApprovals = emptyList(),
                 connectionFailed = false,
             )
         }
@@ -429,20 +442,6 @@ class ChatViewModel @Inject constructor(
 
     fun setEffort(effort: ThinkingEffort) {
         _uiState.update { it.copy(activeThinkingEffort = effort) }
-    }
-
-    fun grantApproval(approvalId: String) {
-        viewModelScope.launch(dispatcher) {
-            chatRepository.grantApproval(approvalId)
-                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
-        }
-    }
-
-    fun denyApproval(approvalId: String) {
-        viewModelScope.launch(dispatcher) {
-            chatRepository.denyApproval(approvalId)
-                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
-        }
     }
 
     fun onUserScrolled() {

@@ -29,7 +29,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.sebastian.android.ui.common.ApprovalDialog
 import com.sebastian.android.ui.common.ErrorBanner
 import com.sebastian.android.ui.composer.Composer
 import com.sebastian.android.ui.navigation.Route
@@ -67,15 +66,6 @@ fun ChatScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    // Approval Dialog（出现时阻断其他交互）
-    chatState.pendingApprovals.firstOrNull()?.let { approval ->
-        ApprovalDialog(
-            approval = approval,
-            onGrant = { chatViewModel.grantApproval(it) },
-            onDeny = { chatViewModel.denyApproval(it) },
-        )
     }
 
     SlidingThreePaneLayout(
