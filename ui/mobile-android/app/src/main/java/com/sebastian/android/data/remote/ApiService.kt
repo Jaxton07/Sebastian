@@ -60,7 +60,7 @@ interface ApiService {
     suspend fun updateProvider(@Path("id") id: String, @Body body: Map<String, @JvmSuppressWildcards Any>): ProviderDto
 
     @DELETE("api/v1/llm-providers/{id}")
-    suspend fun deleteProvider(@Path("id") id: String): OkResponse
+    suspend fun deleteProvider(@Path("id") id: String)
 
     // Approvals
     @GET("api/v1/approvals")
