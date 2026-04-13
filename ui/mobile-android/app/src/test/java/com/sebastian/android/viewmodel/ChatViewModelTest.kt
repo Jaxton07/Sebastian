@@ -11,11 +11,14 @@ import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SessionRepository
 import com.sebastian.android.data.repository.SettingsRepository
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -69,7 +72,7 @@ class ChatViewModelTest {
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
         }
         viewModel = ChatViewModel(chatRepository, sessionRepository, settingsRepository, networkMonitor, markdownParser, dispatcher)
-        dispatcher.scheduler.advanceUntilIdle()
+        dispatcher.scheduler.advanceTimeBy(200)
     }
 
     @After
@@ -77,8 +80,21 @@ class ChatViewModelTest {
         Dispatchers.resetMain()
     }
 
+    /**
+     * Wraps [runTest] so that [viewModel]'s infinite delta-flusher coroutine is
+     * cancelled before [runTest]'s internal [advanceUntilIdle] cleanup runs.
+     * Without this, [advanceUntilIdle] spins forever on the `while(true) { delay(50) }` loop.
+     */
+    private fun vmTest(testBody: suspend TestScope.() -> Unit) = runTest(dispatcher) {
+        try {
+            testBody()
+        } finally {
+            viewModel.viewModelScope.cancel()
+        }
+    }
+
     @Test
-    fun `initial state is IDLE_EMPTY`() = runTest(dispatcher) {
+    fun `initial state is IDLE_EMPTY`() = vmTest {
         viewModel.uiState.test {
             val state = awaitItem()
             assertEquals(ComposerState.IDLE_EMPTY, state.composerState)
@@ -87,13 +103,13 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `text_block_start creates new streaming TextBlock`() = runTest(dispatcher) {
+    fun `text_block_start creates new streaming TextBlock`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             val assistantMsg = state.messages.lastOrNull { it.role == MessageRole.ASSISTANT }
@@ -105,14 +121,14 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `text_delta appends to TextBlock`() = runTest(dispatcher) {
+    fun `text_delta appends to TextBlock`() = vmTest {
         viewModel.uiState.test {
             awaitItem()
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
             sseFlow.emit(StreamEvent.TextDelta("s1", "b0_0", "好的"))
             sseFlow.emit(StreamEvent.TextDelta("s1", "b0_0", "，我来帮你"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             var found = false
             while (!found) {
@@ -128,14 +144,14 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `text_block_stop marks block as done`() = runTest(dispatcher) {
+    fun `text_block_stop marks block as done`() = vmTest {
         viewModel.uiState.test {
             awaitItem()
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
             sseFlow.emit(StreamEvent.TextDelta("s1", "b0_0", "完成"))
             sseFlow.emit(StreamEvent.TextBlockStop("s1", "b0_0"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             var found = false
             while (!found) {
@@ -151,12 +167,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `thinking_block_start creates ThinkingBlock`() = runTest(dispatcher) {
+    fun `thinking_block_start creates ThinkingBlock`() = vmTest {
         viewModel.uiState.test {
             awaitItem()
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.ThinkingBlockStart("s1", "b0_0"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             val block = state.messages.lastOrNull { it.role == MessageRole.ASSISTANT }
@@ -166,12 +182,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `composerState becomes STREAMING during text block`() = runTest(dispatcher) {
+    fun `composerState becomes STREAMING during text block`() = vmTest {
         viewModel.uiState.test {
             awaitItem()
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             assertEquals(ComposerState.STREAMING, state.composerState)
@@ -179,14 +195,14 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `composerState returns to IDLE_EMPTY after turn_response`() = runTest(dispatcher) {
+    fun `composerState returns to IDLE_EMPTY after turn_response`() = vmTest {
         viewModel.uiState.test {
             awaitItem()
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
             sseFlow.emit(StreamEvent.TextBlockStop("s1", "b0_0"))
             sseFlow.emit(StreamEvent.TurnResponse("s1", "完成"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             var found = false
             while (!found) {
@@ -198,12 +214,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `sendMessage adds user message and sets composerState SENDING`() = runTest(dispatcher) {
+    fun `sendMessage adds user message and sets composerState SENDING`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
             viewModel.sendMessage("你好")
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             assertEquals(ComposerState.SENDING, state.composerState)
@@ -215,7 +231,7 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `clearError clears error from uiState`() = runTest(dispatcher) {
+    fun `clearError clears error from uiState`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
@@ -225,7 +241,7 @@ class ChatViewModelTest {
                     .thenReturn(Result.failure(RuntimeException("网络错误")))
             }
             viewModel.sendMessage("test")
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             // Consume SENDING state
             awaitItem()
@@ -234,7 +250,7 @@ class ChatViewModelTest {
             assertEquals("网络错误", errorState.error)
 
             viewModel.clearError()
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val clearedState = awaitItem()
             assertNull(clearedState.error)
@@ -242,12 +258,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `onUserScrolled sets scrollFollowState DETACHED`() = runTest(dispatcher) {
+    fun `onUserScrolled sets scrollFollowState DETACHED`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial (FOLLOWING)
 
             viewModel.onUserScrolled()
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             assertEquals(ScrollFollowState.DETACHED, state.scrollFollowState)
@@ -255,12 +271,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `cancelTurn sets state CANCELLING and calls repository`() = runTest(dispatcher) {
+    fun `cancelTurn sets state CANCELLING and calls repository`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
             viewModel.cancelTurn()
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             assertEquals(ComposerState.CANCELLING, state.composerState)
@@ -269,12 +285,12 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `isOffline becomes true when network is lost`() = runTest(dispatcher) {
+    fun `isOffline becomes true when network is lost`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
             onlineFlow.emit(false)
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             val state = awaitItem()
             assertTrue(state.isOffline)
@@ -282,18 +298,18 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `switchSession clears messages and sets activeSessionId`() = runTest(dispatcher) {
+    fun `switchSession clears messages and sets activeSessionId`() = vmTest {
         viewModel.uiState.test {
             awaitItem() // initial
 
             // Pre-populate a message
             sseFlow.emit(StreamEvent.TurnReceived("s1"))
             sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
             awaitItem() // streaming state
 
             viewModel.switchSession("session-42")
-            dispatcher.scheduler.advanceUntilIdle()
+            dispatcher.scheduler.advanceTimeBy(200)
 
             var found = false
             while (!found) {
