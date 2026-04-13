@@ -9,5 +9,6 @@ interface SessionRepository {
     suspend fun createSession(title: String? = null): Result<Session>
     suspend fun deleteSession(sessionId: String): Result<Unit>
     suspend fun getAgentSessions(agentType: String): Result<List<Session>>
+    suspend fun loadAgentSessions(agentType: String): Result<List<Session>>
     suspend fun createAgentSession(agentType: String, title: String? = null): Result<Session>
 }
