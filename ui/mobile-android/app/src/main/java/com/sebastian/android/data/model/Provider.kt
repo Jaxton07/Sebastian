@@ -25,4 +25,18 @@ enum class ThinkingCapability {
     }
 }
 
-enum class ThinkingEffort { LOW, MEDIUM, HIGH, AUTO }
+enum class ThinkingEffort {
+    OFF, ON, LOW, MEDIUM, HIGH, MAX;
+
+    companion object {
+        fun fromString(value: String?): ThinkingEffort = when (value) {
+            "off" -> OFF
+            "on" -> ON
+            "low" -> LOW
+            "medium" -> MEDIUM
+            "high" -> HIGH
+            "max" -> MAX
+            else -> OFF
+        }
+    }
+}

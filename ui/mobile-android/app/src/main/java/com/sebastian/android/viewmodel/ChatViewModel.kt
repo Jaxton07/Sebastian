@@ -40,7 +40,7 @@ data class ChatUiState(
     val composerState: ComposerState = ComposerState.IDLE_EMPTY,
     val scrollFollowState: ScrollFollowState = ScrollFollowState.FOLLOWING,
     val agentAnimState: AgentAnimState = AgentAnimState.IDLE,
-    val activeThinkingEffort: ThinkingEffort = ThinkingEffort.AUTO,
+    val activeThinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
     val activeSessionId: String? = null,       // null = 新对话
     val isOffline: Boolean = false,
     val error: String? = null,

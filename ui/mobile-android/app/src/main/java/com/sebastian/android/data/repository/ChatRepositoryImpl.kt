@@ -58,9 +58,11 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private fun ThinkingEffort.toApiString(): String? = when (this) {
+        ThinkingEffort.OFF -> null
+        ThinkingEffort.ON -> "on"
         ThinkingEffort.LOW -> "low"
         ThinkingEffort.MEDIUM -> "medium"
         ThinkingEffort.HIGH -> "high"
-        ThinkingEffort.AUTO -> null
+        ThinkingEffort.MAX -> "max"
     }
 }

@@ -59,15 +59,19 @@ fun ThinkButton(
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
 
+    val isActive = currentEffort != ThinkingEffort.OFF
+
     val label = when (capability) {
         null -> "思考…"
         ThinkingCapability.ALWAYS_ON -> "思考·自动"
-        ThinkingCapability.TOGGLE -> if (currentEffort != ThinkingEffort.AUTO) "思考·开" else "思考·关"
+        ThinkingCapability.TOGGLE -> if (isActive) "思考·开" else "思考·关"
         ThinkingCapability.EFFORT, ThinkingCapability.ADAPTIVE -> when (currentEffort) {
+            ThinkingEffort.OFF -> "思考"
             ThinkingEffort.LOW -> "思考·轻"
             ThinkingEffort.MEDIUM -> "思考·中"
             ThinkingEffort.HIGH -> "思考·深"
-            ThinkingEffort.AUTO -> "思考·自动"
+            ThinkingEffort.MAX -> "思考·最大"
+            ThinkingEffort.ON -> "思考·开"
         }
         ThinkingCapability.NONE -> return
     }
@@ -77,7 +81,7 @@ fun ThinkButton(
             when (capability) {
                 null, ThinkingCapability.ALWAYS_ON -> { /* 不可点击 */ }
                 ThinkingCapability.TOGGLE -> {
-                    onEffortChange(if (currentEffort != ThinkingEffort.AUTO) ThinkingEffort.AUTO else ThinkingEffort.MEDIUM)
+                    onEffortChange(if (isActive) ThinkingEffort.OFF else ThinkingEffort.ON)
                 }
                 ThinkingCapability.EFFORT, ThinkingCapability.ADAPTIVE -> showSheet = true
                 ThinkingCapability.NONE -> {}
@@ -89,7 +93,7 @@ fun ThinkButton(
         },
         enabled = capability != null && capability != ThinkingCapability.ALWAYS_ON,
         shape = RoundedCornerShape(percent = 50),
-        colors = if (currentEffort != ThinkingEffort.AUTO && capability == ThinkingCapability.TOGGLE)
+        colors = if (isActive && capability != ThinkingCapability.ALWAYS_ON)
             AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         else AssistChipDefaults.assistChipColors(),
         modifier = modifier.alpha(if (capability == null) 0.5f else 1f),
@@ -102,6 +106,7 @@ fun ThinkButton(
         ) {
             EffortPickerSheet(
                 current = currentEffort,
+                capability = capability!!,
                 onSelect = { effort ->
                     onEffortChange(effort)
                     scope.launch { sheetState.hide() }.invokeOnCompletion { showSheet = false }
@@ -111,17 +116,28 @@ fun ThinkButton(
     }
 }
 
+private val EFFORT_OPTIONS = listOf(
+    ThinkingEffort.OFF to "关闭",
+    ThinkingEffort.LOW to "轻度思考",
+    ThinkingEffort.MEDIUM to "中度思考",
+    ThinkingEffort.HIGH to "深度思考",
+)
+
+private val ADAPTIVE_OPTIONS = listOf(
+    ThinkingEffort.OFF to "关闭",
+    ThinkingEffort.LOW to "轻度思考",
+    ThinkingEffort.MEDIUM to "中度思考",
+    ThinkingEffort.HIGH to "深度思考",
+    ThinkingEffort.MAX to "最大思考",
+)
+
 @Composable
 private fun EffortPickerSheet(
     current: ThinkingEffort,
+    capability: ThinkingCapability,
     onSelect: (ThinkingEffort) -> Unit,
 ) {
-    val options = listOf(
-        ThinkingEffort.AUTO to "自动（模型决定）",
-        ThinkingEffort.LOW to "轻度思考",
-        ThinkingEffort.MEDIUM to "中度思考",
-        ThinkingEffort.HIGH to "深度思考",
-    )
+    val options = if (capability == ThinkingCapability.ADAPTIVE) ADAPTIVE_OPTIONS else EFFORT_OPTIONS
 
     Column(
         modifier = Modifier
