@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import com.sebastian.android.di.SseOkHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -20,7 +21,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SseClient @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    @SseOkHttp private val okHttpClient: OkHttpClient,
 ) {
     /**
      * Subscribes to a single-session event stream with automatic reconnection.

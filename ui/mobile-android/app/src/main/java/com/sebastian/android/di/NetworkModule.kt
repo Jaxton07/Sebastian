@@ -16,7 +16,13 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.TimeUnit
+import javax.inject.Qualifier
 import javax.inject.Singleton
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class SseOkHttp
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -33,7 +39,21 @@ object NetworkModule {
     fun provideOkHttpClient(
         tokenStore: SecureTokenStore,
         settingsDataStore: SettingsDataStore,
-    ): OkHttpClient {
+    ): OkHttpClient = buildBaseOkHttpClient(tokenStore, settingsDataStore).build()
+
+    @Provides @Singleton
+    @SseOkHttp
+    fun provideSseOkHttpClient(
+        tokenStore: SecureTokenStore,
+        settingsDataStore: SettingsDataStore,
+    ): OkHttpClient = buildBaseOkHttpClient(tokenStore, settingsDataStore)
+        .readTimeout(0, TimeUnit.SECONDS)   // SSE 长连接，禁用读超时
+        .build()
+
+    private fun buildBaseOkHttpClient(
+        tokenStore: SecureTokenStore,
+        settingsDataStore: SettingsDataStore,
+    ): OkHttpClient.Builder {
         val authInterceptor = Interceptor { chain ->
             val token = tokenStore.getToken()
             val req = if (token != null) {
@@ -67,7 +87,6 @@ object NetworkModule {
             .addInterceptor(baseUrlInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(logging)
-            .build()
     }
 
     @Provides @Singleton

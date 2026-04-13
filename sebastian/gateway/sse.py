@@ -12,6 +12,8 @@ from sebastian.protocol.events.types import Event
 
 logger = logging.getLogger(__name__)
 
+_KEEPALIVE_INTERVAL_S: float = 25.0
+
 
 @dataclass(slots=True)
 class _BufferedEvent:
@@ -97,7 +99,13 @@ class SSEManager:
             for buffered_event in replay_events:
                 yield self._format_chunk(buffered_event)
             while True:
-                queued_event = await subscription.queue.get()
+                try:
+                    queued_event = await asyncio.wait_for(
+                        subscription.queue.get(), timeout=_KEEPALIVE_INTERVAL_S
+                    )
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
                 if queued_event is None:
                     break
                 yield self._format_chunk(queued_event)
