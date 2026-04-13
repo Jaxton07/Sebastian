@@ -63,6 +63,7 @@ class IndexStore:
                 "id": session.id,
                 "agent_type": session.agent_type,
                 "title": session.title,
+                "goal": session.goal,
                 "status": session.status.value,
                 "depth": session.depth,
                 "parent_session_id": session.parent_session_id,
