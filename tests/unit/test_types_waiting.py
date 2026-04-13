@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sebastian.core.types import SessionStatus
 from sebastian.protocol.events.types import EventType
 

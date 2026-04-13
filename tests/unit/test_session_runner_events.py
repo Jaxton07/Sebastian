@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sebastian.core.session_runner import run_agent_session

@@ -89,16 +89,16 @@ class IndexStore:
         agent_type: str,
         parent_session_id: str,
     ) -> list[dict[str, Any]]:
-        """List active+stalled child sessions for a given parent session.
+        """List active/stalled/waiting child sessions for a given parent session.
 
-        Both statuses occupy max_children slots per spec §3.3.
+        All three statuses occupy max_children slots per spec §3.3.
         """
         return [
             s
             for s in await self._read()
             if s.get("agent_type") == agent_type
             and s.get("parent_session_id") == parent_session_id
-            and s.get("status") in ("active", "stalled")
+            and s.get("status") in ("active", "stalled", "waiting")
         ]
 
     async def update_activity(self, session_id: str) -> None:
