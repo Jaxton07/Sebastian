@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +42,8 @@ import com.sebastian.android.viewmodel.SettingsViewModel
 @Composable
 fun ChatScreen(
     navController: NavController,
+    agentId: String? = null,
+    agentName: String? = null,
     chatViewModel: ChatViewModel = hiltViewModel(),
     sessionViewModel: SessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
@@ -54,6 +58,13 @@ fun ChatScreen(
         ),
         init = { mutableStateOf(SidePane.NONE) },
     )
+
+    // Load appropriate sessions based on mode
+    LaunchedEffect(agentId) {
+        if (agentId != null) {
+            sessionViewModel.loadAgentSessions(agentId)
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -76,6 +87,7 @@ fun ChatScreen(
                 sessions = sessionState.sessions,
                 activeSessionId = chatState.activeSessionId,
                 isNewSession = chatState.messages.isEmpty(),
+                agentName = agentName,
                 onSessionClick = { session ->
                     chatViewModel.switchSession(session.id)
                     activePane = SidePane.NONE
@@ -97,12 +109,18 @@ fun ChatScreen(
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text("Sebastian") },
+                        title = { Text(agentName ?: "Sebastian") },
                         navigationIcon = {
-                            IconButton(onClick = {
-                                activePane = if (activePane == SidePane.LEFT) SidePane.NONE else SidePane.LEFT
-                            }) {
-                                Icon(Icons.Default.Menu, contentDescription = "会话列表")
+                            if (agentId != null) {
+                                IconButton(onClick = { navController.popBackStack() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                                }
+                            } else {
+                                IconButton(onClick = {
+                                    activePane = if (activePane == SidePane.LEFT) SidePane.NONE else SidePane.LEFT
+                                }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "会话列表")
+                                }
                             }
                         },
                         actions = {
@@ -158,7 +176,13 @@ fun ChatScreen(
                         activeProvider = settingsState.currentProvider,
                         effort = chatState.activeThinkingEffort,
                         onEffortChange = chatViewModel::setEffort,
-                        onSend = chatViewModel::sendMessage,
+                        onSend = { text ->
+                            if (agentId != null) {
+                                chatViewModel.sendAgentMessage(agentId, text)
+                            } else {
+                                chatViewModel.sendMessage(text)
+                            }
+                        },
                         onStop = chatViewModel::cancelTurn,
                     )
                 }
