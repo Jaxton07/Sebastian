@@ -17,10 +17,10 @@ ui/
 │   ├── TodoPanel.kt        # 右栏：Todo 面板（Extra Pane）
 │   └── ToolCallCard.kt     # 工具调用块卡片（含状态 badge）
 ├── common/
-│   ├── AnimationTokens.kt  # 全局动画时长常量
-│   ├── ApprovalDialog.kt   # 审批对话框（阻断式，出现时其他交互禁用）
-│   ├── ErrorBanner.kt      # 错误横幅（可选操作按钮）
-│   └── MarkdownView.kt     # AndroidView 封装 Markwon 渲染
+│   ├── AnimationTokens.kt      # 全局动画时长常量
+│   ├── ErrorBanner.kt          # 错误横幅（可选操作按钮）
+│   ├── GlobalApprovalBanner.kt # 全局审批横幅（悬浮，覆盖所有页面）
+│   └── MarkdownView.kt         # AndroidView 封装 Markwon 渲染
 ├── composer/
 │   ├── Composer.kt         # 输入框容器（含 ThinkButton + SendButton）
 │   ├── SendButton.kt       # 发送/停止按钮（状态机驱动：IDLE / SENDING / STREAMING / CANCELLING）
@@ -33,9 +33,7 @@ ui/
 │   ├── ProviderListPage.kt # Provider 列表页
 │   └── ProviderFormPage.kt # Provider 新增/编辑页
 ├── subagents/
-│   ├── AgentListScreen.kt  # Sub-Agent 列表页
-│   ├── SessionListScreen.kt # 某 Agent 下的 Session 列表页
-│   └── SessionDetailScreen.kt # Sub-Agent Session 详情页
+│   └── AgentListScreen.kt  # Sub-Agent 列表页（点击进入 Route.AgentChat）
 └── theme/
     ├── Color.kt            # 品牌色与语义色 token
     └── SebastianTheme.kt   # MaterialTheme 配置（Light / Dark）
@@ -60,7 +58,7 @@ ui/
 
 跨领域复用组件。
 
-- **`ApprovalDialog`**：高危操作审批弹窗，出现时阻断其他交互，支持 Grant / Deny
+- **`GlobalApprovalBanner`**：全局审批横幅，悬浮在所有页面之上（`zIndex(1f)`），显示第一条待审批请求，含拒绝/允许按钮和"查看详情"跳转。由 `GlobalApprovalViewModel` 驱动
 - **`MarkdownView`**：`AndroidView` 包裹 `Markwon`，接受预渲染的 `CharSequence`（`renderedMarkdown`）
 - **`ErrorBanner`**：可选 `actionLabel` + `onAction` 操作按钮的横幅组件
 - **`AnimationTokens`**：统一管理动画时长常量，避免各处硬编码

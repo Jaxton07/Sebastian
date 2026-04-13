@@ -198,19 +198,6 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `approval_requested creates pending approval`() = runTest(dispatcher) {
-        viewModel.uiState.test {
-            awaitItem()
-            sseFlow.emit(StreamEvent.ApprovalRequested("s1", "ap_1", "sebastian", "删除文件 foo.txt"))
-            dispatcher.scheduler.advanceUntilIdle()
-
-            val state = awaitItem()
-            assertEquals(1, state.pendingApprovals.size)
-            assertEquals("ap_1", state.pendingApprovals[0].approvalId)
-        }
-    }
-
-    @Test
     fun `sendMessage adds user message and sets composerState SENDING`() = runTest(dispatcher) {
         viewModel.uiState.test {
             awaitItem() // initial
@@ -225,14 +212,6 @@ class ChatViewModelTest {
             assertTrue(userMsg != null)
             assertEquals("你好", userMsg!!.text)
         }
-    }
-
-    @Test
-    fun `grantApproval calls chatRepository grantApproval`() = runTest(dispatcher) {
-        viewModel.grantApproval("ap_42")
-        dispatcher.scheduler.advanceUntilIdle()
-
-        runBlocking { verify(chatRepository).grantApproval("ap_42") }
     }
 
     @Test

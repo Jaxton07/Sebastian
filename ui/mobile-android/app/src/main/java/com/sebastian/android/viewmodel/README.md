@@ -25,7 +25,7 @@ viewmodel/
 2. **增量刷新**：50ms 定时器将 `pendingDeltas`（`ConcurrentHashMap<blockId, StringBuilder>`）批量合并到消息列表，减少 recomposition 频率（`flushTick` 驱动 `MessageList` 滚动）
 3. **消息状态机**：处理全部 `StreamEvent` 类型，按 blockId 精确更新对应 `ContentBlock`
 4. **三态连接错误**：`isServerNotConfigured` / `isOffline` / `connectionFailed`，优先级从高到低
-5. **审批队列**：`pendingApprovals: List<PendingApproval>`，`ApprovalDialog` 消费第一项
+5. **全局审批**：审批事件由 `GlobalApprovalViewModel` 统一处理，不再由 `ChatViewModel` 管理
 6. **滚动跟随**：`ScrollFollowState`（FOLLOWING / DETACHED / NEAR_BOTTOM）
 
 关键状态枚举：
@@ -78,7 +78,7 @@ ViewModel (sendMessage / switchSession / ...)
 |---------|--------|
 | 改主对话消息处理逻辑 | `ChatViewModel.handleEvent()` |
 | 改 SSE 重连/断线逻辑 | `ChatViewModel.startSseCollection()` / `observeNetwork()` |
-| 改审批处理 | `ChatViewModel.grantApproval()` / `denyApproval()` |
+| 改全局审批处理 | `GlobalApprovalViewModel.grantApproval()` / `denyApproval()` |
 | 改思考档位状态 | `ChatViewModel.setEffort()` |
 | 改滚动跟随逻辑 | `ChatViewModel.onUserScrolled()` / `onScrolledNearBottom()` 等 |
 | 改 session 列表加载 | `SessionViewModel` |
