@@ -81,8 +81,7 @@ ui/
 |-------|--------|
 | `Chat` | `ChatScreen` |
 | `SubAgents` | `AgentListScreen` |
-| `AgentSessions(agentId)` | `SessionListScreen` |
-| `SessionDetail(sessionId)` | `SessionDetailScreen` |
+| `AgentChat(agentId, agentName)` | `ChatScreen`（SubAgent 三面板模式） |
 | `Settings` | `SettingsScreen` |
 | `SettingsConnection` | `ConnectionPage` |
 | `SettingsProviders` | `ProviderListPage` |
@@ -97,9 +96,7 @@ ui/
 
 ### `subagents/`
 
-- **`AgentListScreen`**：展示可用 Sub-Agent，由 `SubAgentViewModel` 驱动
-- **`SessionListScreen`**：某 Agent 的 Session 列表，含 FAB 新建 session
-- **`SessionDetailScreen`**：Sub-Agent Session 详情（MessageList + Composer），复用 `ChatViewModel`
+- **`AgentListScreen`**：展示可用 Sub-Agent，由 `SubAgentViewModel` 驱动；点击直接进入 `Route.AgentChat`，复用主对话三面板 `ChatScreen`
 
 ### `theme/`
 
