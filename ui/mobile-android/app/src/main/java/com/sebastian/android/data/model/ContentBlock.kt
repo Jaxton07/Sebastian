@@ -21,6 +21,7 @@ sealed class ContentBlock {
         val text: String,
         val done: Boolean = false,
         val expanded: Boolean = false,
+        val durationMs: Long? = null,
     ) : ContentBlock()
 
     data class ToolBlock(

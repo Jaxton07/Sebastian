@@ -9,7 +9,11 @@ sealed class StreamEvent {
     // Thinking block
     data class ThinkingBlockStart(val sessionId: String, val blockId: String) : StreamEvent()
     data class ThinkingDelta(val sessionId: String, val blockId: String, val delta: String) : StreamEvent()
-    data class ThinkingBlockStop(val sessionId: String, val blockId: String) : StreamEvent()
+    data class ThinkingBlockStop(
+        val sessionId: String,
+        val blockId: String,
+        val durationMs: Long = 0,
+    ) : StreamEvent()
 
     // Text block
     data class TextBlockStart(val sessionId: String, val blockId: String) : StreamEvent()
