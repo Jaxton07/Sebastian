@@ -125,7 +125,11 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun startSseCollection() {
+    /**
+     * @param replayFromStart 为 true 时发送 Last-Event-ID: 0，请求服务端回放缓冲事件。
+     *   用于刚发送 turn 后立即建连的场景，避免 REST→SSE 窗口期内丢失事件。
+     */
+    private fun startSseCollection(replayFromStart: Boolean = false) {
         val sessionId = _uiState.value.activeSessionId ?: return
         sseJob?.cancel()
         sseJob = viewModelScope.launch(dispatcher) {
@@ -135,8 +139,9 @@ class ChatViewModel @Inject constructor(
                 return@launch
             }
             _uiState.update { it.copy(isServerNotConfigured = false, connectionFailed = false) }
+            val lastEventId = if (replayFromStart) "0" else null
             try {
-                chatRepository.sessionStream(baseUrl, sessionId).collect { event ->
+                chatRepository.sessionStream(baseUrl, sessionId, lastEventId).collect { event ->
                     handleEvent(event)
                 }
             } catch (e: CancellationException) {
@@ -315,9 +320,16 @@ class ChatViewModel @Inject constructor(
                     if (currentSessionId == null || currentSessionId != returnedSessionId) {
                         // New session created by backend — switch to it
                         _uiState.update { it.copy(activeSessionId = returnedSessionId) }
-                        startSseCollection()
+                        // replayFromStart=true: REST 到 SSE 建连之间的事件需要回放
+                        startSseCollection(replayFromStart = true)
                         // Refresh session list so the sidebar picks up the new session
                         sessionRepository.loadSessions()
+                    } else {
+                        // Existing session — SSE should already be running.
+                        // If it died silently, restart with replay to catch in-flight events.
+                        if (sseJob?.isActive != true) {
+                            startSseCollection(replayFromStart = true)
+                        }
                     }
                 }
                 .onFailure { e ->
@@ -367,14 +379,16 @@ class ChatViewModel @Inject constructor(
             )
         }
         viewModelScope.launch(dispatcher) {
-            chatRepository.getMessages(sessionId)
+            val needsReplay = chatRepository.getMessages(sessionId)
                 .onSuccess { history ->
                     _uiState.update { it.copy(messages = history) }
                 }
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = e.message) }
+                .map { history ->
+                    // 最后一条消息是 user → turn 进行中，需要回放以补回流式事件
+                    history.isEmpty() || history.lastOrNull()?.role == MessageRole.USER
                 }
-            startSseCollection()
+                .getOrDefault(true) // hydration 失败时保守回放
+            startSseCollection(replayFromStart = needsReplay)
         }
     }
 
