@@ -24,14 +24,14 @@ logger = logging.getLogger(__name__)
 # 每条规则：(正则, 人类可读描述)。
 # 匹配到任意一条即跳过 LLM 审查，直接请求用户批准。
 _DANGEROUS_BASH_CHECKS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(?:^|[;&|(]\s*)rm\b"),       "rm（删除文件/目录）"),
-    (re.compile(r"(?:^|[;&|(]\s*)rmdir\b"),    "rmdir（删除目录）"),
-    (re.compile(r"(?:^|[;&|(]\s*)dd\b"),       "dd（磁盘写入）"),
-    (re.compile(r"(?:^|[;&|(]\s*)mkfs\b"),     "mkfs（磁盘格式化）"),
-    (re.compile(r"(?:^|[;&|(]\s*)shred\b"),    "shred（安全删除）"),
+    (re.compile(r"(?:^|[;&|(]\s*)rm\b"), "rm（删除文件/目录）"),
+    (re.compile(r"(?:^|[;&|(]\s*)rmdir\b"), "rmdir（删除目录）"),
+    (re.compile(r"(?:^|[;&|(]\s*)dd\b"), "dd（磁盘写入）"),
+    (re.compile(r"(?:^|[;&|(]\s*)mkfs\b"), "mkfs（磁盘格式化）"),
+    (re.compile(r"(?:^|[;&|(]\s*)shred\b"), "shred（安全删除）"),
     (re.compile(r"(?:^|[;&|(]\s*)truncate\b"), "truncate（截断/清空文件）"),
-    (re.compile(r"curl\b.+[|]\s*(?:bash|sh|zsh)\b"),  "curl | bash（远程代码执行）"),
-    (re.compile(r"wget\b.+[|]\s*(?:bash|sh|zsh)\b"),  "wget | bash（远程代码执行）"),
+    (re.compile(r"curl\b.+[|]\s*(?:bash|sh|zsh)\b"), "curl | bash（远程代码执行）"),
+    (re.compile(r"wget\b.+[|]\s*(?:bash|sh|zsh)\b"), "wget | bash（远程代码执行）"),
 ]
 
 
@@ -197,6 +197,7 @@ class PolicyGate:
             tool_input=inputs,
             reason=f"操作路径 '{resolved}' 在 workspace 外，需要用户确认。",
             session_id=context.session_id or "",
+            agent_type=context.agent_type,
         )
         if granted:
             return await self._registry.call(tool_name, **inputs)
@@ -258,6 +259,7 @@ class PolicyGate:
             tool_input=inputs,
             reason=reason,
             session_id=context.session_id or "",
+            agent_type=context.agent_type,
         )
         if granted:
             return await self._registry.call(tool_name, **inputs)
