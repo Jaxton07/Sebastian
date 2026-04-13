@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -24,17 +22,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.model.ThinkingEffort
+import com.sebastian.android.ui.common.glass.GlassState
+import com.sebastian.android.ui.common.glass.GlassSurface
 import com.sebastian.android.viewmodel.ComposerState
 
 /**
  * Composer 主容器（插槽架构）。
  *
  * 自身无状态：ComposerState 由 ChatViewModel 持有并通过 prop 传入。
+ * 玻璃效果由外部传入的 [glassState] 驱动，内容层采样标记由 ChatScreen 负责。
  * Phase 2 预留插槽（voiceSlot, attachmentSlot）默认 null，接入时不修改此文件。
  */
 @Composable
 fun Composer(
     state: ComposerState,
+    glassState: GlassState,
     activeProvider: Provider?,
     effort: ThinkingEffort,
     onEffortChange: (ThinkingEffort) -> Unit,
@@ -48,23 +50,16 @@ fun Composer(
 ) {
     var text by rememberSaveable { mutableStateOf("") }
 
-    // Composer 内部根据文字内容通知父层更新 ComposerState
-    // 实际 state 修改在 ChatViewModel，Composer 只读 state prop
     val effectiveState = when {
         state == ComposerState.STREAMING || state == ComposerState.SENDING || state == ComposerState.CANCELLING -> state
         text.isNotBlank() -> ComposerState.IDLE_READY
         else -> ComposerState.IDLE_EMPTY
     }
 
-    val shape = RoundedCornerShape(24.dp)
-    Surface(
-        shape = shape,
-        color = Color.Transparent,   // drawBackdrop 负责绘制背景，Surface 只裁剪内容
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+    GlassSurface(
+        state = glassState,
+        shape = RoundedCornerShape(24.dp),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column {
             // 附件预览区（Phase 2 填充）
@@ -75,9 +70,7 @@ fun Composer(
             // 文字输入区
             TextField(
                 value = text,
-                onValueChange = { newText ->
-                    text = newText
-                },
+                onValueChange = { text = it },
                 placeholder = {
                     androidx.compose.material3.Text("发消息给 Sebastian")
                 },
@@ -95,10 +88,9 @@ fun Composer(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 左侧插槽区
                 ThinkButton(
                     activeProvider = activeProvider,
                     currentEffort = effort,
@@ -115,7 +107,6 @@ fun Composer(
 
                 Spacer(Modifier.weight(1f))
 
-                // 右侧发送/停止按钮
                 SendButton(
                     state = effectiveState,
                     onSend = {

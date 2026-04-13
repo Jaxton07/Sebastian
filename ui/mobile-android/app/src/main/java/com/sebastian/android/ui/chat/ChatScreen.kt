@@ -2,15 +2,11 @@
 package com.sebastian.android.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,20 +30,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
 import com.sebastian.android.ui.common.ErrorBanner
+import com.sebastian.android.ui.common.glass.rememberGlassState
 import com.sebastian.android.ui.composer.Composer
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.ChatViewModel
@@ -178,13 +168,7 @@ fun ChatScreen(
                         )
                     }
 
-                    // Composer 悬浮于消息列表之上，液态玻璃背景 + 顶部渐变阴影
-                    val backgroundColor = MaterialTheme.colorScheme.background
-                    val surfaceColor = MaterialTheme.colorScheme.surface
-                    val backdrop = rememberLayerBackdrop {
-                        drawRect(backgroundColor)
-                        drawContent()
-                    }
+                    val glassState = rememberGlassState(MaterialTheme.colorScheme.background)
                     Box(modifier = Modifier.weight(1f)) {
                         MessageList(
                             messages = chatState.messages,
@@ -196,33 +180,15 @@ fun ChatScreen(
                             onScrollToBottom = chatViewModel::onScrolledToBottom,
                             onToggleThinking = chatViewModel::toggleThinkingBlock,
                             onToggleTool = chatViewModel::toggleToolBlock,
-                            // contentPadding 留出 Composer 高度（最后一条消息可滚到 Composer 上方）
-                            // 但 MessageList 的布局边界填满整个 Box，确保 backdrop 能采样整个区域
                             contentPadding = PaddingValues(bottom = 112.dp),
                             modifier = Modifier
                                 .fillMaxSize()
-                                .layerBackdrop(backdrop),
-                        )
-
-                        // 渐变遮罩：消息列表底部渐隐，营造 Composer 悬浮阴影感
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                                .align(Alignment.BottomCenter)
-                                .offset(y = (-112).dp)
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            backgroundColor.copy(alpha = 0.95f),
-                                        )
-                                    )
-                                ),
+                                .then(glassState.contentModifier),
                         )
 
                         Composer(
                             state = chatState.composerState,
+                            glassState = glassState,
                             activeProvider = settingsState.currentProvider,
                             effort = chatState.activeThinkingEffort,
                             onEffortChange = chatViewModel::setEffort,
@@ -236,16 +202,7 @@ fun ChatScreen(
                             onStop = chatViewModel::cancelTurn,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .drawBackdrop(
-                                    backdrop = backdrop,
-                                    shape = { androidx.compose.foundation.shape.RoundedCornerShape(24.dp) },
-                                    effects = {
-                                        vibrancy()
-                                        blur(20f)
-                                    },
-                                    shadow = null,
-                                    onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.5f)) },
-                                ),
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
                 }

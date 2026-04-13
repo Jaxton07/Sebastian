@@ -6,38 +6,32 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sebastian.android.ui.common.AnimationTokens
 import com.sebastian.android.ui.common.SebastianIcons
+import com.sebastian.android.ui.common.glass.GlassButtonTint
+import com.sebastian.android.ui.common.glass.GlassCircleButton
 import com.sebastian.android.viewmodel.ComposerState
 
 /**
- * 发送 / 停止 按钮
+ * 发送 / 停止 按钮（液态玻璃风格）
  *
  * | state       | 外观                      | 可点击 |
  * |-------------|--------------------------|-------|
- * | IDLE_EMPTY  | 灰色发送图标（禁用）         | 否    |
- * | IDLE_READY  | 激活色发送图标              | 是    |
- * | SENDING     | CircularProgressIndicator | 否    |
- * | STREAMING   | 停止图标 ■                 | 是    |
- * | CANCELLING  | CircularProgressIndicator | 否    |
+ * | IDLE_EMPTY  | Neutral 玻璃圆（禁用）      | 否    |
+ * | IDLE_READY  | Primary 玻璃圆 + 发送图标   | 是    |
+ * | SENDING     | Neutral 玻璃圆 + 进度环     | 否    |
+ * | STREAMING   | Primary 玻璃圆 + 停止图标   | 是    |
+ * | CANCELLING  | Neutral 玻璃圆 + 进度环     | 否    |
  *
- * [onLongPress] Phase 3 预留：全双工语音入口，默认 null（不注册长按手势）。
+ * [onLongPress] Phase 3 预留：全双工语音入口，默认 null。
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SendButton(
     state: ComposerState,
@@ -47,10 +41,10 @@ fun SendButton(
     modifier: Modifier = Modifier,
 ) {
     val isEnabled = state == ComposerState.IDLE_READY || state == ComposerState.STREAMING
-    val containerColor = if (state == ComposerState.IDLE_EMPTY)
-        MaterialTheme.colorScheme.surfaceVariant
+    val tint = if (state == ComposerState.IDLE_READY || state == ComposerState.STREAMING)
+        GlassButtonTint.Primary
     else
-        MaterialTheme.colorScheme.primary
+        GlassButtonTint.Neutral
 
     val onClick: () -> Unit = when (state) {
         ComposerState.IDLE_READY -> onSend
@@ -58,49 +52,40 @@ fun SendButton(
         else -> ({})
     }
 
-    Surface(
-        shape = CircleShape,
-        color = containerColor,
-        modifier = modifier.size(44.dp),
+    GlassCircleButton(
+        onClick = onClick,
+        tint = tint,
+        enabled = isEnabled,
+        onLongClick = onLongPress,
+        modifier = modifier,
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxSize()
-                .combinedClickable(
-                    enabled = isEnabled,
-                    onClick = onClick,
-                    onLongClick = onLongPress,
-                ),
-        ) {
-            AnimatedContent(
-                targetState = state,
-                transitionSpec = {
-                    fadeIn(tween(AnimationTokens.STATE_TRANSITION_DURATION_MS)) togetherWith
-                        fadeOut(tween(AnimationTokens.STATE_TRANSITION_DURATION_MS))
-                },
-                label = "send_button_state",
-            ) { targetState ->
-                when (targetState) {
-                    ComposerState.IDLE_EMPTY, ComposerState.IDLE_READY -> Icon(
-                        imageVector = SebastianIcons.SendAction,
-                        contentDescription = "发送",
-                        tint = if (targetState == ComposerState.IDLE_EMPTY)
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        else
-                            MaterialTheme.colorScheme.onPrimary,
-                    )
-                    ComposerState.STREAMING -> Icon(
-                        imageVector = SebastianIcons.StopAction,
-                        contentDescription = "停止",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
-                    ComposerState.SENDING, ComposerState.CANCELLING -> CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = {
+                fadeIn(tween(AnimationTokens.STATE_TRANSITION_DURATION_MS)) togetherWith
+                    fadeOut(tween(AnimationTokens.STATE_TRANSITION_DURATION_MS))
+            },
+            label = "send_button_state",
+        ) { targetState ->
+            when (targetState) {
+                ComposerState.IDLE_EMPTY, ComposerState.IDLE_READY -> Icon(
+                    imageVector = SebastianIcons.SendAction,
+                    contentDescription = "发送",
+                    tint = if (targetState == ComposerState.IDLE_READY)
+                        MaterialTheme.colorScheme.onPrimary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                )
+                ComposerState.STREAMING -> Icon(
+                    imageVector = SebastianIcons.StopAction,
+                    contentDescription = "停止",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+                ComposerState.SENDING, ComposerState.CANCELLING -> CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
             }
         }
     }
