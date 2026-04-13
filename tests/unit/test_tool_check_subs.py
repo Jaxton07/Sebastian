@@ -31,7 +31,14 @@ async def test_check_sub_agents_as_sebastian():
                 "title": "看行情",
             },
             # depth=3 — should be excluded
-            {"id": "s3", "agent_type": "code", "depth": 3, "parent_session_id": "seb1", "status": "active", "title": "子任务"},
+            {
+                "id": "s3",
+                "agent_type": "code",
+                "depth": 3,
+                "parent_session_id": "seb1",
+                "status": "active",
+                "title": "子任务",
+            },
             # Different parent session — should be excluded
             {
                 "id": "s4",

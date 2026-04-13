@@ -56,9 +56,7 @@ class CompletionNotifier:
         item = {"event_type": event.type, "data": event.data}
         await self._queues[parent_session_id].put(item)
 
-    async def _worker(
-        self, parent_session_id: str, queue: asyncio.Queue[dict[str, Any]]
-    ) -> None:
+    async def _worker(self, parent_session_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
         while True:
             try:
                 item = await queue.get()
@@ -94,19 +92,15 @@ class CompletionNotifier:
 
     async def _find_parent_agent(self, parent_session_id: str) -> BaseAgent | None:
         all_sessions = await self._index_store.list_all()
-        parent_entry = next(
-            (s for s in all_sessions if s.get("id") == parent_session_id), None
-        )
+        parent_entry = next((s for s in all_sessions if s.get("id") == parent_session_id), None)
         if parent_entry is None:
             return None
         agent_type = parent_entry.get("agent_type", "")
         if agent_type == "sebastian":
-            return self._sebastian  # type: ignore[return-value]
+            return self._sebastian
         return self._agent_instances.get(agent_type)
 
-    async def _build_notification(
-        self, event_type: EventType, data: dict[str, Any]
-    ) -> str | None:
+    async def _build_notification(self, event_type: EventType, data: dict[str, Any]) -> str | None:
         session_id = data.get("session_id", "")
         agent_type = data.get("agent_type", "")
         goal = data.get("goal", "未知目标")
@@ -134,12 +128,8 @@ class CompletionNotifier:
             f"session_id：{session_id}（可用 inspect_session 查看详情）"
         )
 
-    async def _get_last_assistant_message(
-        self, session_id: str, agent_type: str
-    ) -> str:
-        messages = await self._session_store.get_messages(
-            session_id, agent_type, limit=10
-        )
+    async def _get_last_assistant_message(self, session_id: str, agent_type: str) -> str:
+        messages = await self._session_store.get_messages(session_id, agent_type, limit=10)
         for msg in reversed(messages):
             if msg.get("role") == "assistant" and msg.get("content"):
                 content: str = msg["content"]

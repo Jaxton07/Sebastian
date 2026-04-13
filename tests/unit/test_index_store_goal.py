@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
-from sebastian.store.index_store import IndexStore
+
 from sebastian.core.types import Session
+from sebastian.store.index_store import IndexStore
 
 
 @pytest.mark.asyncio

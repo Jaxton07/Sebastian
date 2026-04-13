@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from sebastian.gateway.completion_notifier import CompletionNotifier
 from sebastian.protocol.events.bus import EventBus
@@ -14,20 +15,24 @@ def _make_notifier(parent_agent=None, last_message="任务已完成，所有文�
     session_store = AsyncMock()
     index_store = AsyncMock()
 
-    index_store.list_all = AsyncMock(return_value=[
-        {
-            "id": "seb-123",
-            "agent_type": "sebastian",
-            "depth": 1,
-            "status": "active",
-            "goal": "管理任务",
-        }
-    ])
+    index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": "seb-123",
+                "agent_type": "sebastian",
+                "depth": 1,
+                "status": "active",
+                "goal": "管理任务",
+            }
+        ]
+    )
 
-    session_store.get_messages = AsyncMock(return_value=[
-        {"role": "user", "content": "重构 auth", "ts": "2026-01-01T00:00:00"},
-        {"role": "assistant", "content": last_message, "ts": "2026-01-01T00:01:00"},
-    ])
+    session_store.get_messages = AsyncMock(
+        return_value=[
+            {"role": "user", "content": "重构 auth", "ts": "2026-01-01T00:00:00"},
+            {"role": "assistant", "content": last_message, "ts": "2026-01-01T00:01:00"},
+        ]
+    )
 
     if parent_agent is not None:
         sebastian = parent_agent
@@ -50,16 +55,18 @@ def _make_notifier(parent_agent=None, last_message="任务已完成，所有文�
 async def test_completed_event_triggers_sebastian_turn():
     notifier, bus, sebastian = _make_notifier()
 
-    await bus.publish(Event(
-        type=EventType.SESSION_COMPLETED,
-        data={
-            "session_id": "child-456",
-            "parent_session_id": "seb-123",
-            "agent_type": "code",
-            "goal": "重构 auth 模块",
-            "status": "completed",
-        },
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_COMPLETED,
+            data={
+                "session_id": "child-456",
+                "parent_session_id": "seb-123",
+                "agent_type": "code",
+                "goal": "重构 auth 模块",
+                "status": "completed",
+            },
+        )
+    )
 
     await asyncio.sleep(0.1)
     await notifier.aclose()
@@ -79,16 +86,18 @@ async def test_completed_event_triggers_sebastian_turn():
 async def test_failed_event_triggers_sebastian_turn():
     notifier, bus, sebastian = _make_notifier(last_message="执行失败，无法找到配置文件")
 
-    await bus.publish(Event(
-        type=EventType.SESSION_FAILED,
-        data={
-            "session_id": "child-456",
-            "parent_session_id": "seb-123",
-            "agent_type": "code",
-            "goal": "重构 auth 模块",
-            "status": "failed",
-        },
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_FAILED,
+            data={
+                "session_id": "child-456",
+                "parent_session_id": "seb-123",
+                "agent_type": "code",
+                "goal": "重构 auth 模块",
+                "status": "failed",
+            },
+        )
+    )
 
     await asyncio.sleep(0.1)
     await notifier.aclose()
@@ -102,16 +111,18 @@ async def test_failed_event_triggers_sebastian_turn():
 async def test_waiting_event_triggers_sebastian_turn_with_question():
     notifier, bus, sebastian = _make_notifier()
 
-    await bus.publish(Event(
-        type=EventType.SESSION_WAITING,
-        data={
-            "session_id": "child-456",
-            "parent_session_id": "seb-123",
-            "agent_type": "code",
-            "goal": "重构 auth 模块",
-            "question": "config.yaml 文件要覆盖吗？",
-        },
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_WAITING,
+            data={
+                "session_id": "child-456",
+                "parent_session_id": "seb-123",
+                "agent_type": "code",
+                "goal": "重构 auth 模块",
+                "question": "config.yaml 文件要覆盖吗？",
+            },
+        )
+    )
 
     await asyncio.sleep(0.1)
     await notifier.aclose()
@@ -125,10 +136,17 @@ async def test_waiting_event_triggers_sebastian_turn_with_question():
 async def test_no_parent_session_id_is_ignored():
     notifier, bus, sebastian = _make_notifier()
 
-    await bus.publish(Event(
-        type=EventType.SESSION_COMPLETED,
-        data={"session_id": "orphan-789", "agent_type": "code", "goal": "x", "status": "completed"},
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_COMPLETED,
+            data={
+                "session_id": "orphan-789",
+                "agent_type": "code",
+                "goal": "x",
+                "status": "completed",
+            },
+        )
+    )
 
     await asyncio.sleep(0.1)
     await notifier.aclose()
@@ -156,16 +174,18 @@ async def test_multiple_events_serialized_for_same_parent():
     notifier, bus, _ = _make_notifier(parent_agent=sebastian)
 
     for _ in range(3):
-        await bus.publish(Event(
-            type=EventType.SESSION_COMPLETED,
-            data={
-                "session_id": "child-x",
-                "parent_session_id": "seb-123",
-                "agent_type": "code",
-                "goal": "任务",
-                "status": "completed",
-            },
-        ))
+        await bus.publish(
+            Event(
+                type=EventType.SESSION_COMPLETED,
+                data={
+                    "session_id": "child-x",
+                    "parent_session_id": "seb-123",
+                    "agent_type": "code",
+                    "goal": "任务",
+                    "status": "completed",
+                },
+            )
+        )
 
     await asyncio.sleep(0.5)
     await notifier.aclose()

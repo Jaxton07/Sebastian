@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
+
 import pytest
+
 from sebastian.core.session_runner import run_agent_session
 from sebastian.core.types import Session, SessionStatus
 from sebastian.protocol.events.types import EventType

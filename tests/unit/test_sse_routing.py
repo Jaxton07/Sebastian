@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+
 import pytest
+
 from sebastian.gateway.sse import SSEManager
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event, EventType
@@ -23,16 +25,18 @@ async def test_event_routed_to_parent_session_subscriber():
     task = asyncio.create_task(consume())
     await asyncio.sleep(0)  # 让 consume 进入等待
 
-    await bus.publish(Event(
-        type=EventType.SESSION_COMPLETED,
-        data={
-            "session_id": "child-456",
-            "parent_session_id": "seb-123",
-            "agent_type": "code",
-            "goal": "重构",
-            "status": "completed",
-        },
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_COMPLETED,
+            data={
+                "session_id": "child-456",
+                "parent_session_id": "seb-123",
+                "agent_type": "code",
+                "goal": "重构",
+                "status": "completed",
+            },
+        )
+    )
     await asyncio.sleep(0.05)
     task.cancel()
     try:
@@ -60,16 +64,18 @@ async def test_event_not_routed_to_unrelated_subscriber():
     task = asyncio.create_task(consume())
     await asyncio.sleep(0)
 
-    await bus.publish(Event(
-        type=EventType.SESSION_COMPLETED,
-        data={
-            "session_id": "child-456",
-            "parent_session_id": "seb-123",
-            "agent_type": "code",
-            "goal": "重构",
-            "status": "completed",
-        },
-    ))
+    await bus.publish(
+        Event(
+            type=EventType.SESSION_COMPLETED,
+            data={
+                "session_id": "child-456",
+                "parent_session_id": "seb-123",
+                "agent_type": "code",
+                "goal": "重构",
+                "status": "completed",
+            },
+        )
+    )
     await asyncio.sleep(0.05)
     task.cancel()
     try:

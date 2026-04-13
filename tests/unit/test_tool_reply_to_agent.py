@@ -8,8 +8,9 @@ from sebastian.core.types import Session, SessionStatus
 
 
 def _make_waiting_session() -> Session:
-    s = Session(agent_type="code", title="重构", goal="重构 auth", depth=2,
-                parent_session_id="seb-123")
+    s = Session(
+        agent_type="code", title="重构", goal="重构 auth", depth=2, parent_session_id="seb-123"
+    )
     s.status = SessionStatus.WAITING
     return s
 
@@ -20,14 +21,16 @@ def _make_mock_state(session: Session):
     state.session_store = AsyncMock()
     state.event_bus = AsyncMock()
     state.session_store.get_session = AsyncMock(return_value=session)
-    state.index_store.list_all = AsyncMock(return_value=[
-        {
-            "id": session.id,
-            "agent_type": session.agent_type,
-            "status": session.status.value,   # 跟随 session 对象的实际状态
-            "depth": 2,
-        }
-    ])
+    state.index_store.list_all = AsyncMock(
+        return_value=[
+            {
+                "id": session.id,
+                "agent_type": session.agent_type,
+                "status": session.status.value,  # 跟随 session 对象的实际状态
+                "depth": 2,
+            }
+        ]
+    )
 
     mock_agent = AsyncMock()
     state.agent_instances = {"code": mock_agent}
@@ -57,6 +60,7 @@ async def test_reply_to_agent_appends_message_and_restarts():
     )
     # run_agent_session 通过 asyncio.create_task 调用，等一下让 task 完成
     import asyncio
+
     await asyncio.sleep(0.05)
 
 
