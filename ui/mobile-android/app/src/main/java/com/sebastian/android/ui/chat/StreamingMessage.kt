@@ -83,14 +83,16 @@ private fun AssistantMessageBlocks(
         // 并行淡入可将 animateTo 改为并发 launch { } 块
         for (block in newBlocks) {
             knownIds.add(block.blockId)
-            val anim = Animatable(0f)
-            alphaMap[block.blockId] = anim
-            anim.animateTo(
-                targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = AnimationTokens.STREAMING_CHUNK_FADE_IN_MS,
-                ),
-            )
+            if (!block.isDone) {
+                val anim = Animatable(0f)
+                alphaMap[block.blockId] = anim
+                anim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = AnimationTokens.STREAMING_CHUNK_FADE_IN_MS,
+                    ),
+                )
+            }
         }
     }
 

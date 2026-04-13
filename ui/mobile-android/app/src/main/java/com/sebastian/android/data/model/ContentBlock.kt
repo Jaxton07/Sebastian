@@ -3,6 +3,12 @@ package com.sebastian.android.data.model
 sealed class ContentBlock {
     abstract val blockId: String
 
+    val isDone: Boolean get() = when (this) {
+        is TextBlock     -> done
+        is ThinkingBlock -> done
+        is ToolBlock     -> status == ToolStatus.DONE || status == ToolStatus.FAILED
+    }
+
     data class TextBlock(
         override val blockId: String,
         val text: String,
