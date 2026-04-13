@@ -192,7 +192,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Sebastian gateway started")
     yield
     watchdog_task.cancel()
-    completion_notifier.cancel()
+    await completion_notifier.aclose()
     logger.info("Sebastian gateway shutdown")
 
 

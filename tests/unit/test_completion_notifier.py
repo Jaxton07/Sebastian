@@ -62,7 +62,7 @@ async def test_completed_event_triggers_sebastian_turn():
     ))
 
     await asyncio.sleep(0.1)
-    notifier.cancel()
+    await notifier.aclose()
 
     sebastian.run_streaming.assert_called_once()
     call_args = sebastian.run_streaming.call_args
@@ -91,7 +91,7 @@ async def test_failed_event_triggers_sebastian_turn():
     ))
 
     await asyncio.sleep(0.1)
-    notifier.cancel()
+    await notifier.aclose()
 
     notification = sebastian.run_streaming.call_args[0][0]
     assert "失败" in notification
@@ -114,7 +114,7 @@ async def test_waiting_event_triggers_sebastian_turn_with_question():
     ))
 
     await asyncio.sleep(0.1)
-    notifier.cancel()
+    await notifier.aclose()
 
     notification = sebastian.run_streaming.call_args[0][0]
     assert "config.yaml 文件要覆盖吗？" in notification
@@ -131,7 +131,7 @@ async def test_no_parent_session_id_is_ignored():
     ))
 
     await asyncio.sleep(0.1)
-    notifier.cancel()
+    await notifier.aclose()
 
     sebastian.run_streaming.assert_not_called()
 
@@ -168,6 +168,6 @@ async def test_multiple_events_serialized_for_same_parent():
         ))
 
     await asyncio.sleep(0.5)
-    notifier.cancel()
+    await notifier.aclose()
 
     assert call_order == [1, 2, 3]

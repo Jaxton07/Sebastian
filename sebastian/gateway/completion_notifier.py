@@ -148,7 +148,11 @@ class CompletionNotifier:
                 return content
         return "（无汇报内容）"
 
-    def cancel(self) -> None:
-        """关闭所有 worker task，供 gateway shutdown 时调用。"""
+    async def aclose(self) -> None:
+        """关闭所有 worker task 并等待退出，供 gateway shutdown 时调用。"""
         for task in self._workers.values():
             task.cancel()
+        if self._workers:
+            await asyncio.gather(*self._workers.values(), return_exceptions=True)
+        self._workers.clear()
+        self._queues.clear()
