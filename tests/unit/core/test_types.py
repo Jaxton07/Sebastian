@@ -21,3 +21,15 @@ def test_session_has_depth_and_parent():
 
 def test_session_no_agent_id():
     assert "agent_id" not in Session.model_fields
+
+
+def test_tool_result_display_defaults_to_none() -> None:
+    from sebastian.core.types import ToolResult
+    r = ToolResult(ok=True, output={"k": "v"})
+    assert r.display is None
+
+
+def test_tool_result_display_accepts_string() -> None:
+    from sebastian.core.types import ToolResult
+    r = ToolResult(ok=True, output={"k": "v"}, display="human-readable")
+    assert r.display == "human-readable"
