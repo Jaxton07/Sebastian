@@ -31,7 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
@@ -64,12 +64,17 @@ fun SessionPanel(
     val grouped = remember(sessions) { groupSessions(sessions) }
     val defaults = remember(grouped) { defaultExpanded(grouped, LocalDate.now()) }
     val expanded: SnapshotStateMap<String, Boolean> = rememberSaveable(
-        saver = Saver(
-            save = { it.toMap() },
-            restore = { restored ->
+        saver = listSaver(
+            save = { map -> map.entries.flatMap { listOf(it.key, it.value) } },
+            restore = { flat ->
                 mutableStateMapOf<String, Boolean>().apply {
-                    @Suppress("UNCHECKED_CAST")
-                    putAll(restored as Map<String, Boolean>)
+                    var i = 0
+                    while (i < flat.size - 1) {
+                        val k = flat[i] as String
+                        val v = flat[i + 1] as Boolean
+                        put(k, v)
+                        i += 2
+                    }
                 }
             },
         ),
