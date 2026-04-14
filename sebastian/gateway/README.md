@@ -44,8 +44,8 @@ gateway/
 import sebastian.gateway.state as state
 state.session_store.get_session(session_id)
 state.event_bus.publish(event)
-state.agent_instances["code"]   # Sub-Agent 实例（替代旧 agent_pools）
-state.agent_registry["code"]    # Sub-Agent 配置元数据
+state.agent_instances["forge"]  # Sub-Agent 实例（替代旧 agent_pools）
+state.agent_registry["forge"]   # Sub-Agent 配置元数据
 state.conversation.request_approval(...)
 
 # 认证依赖

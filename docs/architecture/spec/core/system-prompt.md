@@ -112,8 +112,7 @@ class BaseAgent(ABC):
 
 ```toml
 [agent]
-name = "铁匠"
-class_name = "CodeAgent"
+class_name = "ForgeAgent"
 description = "编写代码、调试问题、构建工具"
 allowed_tools = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 allowed_skills = []
@@ -143,11 +142,13 @@ def get_skill_specs(self, allowed: set[str] | None = None) -> list[dict]:
 ```
 ## Available Sub-Agents
 
-- **code** (铁匠): 编写代码、调试问题、构建工具
-- **stock** (骑士团长): 金融市场分析与投资研究
+- **forge**: 编写代码、调试问题、构建工具
+- **stock**: 金融市场分析与投资研究
 
 Use the `delegate_to_agent` tool to hand off tasks to the appropriate sub-agent.
 ```
+
+列表中只使用 `agent_type` 作为唯一标识；不再有独立的显示名字段。
 
 无已注册 agent 时，该段不注入。
 

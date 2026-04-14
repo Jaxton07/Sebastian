@@ -1,17 +1,19 @@
-# code
+# forge
 
 > 上级索引：[agents/](../README.md)
 
 ## 目录职责
 
-Code Agent 是负责编程任务的 Sub-Agent，能够编写、运行和调试 Python 及 Shell 脚本。由 `manifest.toml` 驱动自动注册，可由 Sebastian 通过 `delegate_to_agent` 工具委派任务，亦可通过 `spawn_sub_agent` 分派最多 5 个并发子任务（depth=3）。
+Forge Agent 是负责编程任务的 Sub-Agent，能够编写、运行和调试 Python 及 Shell 脚本。由 `manifest.toml` 驱动自动注册，可由 Sebastian 通过 `delegate_to_agent` 工具委派任务，亦可通过 `spawn_sub_agent` 分派最多 5 个并发子任务（depth=3）。
+
+目录名 `forge` 即 `agent_type`，是系统内唯一标识；UI 展示时由前端做 capitalize（`forge` → `Forge`），manifest 不再有独立的 display_name 字段。
 
 ## 目录结构
 
 ```
-code/
-├── __init__.py           # 包入口（空）
-├── manifest.toml         # Agent 声明（名称、worker 数、允许工具列表）
+forge/
+├── __init__.py           # 包入口，ForgeAgent 类定义
+├── manifest.toml         # Agent 声明（class_name、worker 数、允许工具列表）
 ├── tools/
 │   └── __init__.py       # Agent 专属工具包（当前为空，预留扩展位）
 └── knowledge/
@@ -22,9 +24,8 @@ code/
 
 ```toml
 [agent]
-name                      = "Forge"                        # 用户侧显示名称
+class_name                = "ForgeAgent"                   # 必须精确匹配 __init__.py 中类名
 description               = "编写代码、调试问题、构建工具"
-class_name                = "CodeAgent"                    # 必须精确匹配类名
 max_children              = 5                              # 最大并发 depth=3 子任务数
 stalled_threshold_minutes = 5                              # 多少分钟无活动判定为 stalled
 allowed_tools             = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
@@ -38,7 +39,7 @@ allowed_skills            = []
 
 ## knowledge/ 目录
 
-`engineering_guidelines.md` 会在 Agent 初始化时注入到系统提示，作为 Code Agent 的工程约束和行为准则参考。
+`engineering_guidelines.md` 会在 Agent 初始化时注入到系统提示，作为 Forge Agent 的工程约束和行为准则参考。
 
 ## 修改导航
 

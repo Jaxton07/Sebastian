@@ -43,7 +43,7 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 │     ├── 理解主人意图，分解目标，委派组长
 │     └── 工具：delegate_to_agent, check_sub_agents, inspect_session
 │
-├── 铁匠（Code Agent 组长，depth=2）
+├── Forge（Code/Forge Agent 组长，depth=2）
 │     ├── 简单任务自己干，复杂任务安排组员
 │     ├── 工具：spawn_sub_agent, check_sub_agents, inspect_session + 领域工具
 │     └── 组员（depth=3，最多 5 个同时工作）
@@ -82,7 +82,7 @@ Session（会话）
 ```python
 class Session(BaseModel):
     id: str                        # 时间戳_短UUID
-    agent_type: str                # "sebastian" / "code" 等
+    agent_type: str                # "sebastian" / "forge" 等
     title: str
     goal: str                      # 会话目标
     status: SessionStatus          # active / idle / completed / failed / stalled / cancelled
@@ -130,7 +130,7 @@ Sebastian（主管家）extends BaseAgent
 ├── 额外：delegate_to_agent 工具
 └── 额外：Conversation Manager（用户交互层）
 
-CodeAgent extends BaseAgent
+ForgeAgent extends BaseAgent
 ├── 额外工具：沙箱执行、工具注册
 ├── 额外：spawn_sub_agent 工具（可分派组员）
 └── 专属系统 Prompt：技术工匠人格
@@ -217,9 +217,9 @@ sebastian/
 │   │
 │   ├── agents/                  # Sub-Agent 插件目录
 │   │   ├── _loader.py           # 自动扫描注册（读 manifest.toml）
-│   │   └── code/                # Code Agent
+│   │   └── forge/               # Forge Agent（编码/工程）
 │   │       ├── manifest.toml    # 能力声明
-│   │       └── agent.py         # 自定义行为
+│   │       └── __init__.py      # ForgeAgent 类定义
 │   │
 │   ├── capabilities/            # 统一能力注册与分发
 │   │   ├── registry.py          # 工具/MCP/Skill 统一注册表
@@ -305,14 +305,15 @@ sebastian/
 
 ```toml
 [agent]
-name = "铁匠"                          # 呈现名，暴露给 Sebastian 和用户
-class_name = "CodeAgent"
+class_name = "ForgeAgent"
 description = "编写代码、调试问题、构建工具"
 max_children = 5                        # 第三级组员并发上限，默认 5
 stalled_threshold_minutes = 5           # 卡住检测阈值，默认 5 分钟
 allowed_tools = ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 allowed_skills = []
 ```
+
+`agent_type` 由目录名决定，是系统唯一标识；manifest 不再有独立的 display_name，UI 展示时前端做 capitalize。
 
 **扩展目录**：`{DATA_DIR}/extensions/agents/` 为用户外置扩展目录，同名时用户目录优先。
 
@@ -387,7 +388,7 @@ data/sessions/
 │       ├── messages.jsonl              # 消息流（append-only）
 │       └── tasks/
 │           └── {task_id}.json
-├── code/                               # agent_type 直接作为顶层目录
+├── forge/                              # agent_type 直接作为顶层目录
 │   └── {session_id}/
 └── stock/
 ```
@@ -508,7 +509,7 @@ SEBASTIAN_GATEWAY_PORT=8823
 ### Phase 2 — 记忆系统 + 高级 Agent 能力 + 移动推送
 
 - Memory System：工作记忆 + 情景记忆（SQLite）+ ChromaDB 语义记忆
-- Code Agent（沙箱执行 + Dynamic Tool Factory）
+- Forge Agent（沙箱执行 + Dynamic Tool Factory）
 - FCM / APNs 推送（设备注册 + 事件通知：审批请求、任务状态变更）
 - LifeAgent 基础版（日历、智能家居）
 - Skills 扫描注册（SKILL.md 格式）

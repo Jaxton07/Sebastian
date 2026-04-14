@@ -57,8 +57,7 @@ status: implemented
 
 ```toml
 [agent]
-name = "铁匠"
-class_name = "CodeAgent"
+class_name = "ForgeAgent"
 description = "编写代码、调试问题、构建工具"
 max_children = 5
 stalled_threshold_minutes = 5
@@ -68,8 +67,7 @@ allowed_skills = []
 
 Agent 运行时属性：
 
-- `agent_type: str` — 唯一标识（目录名，如 `"code"`）
-- `name: str` — 呈现名（如 "铁匠"），暴露给 Sebastian 和用户
+- `agent_type: str` — 系统唯一标识，等于目录名（如 `"forge"`）；UI 展示时前端做 capitalize
 - `persona / system_prompt / tools / skills` — 自有能力
 - `max_children: int` — 该组长可同时运行的组员 session 上限
 
@@ -140,7 +138,7 @@ Sebastian 调用 `delegate_to_agent` 工具：
 1. 创建一个 `depth=2` 的 session
 2. `session_store.create_session` + `index_store.upsert`
 3. `asyncio.create_task` 触发组长 agent 异步处理
-4. 立即返回 `ToolResult(ok=True, output="已安排{agent_name}处理：{goal}")`
+4. 立即返回 `ToolResult(ok=True, output="已安排{agent_type}处理：{goal}")`
 5. 组长完成后通过 event bus 发事件
 
 ### 4.3 组长分派组员（异步）
@@ -173,7 +171,7 @@ async def delegate_to_agent(agent_type: str, goal: str, context: str = "") -> To
     # 1. 验证 agent_type 已注册
     # 2. 创建 depth=2 session
     # 3. asyncio.create_task 触发 agent 执行
-    # 4. 返回 "已安排{agent_name}处理：{goal}"
+    # 4. 返回 "已安排{agent_type}处理：{goal}"
 ```
 
 ### 5.2 spawn_sub_agent（组长专用）
@@ -253,8 +251,7 @@ agent 调用 bash 执行测试 → 测试卡在等待输入 → bash tool 不返
 {
   "agents": [
     {
-      "agent_type": "code",
-      "name": "铁匠",
+      "agent_type": "forge",
       "description": "编写代码、调试问题、构建工具",
       "active_session_count": 2,
       "max_children": 5
@@ -262,6 +259,8 @@ agent 调用 bash 执行测试 → 测试卡在等待输入 → bash tool 不返
   ]
 }
 ```
+
+前端拿到 `agent_type` 后做首字母大写作为显示名（如 `forge` → `Forge`）。
 
 ---
 
@@ -306,7 +305,7 @@ Session 目录按 `agent_type/session_id/` 存储，无 agent_id 层级：
 ```
 sessions/
 ├── sebastian/{session_id}/
-├── code/{session_id}/          # depth 由 meta.json 记录
+├── forge/{session_id}/         # depth 由 meta.json 记录
 └── stock/{session_id}/
 ```
 

@@ -34,7 +34,7 @@ AgentLoop 流式引擎、LLM Provider 抽象与 Thinking 控制、System Prompt 
 
 | Spec | 摘要 |
 |------|------|
-| [code-agent.md](agents/code-agent.md) | CodeAgent persona 与工程规范、BaseAgent 知识加载机制（`_knowledge_section`）、manifest.toml 配置 |
+| [code-agent.md](agents/code-agent.md) | Forge Agent（原 Code Agent）persona 与工程规范、BaseAgent 知识加载机制（`_knowledge_section`）、manifest.toml 配置 |
 | [permission.md](agents/permission.md) | PolicyGate + PermissionReviewer 三档权限（LOW/MODEL_DECIDES/HIGH_RISK）、reason 注入、ToolCallContext、Tool 目录重组 |
 | [workspace-boundary.md](agents/workspace-boundary.md) | `_path_utils.py` 路径解析、PolicyGate workspace 边界检查、`_guidelines_section()` 操作规范注入 |
 

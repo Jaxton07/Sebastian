@@ -12,9 +12,9 @@
 agents/
 ├── __init__.py          # 模块入口（空）
 ├── _loader.py           # 启动时扫描 manifest.toml，自动注册所有 Agent
-└── code/                # 代码编写与执行 Sub-Agent
-    ├── __init__.py      # CodeAgent 类定义（继承 BaseAgent）
-    ├── manifest.toml    # Agent 元数据（名称、描述、worker 数、工具权限等）
+└── forge/               # 代码编写与执行 Sub-Agent
+    ├── __init__.py      # ForgeAgent 类定义（继承 BaseAgent）
+    ├── manifest.toml    # Agent 元数据（描述、class_name、worker 数、工具权限等）
     ├── tools/           # Agent 私有工具（不对其他 Agent 暴露）
     │   └── __init__.py
     └── knowledge/       # 领域知识文件（文档、规则等）
@@ -31,7 +31,7 @@ agents/
 | 修改最大并发子任务数 | `<agent_name>/manifest.toml` 的 `max_children` |
 | 新增 Agent 私有工具 | `<agent_name>/tools/` 下新建 `__init__.py` + `@tool` 装饰器 |
 | 修改 Agent 自动发现逻辑 | [_loader.py](_loader.py) |
-| 代码编写 Agent | [code/](code/__init__.py) |
+| 代码编写 Agent | [forge/](forge/__init__.py) |
 
 ## 如何新增 Sub-Agent
 
@@ -49,6 +49,7 @@ class MyAgent(BaseAgent):
 ```
 
 注意：
+- Agent 只有一个名字——**目录名即 `agent_type`**，是系统唯一标识（如 `forge`）。manifest 不再有 `name` 字段；UI 展示时由前端做 capitalize（`forge` → `Forge`）。
 - 字段名是 `persona`，不是 `system_prompt`
 - `{owner_name}` 是运行时占位符，会被自动替换为实际用户名
 
@@ -58,7 +59,6 @@ class MyAgent(BaseAgent):
 
 ```toml
 [agent]
-name = "My Agent"                          # 用户侧显示名称（display_name）
 description = "做什么用的一句话描述"
 class_name = "MyAgent"                     # __init__.py 中的类名（必须精确匹配）
 max_children = 5                           # 最大并发 depth=3 子任务数（默认 5）
