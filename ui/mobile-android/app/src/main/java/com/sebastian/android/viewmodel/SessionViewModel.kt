@@ -30,11 +30,6 @@ class SessionViewModel @Inject constructor(
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            repository.sessionsFlow().collect { sessions ->
-                _uiState.update { it.copy(sessions = sessions) }
-            }
-        }
         loadSessions()
     }
 
@@ -42,8 +37,10 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             repository.loadSessions()
+                .onSuccess { sessions ->
+                    _uiState.update { it.copy(isLoading = false, sessions = sessions) }
+                }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
-                .onSuccess { _uiState.update { it.copy(isLoading = false) } }
         }
     }
 
@@ -59,6 +56,21 @@ class SessionViewModel @Inject constructor(
     fun createSession() {
         viewModelScope.launch(dispatcher) {
             repository.createSession()
+                .onSuccess { session ->
+                    _uiState.update { state -> state.copy(sessions = listOf(session) + state.sessions) }
+                }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch(dispatcher) {
+            repository.deleteSession(sessionId)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(sessions = state.sessions.filterNot { it.id == sessionId })
+                    }
+                }
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
         }
     }
 }

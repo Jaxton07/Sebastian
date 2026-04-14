@@ -62,7 +62,7 @@ chat/
 
 ### `SessionPanel`
 
-左栏 Session 列表面板，提供历史 Session 切换、新建对话、跳转 Settings / SubAgents 入口。
+左栏 Session 列表面板，提供历史 Session 切换、新建对话、删除会话（`onDeleteSession` 回调，实际删除由上层 `ChatScreen` 弹确认框后调用 `SessionViewModel.deleteSession`）、跳转 Settings / SubAgents 入口。`agentName` 非空时进入精简模式（隐藏功能区）。
 
 ### `TodoPanel`
 

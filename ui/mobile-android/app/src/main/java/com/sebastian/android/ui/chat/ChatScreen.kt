@@ -20,10 +20,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -42,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import com.sebastian.android.data.model.Session
 import com.sebastian.android.ui.common.ErrorBanner
 import com.sebastian.android.ui.common.glass.GlassSurface
 import com.sebastian.android.ui.common.glass.rememberGlassState
@@ -71,6 +75,7 @@ fun ChatScreen(
         ),
         init = { mutableStateOf(SidePane.NONE) },
     )
+    var deleteTarget by remember { mutableStateOf<Session?>(null) }
 
     // Load appropriate sessions based on mode
     LaunchedEffect(agentId) {
@@ -111,6 +116,7 @@ fun ChatScreen(
                     chatViewModel.newSession()
                     activePane = SidePane.NONE
                 },
+                onDeleteSession = { deleteTarget = it },
                 onNavigateToSettings = {
                     navController.navigate(Route.Settings) { launchSingleTop = true }
                 },
@@ -281,4 +287,24 @@ fun ChatScreen(
             TodoPanel()
         },
     )
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("删除会话") },
+            text = { Text("确定删除「${target.title.ifBlank { "新对话" }}」？此操作不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    sessionViewModel.deleteSession(target.id)
+                    if (chatState.activeSessionId == target.id) {
+                        chatViewModel.newSession()
+                    }
+                    deleteTarget = null
+                }) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+            },
+        )
+    }
 }

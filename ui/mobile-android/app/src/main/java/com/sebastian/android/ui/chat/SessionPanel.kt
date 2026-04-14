@@ -21,9 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.sebastian.android.ui.common.SebastianIcons
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +43,7 @@ fun SessionPanel(
     isNewSession: Boolean = false,
     onSessionClick: (Session) -> Unit,
     onNewSession: () -> Unit,
+    onDeleteSession: (Session) -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToSubAgents: () -> Unit = {},
     onClose: () -> Unit = {},
@@ -107,6 +110,7 @@ fun SessionPanel(
                             session = session,
                             isActive = session.id == activeSessionId,
                             onClick = { onSessionClick(session) },
+                            onDelete = { onDeleteSession(session) },
                         )
                     }
                 }
@@ -235,6 +239,7 @@ private fun SessionItem(
     session: Session,
     isActive: Boolean,
     onClick: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val backgroundColor = if (isActive) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
@@ -245,26 +250,40 @@ private fun SessionItem(
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = backgroundColor,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                text = session.title.ifBlank { "新对话" },
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            session.lastActivityAt?.let { dateStr ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+            ) {
                 Text(
-                    text = dateStr.take(10),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
+                    text = session.title.ifBlank { "新对话" },
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                session.lastActivityAt?.let { dateStr ->
+                    Text(
+                        text = dateStr.take(10),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = SebastianIcons.Delete,
+                    contentDescription = "删除会话",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
