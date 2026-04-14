@@ -19,12 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.sebastian.android.ui.common.SebastianIcons
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import com.sebastian.android.data.model.Session
 import java.time.LocalDate
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionPanel(
     sessions: List<Session>,
@@ -54,6 +57,8 @@ fun SessionPanel(
     onClose: () -> Unit = {},
     /** 非 null 时进入精简模式：显示 agent 名称，隐藏功能区 */
     agentName: String? = null,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val grouped = remember(sessions) { groupSessions(sessions) }
@@ -145,7 +150,12 @@ fun SessionPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp),
                 )
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.weight(1f),
+                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
                     grouped.recent.forEach { bucket ->
                         val isOpen = expanded[bucket.key] ?: true
                         item(key = "h-${bucket.key}") {
@@ -201,6 +211,7 @@ fun SessionPanel(
                             }
                         }
                     }
+                }
                 }
             }
         }

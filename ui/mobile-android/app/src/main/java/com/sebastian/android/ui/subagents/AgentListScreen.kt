@@ -17,6 +17,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,21 +53,29 @@ fun AgentListScreen(
         }
     ) { innerPadding ->
         when {
-            state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            state.agents.isEmpty() -> Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text("没有可用的 Sub-Agent")
-            }
-            else -> LazyColumn(modifier = Modifier.padding(innerPadding)) {
-                items(state.agents, key = { it.agentType }) { agent ->
-                    ListItem(
-                        headlineContent = { Text(agent.displayName) },
-                        supportingContent = { Text(agent.description) },
-                        modifier = Modifier.clickable {
-                            navController.navigate(Route.AgentChat(agentId = agent.agentType, agentName = agent.displayName)) { launchSingleTop = true }
-                        },
-                    )
+            state.agents.isEmpty() && state.isLoading -> Box(
+                Modifier.fillMaxSize().padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            state.agents.isEmpty() -> Box(
+                Modifier.fillMaxSize().padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) { Text("没有可用的 Sub-Agent") }
+            else -> PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+            ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(state.agents, key = { it.agentType }) { agent ->
+                        ListItem(
+                            headlineContent = { Text(agent.displayName) },
+                            supportingContent = { Text(agent.description) },
+                            modifier = Modifier.clickable {
+                                navController.navigate(Route.AgentChat(agentId = agent.agentType, agentName = agent.displayName)) { launchSingleTop = true }
+                            },
+                        )
+                    }
                 }
             }
         }

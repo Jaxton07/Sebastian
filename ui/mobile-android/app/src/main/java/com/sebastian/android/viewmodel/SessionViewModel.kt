@@ -29,11 +29,15 @@ class SessionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
+    /** 记住上次加载模式，让 [refresh] 知道该重放哪个调用。null 表示主管家 sebastian。 */
+    private var currentAgentType: String? = null
+
     init {
         loadSessions()
     }
 
     fun loadSessions() {
+        currentAgentType = null
         viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             repository.loadSessions()
@@ -45,12 +49,17 @@ class SessionViewModel @Inject constructor(
     }
 
     fun loadAgentSessions(agentType: String) {
+        currentAgentType = agentType
         viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             repository.loadAgentSessions(agentType)
                 .onSuccess { sessions -> _uiState.update { it.copy(isLoading = false, sessions = sessions) } }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
         }
+    }
+
+    fun refresh() {
+        currentAgentType?.let { loadAgentSessions(it) } ?: loadSessions()
     }
 
     fun createSession() {

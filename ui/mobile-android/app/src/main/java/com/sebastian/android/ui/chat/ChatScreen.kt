@@ -123,6 +123,8 @@ fun ChatScreen(
                     navController.navigate(Route.SubAgents) { launchSingleTop = true }
                 },
                 onClose = { activePane = SidePane.NONE },
+                isRefreshing = sessionState.isLoading,
+                onRefresh = { sessionViewModel.refresh() },
             )
         },
         mainPane = {
