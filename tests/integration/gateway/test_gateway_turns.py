@@ -150,11 +150,11 @@ def test_agents_returns_initialized_runtime_agents(client):
     agents = {agent["agent_type"]: agent for agent in response.json()["agents"]}
 
     # Only registered sub-agents appear (sebastian is excluded from listing)
-    assert "code" in agents
-    assert agents["code"]["agent_type"] == "code"
-    assert "name" in agents["code"]
-    assert "active_session_count" in agents["code"]
-    assert "max_children" in agents["code"]
+    assert "forge" in agents
+    assert agents["forge"]["agent_type"] == "forge"
+    assert "description" in agents["forge"]
+    assert "active_session_count" in agents["forge"]
+    assert "max_children" in agents["forge"]
 
 
 def test_agents_endpoint_returns_list_format(client):
@@ -173,7 +173,7 @@ def test_agents_endpoint_returns_list_format(client):
     # Each entry has the new flat schema (not pool/worker schema)
     for agent in body["agents"]:
         assert "agent_type" in agent
-        assert "name" in agent
+        assert "description" in agent
         assert "active_session_count" in agent
         assert "max_children" in agent
 

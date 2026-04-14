@@ -30,7 +30,7 @@ def test_load_agents_returns_configs_for_manifest_dirs(tmp_path) -> None:
 
     test_cfg = next((c for c in configs if c.agent_type == "testagent"), None)
     assert test_cfg is not None
-    assert test_cfg.display_name == "Test Agent"
+    assert test_cfg.name == "TestAgent"
     assert test_cfg.description == "Does testing"
     assert test_cfg.max_children == 2
 
@@ -40,4 +40,4 @@ def test_load_agents_includes_builtin_agents() -> None:
 
     configs = load_agents()
     agent_types = {c.agent_type for c in configs}
-    assert "code" in agent_types
+    assert "forge" in agent_types

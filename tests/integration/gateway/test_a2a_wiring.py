@@ -39,5 +39,5 @@ async def test_gateway_starts_with_agent_registry_and_instances(tmp_path) -> Non
 
             assert hasattr(state, "agent_registry")
             assert hasattr(state, "agent_instances")
-            assert "code" in state.agent_registry
-            assert "code" in state.agent_instances
+            assert "forge" in state.agent_registry
+            assert "forge" in state.agent_instances

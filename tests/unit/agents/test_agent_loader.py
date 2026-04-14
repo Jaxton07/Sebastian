@@ -9,15 +9,14 @@ def test_agent_config_has_new_fields():
     from sebastian.agents._loader import AgentConfig
 
     cfg = AgentConfig(
-        agent_type="code",
-        name="CodeAgent",
-        display_name="铁匠",
+        agent_type="forge",
+        name="ForgeAgent",
         description="编写代码",
         max_children=5,
         stalled_threshold_minutes=5,
         agent_class=object,  # placeholder
     )
-    assert cfg.display_name == "铁匠"
+    assert cfg.name == "ForgeAgent"
     assert cfg.max_children == 5
     assert cfg.stalled_threshold_minutes == 5
 
@@ -33,9 +32,8 @@ def test_agent_config_has_allowed_fields() -> None:
     from sebastian.agents._loader import AgentConfig
 
     cfg = AgentConfig(
-        agent_type="code",
-        name="CodeAgent",
-        display_name="Code Agent",
+        agent_type="forge",
+        name="ForgeAgent",
         description="test",
         max_children=3,
         stalled_threshold_minutes=5,

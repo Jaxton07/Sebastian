@@ -62,16 +62,16 @@ def test_knowledge_section_reads_multiple_files_alphabetically(tmp_path: Path) -
 
 
 def test_code_agent_loads_real_knowledge_file() -> None:
-    """CodeAgent 的真实 knowledge 文件被正确加载进系统提示词。"""
+    """ForgeAgent 的真实 knowledge 文件被正确加载进系统提示词。"""
     from unittest.mock import MagicMock
 
-    from sebastian.agents.code import CodeAgent
+    from sebastian.agents.forge import ForgeAgent
     from sebastian.store.session_store import SessionStore
 
     gate = MagicMock()
     gate.get_tool_specs.return_value = []
     gate.get_skill_specs.return_value = []
-    agent = CodeAgent(gate, MagicMock(spec=SessionStore))
+    agent = ForgeAgent(gate, MagicMock(spec=SessionStore))
     prompt = agent.system_prompt
 
     assert "## Knowledge" in prompt

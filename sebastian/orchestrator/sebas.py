@@ -109,8 +109,7 @@ class Sebastian(BaseAgent):
             lines.append(f"- {config.agent_type}: {desc}")
         lines.append("")
         lines.append(
-            "Use the `delegate_to_agent` tool to assign tasks. "
-            "Pass the agent name as `agent_type`."
+            "Use the `delegate_to_agent` tool to assign tasks. Pass the agent name as `agent_type`."
         )
         return "\n".join(lines)
 
