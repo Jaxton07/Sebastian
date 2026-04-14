@@ -57,6 +57,23 @@ ToolResult(ok=True, output={"key": "value"})   # 成功
 ToolResult(ok=False, error="错误描述")          # 失败
 ```
 
+## 可选：填写 `display`
+
+`ToolResult` 有一个可选的 `display: str | None` 字段，用于给 UI 展示的「输出」区提供干净文本。
+
+- 不填（默认 `None`）时，runtime 会回退用 `str(output)[:4000]`。对 output 是字符串的工具（如 `delegate_to_agent`）回退已经够用；对 dict output 则会显示 Python repr，UI 上不好看。
+- 填了 display 就用 display。典型做法是从 `output` 里抽用户真正关心的字段：
+
+```python
+return ToolResult(
+    ok=True,
+    output={"content": content, "total_lines": n, "truncated": flag},
+    display=content,  # UI 只需看内容
+)
+```
+
+给模型的 `tool_result` 仍然是完整 `output`，display 不会泄漏给 LLM。
+
 ## 三档权限详解
 
 | 档位 | 常量 | 行为 | 适用场景 |
