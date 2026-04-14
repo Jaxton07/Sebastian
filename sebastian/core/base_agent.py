@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from sebastian.store.index_store import IndexStore
 
 from sebastian.config import settings
+from sebastian.core.types import ToolResult
 from sebastian.core.agent_loop import AgentLoop
 from sebastian.core.stream_events import (
     TextBlockStart,
@@ -41,6 +42,26 @@ from sebastian.protocol.events.types import Event, EventType
 from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
+
+_DISPLAY_MAX = 4000
+
+
+def _format_tool_display(result: ToolResult) -> str:
+    """把 ToolResult 转成人类可读的 result_summary 字符串。
+
+    优先使用 tool 自己提供的 display；否则回退 str(output)。
+    任意一种都会截断到 _DISPLAY_MAX 字符，超长加 `…`。
+    """
+    if result.display is not None:
+        text = result.display
+    elif result.output is not None:
+        text = str(result.output)
+    else:
+        text = ""
+    if len(text) > _DISPLAY_MAX:
+        return text[:_DISPLAY_MAX] + "…"
+    return text
+
 
 BASE_PERSONA = (
     "You are Sebastian, a personal AI butler for {owner_name}. "
@@ -444,15 +465,16 @@ class BaseAgent(ABC):
                         )
                     else:
                         if result.ok:
+                            display = _format_tool_display(result)
                             record["status"] = "done"
-                            record["result"] = str(result.output)[:200]
+                            record["result"] = display
                             await self._publish(
                                 session_id,
                                 EventType.TOOL_EXECUTED,
                                 {
                                     "tool_id": event.tool_id,
                                     "name": event.name,
-                                    "result_summary": str(result.output)[:200],
+                                    "result_summary": display,
                                 },
                             )
                         else:
