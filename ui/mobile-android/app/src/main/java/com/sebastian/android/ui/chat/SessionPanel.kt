@@ -27,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.sebastian.android.ui.common.SebastianIcons
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -150,10 +152,21 @@ fun SessionPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 4.dp),
                 )
+                val refreshState = rememberPullToRefreshState()
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = onRefresh,
+                    state = refreshState,
                     modifier = Modifier.weight(1f),
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            isRefreshing = isRefreshing,
+                            state = refreshState,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
                 ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     grouped.recent.forEach { bucket ->

@@ -17,7 +17,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,11 +64,23 @@ fun AgentListScreen(
                 Modifier.fillMaxSize().padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) { Text("没有可用的 Sub-Agent") }
-            else -> PullToRefreshBox(
-                isRefreshing = state.isLoading,
-                onRefresh = { viewModel.refresh() },
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-            ) {
+            else -> {
+                val refreshState = rememberPullToRefreshState()
+                PullToRefreshBox(
+                    isRefreshing = state.isLoading,
+                    onRefresh = { viewModel.refresh() },
+                    state = refreshState,
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            modifier = Modifier.align(Alignment.TopCenter),
+                            isRefreshing = state.isLoading,
+                            state = refreshState,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(state.agents, key = { it.agentType }) { agent ->
                         ListItem(
@@ -76,6 +91,7 @@ fun AgentListScreen(
                             },
                         )
                     }
+                }
                 }
             }
         }
