@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+- 子代理 `code` 重命名为 `forge`；移除 `manifest.toml` 的 `name` 字段和 `AgentConfig.display_name`，agent 只有一个名字（`agent_type`，等于目录名）。`GET /api/v1/agents` 响应不再返回 `name` 字段，UI 展示名由前端对 `agent_type` 做 capitalize。
+- 升级前请处理历史会话数据：
+
+  ```bash
+  # 选项 A：保留历史
+  mv ~/.sebastian/sessions/code ~/.sebastian/sessions/forge
+  python3 -c "import json, pathlib; p = pathlib.Path.home()/'.sebastian/sessions/index.json'; d = json.loads(p.read_text()); [e.__setitem__('agent_type','forge') for e in d if e.get('agent_type')=='code']; p.write_text(json.dumps(d, ensure_ascii=False, indent=2))"
+  # ~/.sebastian-dev/ 同理
+
+  # 选项 B：放弃历史
+  rm -rf ~/.sebastian/sessions/code ~/.sebastian-dev/sessions/code
+  # （需要同步从 index.json 删除相应条目）
+  ```
+
+- Gateway 启动时会对 `sessions/` 下的孤儿目录（注册表里没有 agent_type）打 warning 日志。
+
 ## [0.2.6] - 2026-04-10
 
 ### Added
