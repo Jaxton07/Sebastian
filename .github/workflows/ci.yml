@@ -73,3 +73,5 @@ jobs:
         run: ./gradlew :app:compileDebugKotlin
       - name: Lint check
         run: ./gradlew :app:lintDebug
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
