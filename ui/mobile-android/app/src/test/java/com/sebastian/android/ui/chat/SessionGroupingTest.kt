@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
 
 class SessionGroupingTest {
 
@@ -114,6 +115,48 @@ class SessionGroupingTest {
             now,
         )
         assertEquals(listOf("today", "yesterday", "within7", "within30"), grouped.recent.map { it.key })
+    }
+
+    @Test
+    fun `utc offset timestamp converts to local date`() {
+        val grouped = groupSessions(
+            listOf(s("a", "2026-04-14T02:30:00+00:00")),
+            now = LocalDate.of(2026, 4, 14),
+            zone = ZoneId.of("UTC"),
+        )
+        assertEquals("today", grouped.recent[0].key)
+    }
+
+    @Test
+    fun `utc timestamp at day boundary is bucketed by local zone`() {
+        // 2026-04-13T23:30:00+00:00 in UTC+8 → 2026-04-14 07:30 local → today
+        val grouped = groupSessions(
+            listOf(s("a", "2026-04-13T23:30:00+00:00")),
+            now = LocalDate.of(2026, 4, 14),
+            zone = ZoneId.of("Asia/Shanghai"),
+        )
+        assertEquals("today", grouped.recent[0].key)
+    }
+
+    @Test
+    fun `malformed timestamp falls back to today`() {
+        val grouped = groupSessions(listOf(s("a", "not-a-date")), LocalDate.of(2026, 4, 14))
+        assertEquals("today", grouped.recent[0].key)
+    }
+
+    @Test
+    fun `empty string timestamp falls back to today`() {
+        val grouped = groupSessions(listOf(s("a", "")), LocalDate.of(2026, 4, 14))
+        assertEquals("today", grouped.recent[0].key)
+    }
+
+    @Test
+    fun `future timestamp falls into today`() {
+        val grouped = groupSessions(
+            listOf(s("a", "2026-04-20T00:00:00")),
+            LocalDate.of(2026, 4, 14),
+        )
+        assertEquals("today", grouped.recent[0].key)
     }
 
     @Test

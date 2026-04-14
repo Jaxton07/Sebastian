@@ -2,6 +2,9 @@ package com.sebastian.android.ui.chat
 
 import com.sebastian.android.data.model.Session
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeParseException
 
 sealed class SessionBucket {
@@ -40,12 +43,27 @@ data class GroupedSessions(
     val years: List<SessionBucket.Year>,
 )
 
-private fun parseDate(raw: String?): LocalDate? {
-    if (raw == null || raw.length < 10) return null
+private fun parseLocalDate(raw: String?, zone: ZoneId): LocalDate? {
+    if (raw.isNullOrBlank()) return null
     return try {
-        LocalDate.parse(raw.substring(0, 10))
+        // Try full offset/zoned date-time first (backend sends UTC like 2026-04-14T02:30:00+00:00)
+        OffsetDateTime.parse(raw).atZoneSameInstant(zone).toLocalDate()
     } catch (_: DateTimeParseException) {
-        null
+        try {
+            // Fallback: naive ISO timestamp without offset (treat as local)
+            LocalDateTime.parse(raw).toLocalDate()
+        } catch (_: DateTimeParseException) {
+            // Last resort: "YYYY-MM-DD" only
+            if (raw.length >= 10) {
+                try {
+                    LocalDate.parse(raw.substring(0, 10))
+                } catch (_: DateTimeParseException) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
     }
 }
 
@@ -64,6 +82,7 @@ private val sessionTimeDesc = Comparator<Session> { a, b ->
 fun groupSessions(
     sessions: List<Session>,
     now: LocalDate = LocalDate.now(),
+    zone: ZoneId = ZoneId.systemDefault(),
 ): GroupedSessions {
     val today = mutableListOf<Session>()
     val yesterday = mutableListOf<Session>()
@@ -72,7 +91,7 @@ fun groupSessions(
     val monthMap = linkedMapOf<Pair<Int, Int>, MutableList<Session>>()
 
     for (session in sessions) {
-        val date = parseDate(session.lastActivityAt)
+        val date = parseLocalDate(session.lastActivityAt, zone)
         if (date == null) {
             today += session
             continue

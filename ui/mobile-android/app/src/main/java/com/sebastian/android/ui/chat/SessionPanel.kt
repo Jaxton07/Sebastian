@@ -2,7 +2,6 @@ package com.sebastian.android.ui.chat
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,9 +17,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,7 +64,6 @@ fun SessionPanel(
     val grouped = remember(sessions) { groupSessions(sessions) }
     val defaults = remember(grouped) { defaultExpanded(grouped, LocalDate.now()) }
     val expanded: SnapshotStateMap<String, Boolean> = rememberSaveable(
-        grouped,
         saver = Saver(
             save = { it.toMap() },
             restore = { restored ->
@@ -79,7 +77,7 @@ fun SessionPanel(
         mutableStateMapOf<String, Boolean>().apply { putAll(defaults) }
     }
 
-    LaunchedEffect(grouped) {
+    LaunchedEffect(defaults) {
         defaults.forEach { (k, v) -> if (!expanded.containsKey(k)) expanded[k] = v }
     }
 
@@ -393,9 +391,9 @@ private fun GroupHeader(
     ) {
         Icon(
             imageVector = if (expanded) {
-                androidx.compose.material.icons.Icons.Default.KeyboardArrowDown
+                Icons.Default.KeyboardArrowDown
             } else {
-                androidx.compose.material.icons.Icons.Default.KeyboardArrowRight
+                Icons.AutoMirrored.Filled.KeyboardArrowRight
             },
             contentDescription = if (expanded) "折叠" else "展开",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
