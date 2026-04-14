@@ -129,8 +129,8 @@ async def test_read_updates_file_state(tmp_path):
 
 @pytest.mark.asyncio
 async def test_read_display_is_content_field(tmp_path) -> None:
-    from pathlib import Path
     from sebastian.capabilities.tools.read import read as read_tool
+
     f = tmp_path / "hi.txt"
     f.write_text("Hello\nWorld\n")
     result = await read_tool(file_path=str(f))

@@ -106,6 +106,7 @@ class TestToolResultContent:
         class Opaque:
             def __str__(self) -> str:
                 return "opaque-value"
+
         r = _make_result(output=Opaque())
         # json.dumps(default=str) calls str() on the unknown type → JSON string literal
         assert _tool_result_content(r) == '"opaque-value"'

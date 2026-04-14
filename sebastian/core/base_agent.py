@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from sebastian.store.index_store import IndexStore
 
 from sebastian.config import settings
-from sebastian.core.types import ToolResult
 from sebastian.core.agent_loop import AgentLoop
 from sebastian.core.stream_events import (
     TextBlockStart,
@@ -33,6 +32,7 @@ from sebastian.core.stream_events import (
 from sebastian.core.stream_events import (
     ToolResult as StreamToolResult,
 )
+from sebastian.core.types import ToolResult
 from sebastian.memory.episodic_memory import EpisodicMemory
 from sebastian.memory.working_memory import WorkingMemory
 from sebastian.permissions.gate import PolicyGate
