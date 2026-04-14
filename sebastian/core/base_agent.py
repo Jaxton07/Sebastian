@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import inspect
 import json
 import logging
@@ -448,6 +449,9 @@ class BaseAgent(ABC):
                             task_id=task_id,
                             agent_type=agent_context,
                             depth=getattr(self, "_current_depth", {}).get(session_id, 1),
+                            progress_cb=functools.partial(
+                                self._publish, session_id, EventType.TOOL_RUNNING
+                            ),
                         )
                         result = await self._gate.call(event.name, event.inputs, context)
                     except asyncio.CancelledError:

@@ -566,3 +566,62 @@ async def test_cancel_session_no_memory_leak_in_buffers(tmp_path: Path) -> None:
 
     assert "leak-session" not in agent._cancel_requested
     assert "leak-session" not in agent._partial_buffer
+
+
+@pytest.mark.asyncio
+async def test_base_agent_progress_cb_calls_publish(tmp_path: Path) -> None:
+    """progress_cb 被调用时应该触发 _publish(session_id, TOOL_RUNNING, data)."""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.stream_events import ToolCallReady
+    from sebastian.core.types import Session
+    from sebastian.core.types import ToolResult as CoreToolResult
+    from sebastian.protocol.events.types import EventType
+    from sebastian.store.session_store import SessionStore
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+
+    sessions_dir = tmp_path / "sessions"
+    store = SessionStore(sessions_dir)
+    await store.create_session(
+        Session(id="prog-test", agent_type="sebastian", title="Test")
+    )
+    agent = TestAgent(MagicMock(), store)
+
+    captured_ctx = {}
+
+    async def fake_tool(name, inputs, context):
+        captured_ctx["ctx"] = context
+        if context.progress_cb:
+            await context.progress_cb({"elapsed_seconds": 5})
+        return CoreToolResult(ok=True, output="done")
+
+    publish_calls = []
+
+    async def fake_publish(session_id, event_type, data):
+        publish_calls.append((session_id, event_type, data))
+
+    agent._publish = fake_publish  # type: ignore[method-assign]
+
+    async def fake_stream(*args, **kwargs):
+        yield ToolCallReady(
+            block_id="b0_0",
+            tool_id="toolu_001",
+            name="Bash",
+            inputs={"command": "echo hi", "reason": "test"},
+        )
+
+    agent._loop.stream = fake_stream  # type: ignore[attr-defined]
+    agent._gate.call = fake_tool  # type: ignore[attr-defined]
+
+    await agent.run("test", "prog-test")
+
+    assert "ctx" in captured_ctx
+    assert captured_ctx["ctx"].progress_cb is not None
+
+    tool_running_calls = [
+        c for c in publish_calls if c[1] == EventType.TOOL_RUNNING
+    ]
+    progress_calls = [c for c in tool_running_calls if "elapsed_seconds" in c[2]]
+    assert len(progress_calls) == 1
+    assert progress_calls[0][2]["elapsed_seconds"] == 5
