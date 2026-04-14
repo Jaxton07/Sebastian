@@ -31,13 +31,15 @@ async def write(file_path: str, content: str) -> ToolResult:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         _file_state.invalidate(path)
+        bytes_written = len(content.encode("utf-8"))
         return ToolResult(
             ok=True,
             output={
                 "file_path": path,
                 "action": action,
-                "bytes_written": len(content.encode("utf-8")),
+                "bytes_written": bytes_written,
             },
+            display=f"Wrote {bytes_written} bytes to {path}",
         )
     except Exception as e:
         return ToolResult(ok=False, error=str(e))

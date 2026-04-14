@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -91,3 +93,13 @@ async def test_write_relative_path_resolves_to_workspace(tmp_path):
 
     assert result.ok
     assert (tmp_path / "output.txt").read_text() == "hello"
+
+
+@pytest.mark.asyncio
+async def test_write_display_is_summary_line(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.write import write as write_tool
+
+    target = tmp_path / "out.txt"
+    r = await write_tool(file_path=str(target), content="hi")
+    assert r.ok
+    assert r.display == f"Wrote 2 bytes to {target}"
