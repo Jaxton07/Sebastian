@@ -107,7 +107,7 @@ async def bash(
             proc.communicate(),
             timeout=float(effective_timeout),
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
         return ToolResult(ok=False, error=f"Command timed out after {effective_timeout}s")
@@ -118,6 +118,7 @@ async def bash(
 
     stdout = stdout_bytes.decode(errors="replace")
     stderr = stderr_bytes.decode(errors="replace")
+    assert proc.returncode is not None  # communicate() always sets returncode
     truncated = False
 
     if len(stdout) > _MAX_OUTPUT_CHARS:
