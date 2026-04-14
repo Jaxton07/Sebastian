@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -68,3 +70,16 @@ async def test_grep_glob_filter(tmp_path) -> None:
     assert "a.py" in result.output["output"]
     # b.txt should not appear
     assert "b.txt" not in result.output["output"]
+
+
+@pytest.mark.asyncio
+async def test_grep_display_is_output_field(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.grep import grep as grep_tool
+
+    f = tmp_path / "a.txt"
+    f.write_text("alpha\nbeta foo gamma\n")
+    r = await grep_tool(pattern="foo", path=str(tmp_path))
+    assert r.ok
+    assert r.display == r.output["output"]
+    assert "backend" not in (r.display or "")
+    assert "truncated" not in (r.display or "")

@@ -129,4 +129,5 @@ async def grep(
             "truncated": truncated,
             "backend": backend,
         },
+        display=output,
     )
