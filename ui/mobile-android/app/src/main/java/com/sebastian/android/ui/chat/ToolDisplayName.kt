@@ -22,7 +22,10 @@ internal object ToolDisplayName {
     fun resolve(toolName: String, inputs: String): Display {
         val rawSummary = ToolCallInputExtractor.extractInputSummary(toolName, inputs)
         return when (toolName) {
-            "delegate_to_agent" -> Display(title = "Agent: $rawSummary", summary = "")
+            "delegate_to_agent" -> Display(
+                title = "Agent: ${rawSummary.replaceFirstChar { it.uppercase() }}",
+                summary = "",
+            )
             "spawn_sub_agent" -> Display(title = "Worker", summary = rawSummary)
             else -> Display(title = toolName, summary = rawSummary)
         }
