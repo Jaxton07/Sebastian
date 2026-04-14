@@ -105,3 +105,98 @@ async def test_bash_grep_exit_0_no_interpretation() -> None:
         assert "returncode_interpretation" not in r.output
     finally:
         os.unlink(fname)
+
+
+# ── heartbeat ─────────────────────────────────────────────────────────────────
+
+async def test_bash_heartbeat_fires_on_long_command() -> None:
+    """命令耗时超过心跳间隔时，progress_cb 应被调用。"""
+    from unittest.mock import patch
+
+    from sebastian.capabilities.tools.bash import bash as bash_tool
+    from sebastian.core.tool_context import _current_tool_ctx
+    from sebastian.permissions.types import ToolCallContext
+
+    calls: list[dict] = []
+
+    async def fake_cb(data: dict) -> None:
+        calls.append(data)
+
+    ctx = ToolCallContext(
+        task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb
+    )
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 0.05):
+            await bash_tool(command="sleep 0.2")
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert len(calls) >= 1
+    assert all("elapsed_seconds" in c for c in calls)
+    assert calls[0]["elapsed_seconds"] >= 0
+
+
+async def test_bash_heartbeat_does_not_fire_on_short_command() -> None:
+    """命令在心跳间隔内完成时，progress_cb 不应被调用。"""
+    from unittest.mock import patch
+
+    from sebastian.capabilities.tools.bash import bash as bash_tool
+    from sebastian.core.tool_context import _current_tool_ctx
+    from sebastian.permissions.types import ToolCallContext
+
+    calls: list[dict] = []
+
+    async def fake_cb(data: dict) -> None:
+        calls.append(data)
+
+    ctx = ToolCallContext(
+        task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb
+    )
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 10.0):
+            await bash_tool(command="echo hi")
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert calls == []
+
+
+async def test_bash_heartbeat_skipped_when_no_ctx() -> None:
+    """无 ToolCallContext 时（如单测直接调用），命令正常执行，无副作用。"""
+    from sebastian.core.tool_context import _current_tool_ctx
+
+    # 确保 contextvar 为 None
+    token = _current_tool_ctx.set(None)
+    try:
+        r = await bash(command="printf 'ok'")
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert r.ok
+    assert r.display == "ok"
+
+
+async def test_bash_heartbeat_publish_failure_does_not_break_command() -> None:
+    """progress_cb 抛异常时命令应正常完成，不向上传播异常。"""
+    from unittest.mock import patch
+
+    from sebastian.capabilities.tools.bash import bash as bash_tool
+    from sebastian.core.tool_context import _current_tool_ctx
+    from sebastian.permissions.types import ToolCallContext
+
+    async def failing_cb(data: dict) -> None:
+        raise RuntimeError("publish exploded")
+
+    ctx = ToolCallContext(
+        task_goal="test", session_id="s1", task_id=None, progress_cb=failing_cb
+    )
+    token = _current_tool_ctx.set(ctx)
+    try:
+        with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 0.05):
+            r = await bash_tool(command="sleep 0.2")
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert r.ok  # 命令本身不受影响
