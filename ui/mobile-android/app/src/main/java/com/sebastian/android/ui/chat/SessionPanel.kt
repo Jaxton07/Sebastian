@@ -394,6 +394,7 @@ private fun GroupHeader(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val headerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
         Icon(
             imageVector = if (expanded) {
                 Icons.Default.KeyboardArrowDown
@@ -401,14 +402,14 @@ private fun GroupHeader(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight
             },
             contentDescription = if (expanded) "折叠" else "展开",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = headerColor,
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(4.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = headerColor,
         )
     }
 }

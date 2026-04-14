@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 // Material3 动态颜色优先（Android 12+），以下为 fallback
 val PrimaryLight = Color(0xFF1A73E8)
 val OnPrimaryLight = Color(0xFFFFFFFF)
-val SurfaceLight = Color(0xFFF8F9FA)
+val SurfaceLight = Color(0xFFFFFFFF)
 val OnSurfaceLight = Color(0xFF202124)
 val BackgroundLight = Color(0xFFFFFFFF)
 
