@@ -384,6 +384,8 @@ class BaseAgent(ABC):
                     }
                     if event.signature is not None:
                         block["signature"] = event.signature
+                    if event.duration_ms is not None:
+                        block["duration_ms"] = event.duration_ms
                     assistant_blocks.append(block)
 
                 if isinstance(event, ToolCallReady):

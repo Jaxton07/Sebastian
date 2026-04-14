@@ -33,6 +33,7 @@ data class MessageDto(
                             blockId = "$msgId-thinking-$i",
                             text = b.thinking ?: "",
                             done = true,
+                            durationMs = b.durationMs,
                         )
                     )
                     "tool" -> contentBlocks.add(
@@ -81,6 +82,7 @@ data class BlockDto(
     @param:Json(name ="type") val type: String,
     @param:Json(name ="thinking") val thinking: String? = null,
     @param:Json(name ="signature") val signature: String? = null,
+    @param:Json(name ="duration_ms") val durationMs: Long? = null,
     @param:Json(name ="tool_id") val toolId: String? = null,
     @param:Json(name ="name") val name: String? = null,
     @param:Json(name ="input") val input: String? = null,
