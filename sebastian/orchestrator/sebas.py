@@ -64,6 +64,21 @@ You never fabricate results — if something fails, you report it plainly and pr
 class Sebastian(BaseAgent):
     name = "sebastian"
     persona = SEBASTIAN_PERSONA
+    # Orchestrator-scope tools only. Sub-agent-only tools (spawn_sub_agent,
+    # reply_to_agent, ask_parent) are intentionally excluded: they rely on a
+    # sub-agent ToolContext and would fail when invoked from the orchestrator.
+    allowed_tools = [
+        "delegate_to_agent",
+        "check_sub_agents",
+        "inspect_session",
+        "todo_write",
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+    ]
 
     def __init__(
         self,
@@ -90,11 +105,12 @@ class Sebastian(BaseAgent):
             return ""
         lines = ["## Available Sub-Agents", ""]
         for config in registry.values():
-            display = getattr(config, "display_name", config.agent_type)
             desc = getattr(config, "description", "")
-            lines.append(f"- **{config.agent_type}** ({display}): {desc}")
+            lines.append(f"- {config.agent_type}: {desc}")
         lines.append("")
-        lines.append("Use the `delegate_to_agent` tool to assign tasks to these agents.")
+        lines.append(
+            "Use the `delegate_to_agent` tool to assign tasks. Pass the agent name as `agent_type`."
+        )
         return "\n".join(lines)
 
     async def chat(self, user_message: str, session_id: str) -> str:

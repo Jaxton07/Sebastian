@@ -56,5 +56,7 @@ class SubAgentViewModel @Inject constructor(
         }
     }
 
+    fun refresh() = loadAgents()
+
     fun clearError() = _uiState.update { it.copy(error = null) }
 }

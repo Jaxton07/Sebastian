@@ -30,7 +30,7 @@ interface ApiService {
     suspend fun getSession(@Path("sessionId") sessionId: String): SessionDetailResponse
 
     @DELETE("api/v1/sessions/{sessionId}")
-    suspend fun deleteSession(@Path("sessionId") sessionId: String): OkResponse
+    suspend fun deleteSession(@Path("sessionId") sessionId: String)
 
     @POST("api/v1/sessions/{sessionId}/cancel")
     suspend fun cancelSession(@Path("sessionId") sessionId: String): OkResponse

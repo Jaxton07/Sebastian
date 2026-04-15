@@ -4,6 +4,41 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+- 子代理 `code` 重命名为 `forge`；移除 `manifest.toml` 的 `name` 字段和 `AgentConfig.display_name`，agent 只有一个名字（`agent_type`，等于目录名）。`GET /api/v1/agents` 响应不再返回 `name` 字段，UI 展示名由前端对 `agent_type` 做 capitalize。
+- 升级前请处理历史会话数据：
+
+  ```bash
+  # 选项 A：保留历史（生产 + 开发数据目录）
+  mv ~/.sebastian/sessions/code ~/.sebastian/sessions/forge 2>/dev/null
+  mv ~/.sebastian-dev/sessions/code ~/.sebastian-dev/sessions/forge 2>/dev/null
+  python3 -c "
+  import json, pathlib
+  for base in ['.sebastian', '.sebastian-dev']:
+      p = pathlib.Path.home() / base / 'sessions/index.json'
+      if not p.exists(): continue
+      d = json.loads(p.read_text())
+      for e in d.get('sessions', []):
+          if e.get('agent_type') == 'code':
+              e['agent_type'] = 'forge'
+      p.write_text(json.dumps(d, ensure_ascii=False, indent=2))
+  "
+
+  # 选项 B：放弃历史
+  rm -rf ~/.sebastian/sessions/code ~/.sebastian-dev/sessions/code
+  python3 -c "
+  import json, pathlib
+  for base in ['.sebastian', '.sebastian-dev']:
+      p = pathlib.Path.home() / base / 'sessions/index.json'
+      if not p.exists(): continue
+      d = json.loads(p.read_text())
+      d['sessions'] = [e for e in d.get('sessions', []) if e.get('agent_type') != 'code']
+      p.write_text(json.dumps(d, ensure_ascii=False, indent=2))
+  "
+  ```
+
+- Gateway 启动时会对 `sessions/` 下的孤儿目录（注册表里没有 agent_type）打 warning 日志。
+
 ## [0.2.6] - 2026-04-10
 
 ### Added

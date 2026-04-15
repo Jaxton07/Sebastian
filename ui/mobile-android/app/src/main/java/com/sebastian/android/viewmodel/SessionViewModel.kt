@@ -29,25 +29,27 @@ class SessionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
+    /** 记住上次加载模式，让 [refresh] 知道该重放哪个调用。null 表示主管家 sebastian。 */
+    private var currentAgentType: String? = null
+
     init {
-        viewModelScope.launch {
-            repository.sessionsFlow().collect { sessions ->
-                _uiState.update { it.copy(sessions = sessions) }
-            }
-        }
         loadSessions()
     }
 
     fun loadSessions() {
+        currentAgentType = null
         viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             repository.loadSessions()
+                .onSuccess { sessions ->
+                    _uiState.update { it.copy(isLoading = false, sessions = sessions) }
+                }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
-                .onSuccess { _uiState.update { it.copy(isLoading = false) } }
         }
     }
 
     fun loadAgentSessions(agentType: String) {
+        currentAgentType = agentType
         viewModelScope.launch(dispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             repository.loadAgentSessions(agentType)
@@ -56,9 +58,28 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun refresh() {
+        currentAgentType?.let { loadAgentSessions(it) } ?: loadSessions()
+    }
+
     fun createSession() {
         viewModelScope.launch(dispatcher) {
             repository.createSession()
+                .onSuccess { session ->
+                    _uiState.update { state -> state.copy(sessions = listOf(session) + state.sessions) }
+                }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch(dispatcher) {
+            repository.deleteSession(sessionId)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(sessions = state.sessions.filterNot { it.id == sessionId })
+                    }
+                }
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
         }
     }
 }

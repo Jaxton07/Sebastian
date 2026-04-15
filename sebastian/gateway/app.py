@@ -40,7 +40,7 @@ def _initialize_agent_instances(
         )
         agent.name = cfg.agent_type
         instances[cfg.agent_type] = agent
-        logger.info("Registered agent instance: %s (%s)", cfg.agent_type, cfg.display_name)
+        logger.info("Registered agent instance: %s", cfg.agent_type)
     return instances
 
 
@@ -137,6 +137,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         index_store=state.index_store,
         llm_registry=llm_registry,
     )
+
+    # 孤儿 session 目录提醒（agent 重命名后遗留数据）
+    sessions_dir = settings.sessions_dir
+    if sessions_dir.exists():
+        known = {"sebastian", *state.agent_registry.keys()}
+        orphans = [d.name for d in sessions_dir.iterdir() if d.is_dir() and d.name not in known]
+        if orphans:
+            logger.warning(
+                "Found orphan session dirs (not in registry): %s. "
+                "Likely from a renamed agent. See CHANGELOG for migration.",
+                orphans,
+            )
+
+    # 剔除 index.json 中磁盘目录已不存在的死条目（避免 UI 列表显示打不开的会话）
+    dropped_entries = await state.index_store.prune_orphans(sessions_dir)
+    if dropped_entries:
+        logger.warning(
+            "Pruned %d orphan index entries (no matching dir on disk): %s",
+            len(dropped_entries),
+            [(e["agent_type"], e["id"]) for e in dropped_entries],
+        )
 
     watchdog_task = start_watchdog(
         index_store=state.index_store,

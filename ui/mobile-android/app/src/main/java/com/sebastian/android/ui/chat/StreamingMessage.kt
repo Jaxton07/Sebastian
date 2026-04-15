@@ -1,6 +1,7 @@
 package com.sebastian.android.ui.chat
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -16,9 +17,12 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
@@ -36,14 +40,15 @@ import com.sebastian.android.ui.theme.UserBubbleLight
 @Composable
 fun MessageBubble(
     message: Message,
-    onToggleThinking: (String) -> Unit,
-    onToggleTool: (String) -> Unit,
+    onToggleThinking: (String, String) -> Unit,
+    onToggleTool: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (message.role == MessageRole.USER) {
         UserMessageBubble(text = message.text, modifier = modifier)
     } else {
         AssistantMessageBlocks(
+            msgId = message.id,
             blocks = message.blocks,
             onToggleThinking = onToggleThinking,
             onToggleTool = onToggleTool,
@@ -85,29 +90,30 @@ private fun UserMessageBubble(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AssistantMessageBlocks(
+    msgId: String,
     blocks: List<ContentBlock>,
-    onToggleThinking: (String) -> Unit,
-    onToggleTool: (String) -> Unit,
+    onToggleThinking: (String, String) -> Unit,
+    onToggleTool: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val knownIds = remember { mutableStateListOf<String>() }
     val alphaMap = remember { mutableStateMapOf<String, Animatable<Float, *>>() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(blocks.size) {
         val newBlocks = blocks.filter { it.blockId !in knownIds }
-        // 顺序淡入（staggered reveal）：每个 block 等前一个完成后再淡入，营造逐步展开感
-        // 并行淡入可将 animateTo 改为并发 launch { } 块
         for (block in newBlocks) {
             knownIds.add(block.blockId)
             if (!block.isDone) {
                 val anim = Animatable(0f)
                 alphaMap[block.blockId] = anim
-                anim.animateTo(
-                    targetValue = 1f,
-                    animationSpec = androidx.compose.animation.core.tween(
-                        durationMillis = AnimationTokens.STREAMING_CHUNK_FADE_IN_MS,
-                    ),
-                )
+                // 在 rememberCoroutineScope 上独立启动，不受 LaunchedEffect 重启影响
+                scope.launch {
+                    anim.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = AnimationTokens.STREAMING_CHUNK_FADE_IN_MS),
+                    )
+                }
             }
         }
     }
@@ -118,44 +124,32 @@ private fun AssistantMessageBlocks(
             .padding(horizontal = 16.dp),
     ) {
         blocks.forEach { block ->
-            val alpha = alphaMap[block.blockId]?.value ?: 1f
-            when (block) {
-                is ContentBlock.ThinkingBlock -> ThinkingCard(
-                    block = block,
-                    onToggle = { onToggleThinking(block.blockId) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(alpha),
-                )
-                is ContentBlock.ToolBlock -> ToolCallCard(
-                    block = block,
-                    onToggle = { onToggleTool(block.blockId) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(alpha),
-                )
-                is ContentBlock.TextBlock -> {
-                    if (block.done && block.renderedMarkdown != null) {
-                        MarkdownView(
-                            markdown = block.renderedMarkdown,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(alpha),
-                        )
-                    } else {
-                        // Streaming in progress OR parse pending — show plain text
-                        Text(
-                            text = block.text,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(alpha),
-                        )
-                    }
+            key(block.blockId) {
+                val alpha = alphaMap[block.blockId]?.value ?: 1f
+                when (block) {
+                    is ContentBlock.ThinkingBlock -> ThinkingCard(
+                        block = block,
+                        onToggle = { onToggleThinking(msgId, block.blockId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(alpha),
+                    )
+                    is ContentBlock.ToolBlock -> ToolCallCard(
+                        block = block,
+                        onToggle = { onToggleTool(msgId, block.blockId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(alpha),
+                    )
+                    is ContentBlock.TextBlock -> MarkdownView(
+                        text = block.text,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(alpha),
+                    )
                 }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }

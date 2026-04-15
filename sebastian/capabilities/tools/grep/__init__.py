@@ -129,4 +129,6 @@ async def grep(
             "truncated": truncated,
             "backend": backend,
         },
+        display=output if output else None,
+        empty_hint="No matches found" if not output else None,
     )

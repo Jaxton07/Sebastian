@@ -13,12 +13,17 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.zIndex
@@ -33,6 +38,7 @@ import androidx.navigation.toRoute
 import com.sebastian.android.data.local.SettingsDataStore
 import com.sebastian.android.ui.chat.ChatScreen
 import com.sebastian.android.ui.common.GlobalApprovalBanner
+import com.sebastian.android.ui.common.glass.rememberGlassState
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.ui.settings.AppearancePage
 import com.sebastian.android.ui.settings.DebugLoggingPage
@@ -74,6 +80,11 @@ fun SebastianNavHost() {
     val globalApprovalViewModel: GlobalApprovalViewModel = hiltViewModel()
     val approvalState by globalApprovalViewModel.uiState.collectAsState()
     val animDuration = 300
+    val context = LocalContext.current
+    // 记录当前真实显示的 session（ChatScreen 通过回调实时上报，含面板手动切换）
+    var currentViewingSessionId by remember { mutableStateOf<String?>(null) }
+    // 单例 Toast：连点时先 cancel 上一个，避免排队连续弹
+    var alreadyInSessionToast by remember { mutableStateOf<Toast?>(null) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -88,10 +99,13 @@ fun SebastianNavHost() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val glassState = rememberGlassState(MaterialTheme.colorScheme.background)
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = Route.Chat,
+            startDestination = Route.Chat(),
+            modifier = Modifier.fillMaxSize().then(glassState.contentModifier),
             enterTransition = {
                 slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(animDuration)) +
                     fadeIn(tween(animDuration))
@@ -109,8 +123,13 @@ fun SebastianNavHost() {
                     fadeOut(tween(animDuration))
             },
         ) {
-            composable<Route.Chat> {
-                ChatScreen(navController = navController)
+            composable<Route.Chat> { backStackEntry ->
+                val route = backStackEntry.toRoute<Route.Chat>()
+                ChatScreen(
+                    navController = navController,
+                    sessionId = route.sessionId,
+                    onActiveSessionChanged = { currentViewingSessionId = it },
+                )
             }
             composable<Route.SubAgents> {
                 AgentListScreen(navController = navController)
@@ -121,6 +140,8 @@ fun SebastianNavHost() {
                     navController = navController,
                     agentId = route.agentId,
                     agentName = route.agentName,
+                    sessionId = route.sessionId,
+                    onActiveSessionChanged = { currentViewingSessionId = it },
                 )
             }
             composable<Route.Settings> {
@@ -150,18 +171,42 @@ fun SebastianNavHost() {
         // Global approval banner — floats above all screens
         GlobalApprovalBanner(
             approval = approvalState.approvals.firstOrNull(),
+            glassState = glassState,
             onGrant = globalApprovalViewModel::grantApproval,
             onDeny = globalApprovalViewModel::denyApproval,
             onNavigateToSession = { approval ->
+                // 用 ChatScreen 实时上报的 activeSessionId 做精确判断，
+                // 覆盖用户通过面板手动切换 session 后 route 参数已过时的情况
+                if (approval.sessionId == currentViewingSessionId) {
+                    alreadyInSessionToast?.cancel()
+                    alreadyInSessionToast = Toast.makeText(
+                        context,
+                        "已在目标会话",
+                        Toast.LENGTH_SHORT,
+                    ).also { it.show() }
+                    return@GlobalApprovalBanner
+                }
+
                 if (approval.agentType == "sebastian") {
-                    navController.navigate(Route.Chat) {
-                        popUpTo(Route.Chat) { inclusive = true }
+                    navController.navigate(Route.Chat(sessionId = approval.sessionId)) {
+                        // 弹出 Chat 之上的页面（如 Settings），保留 Chat 自身；
+                        // launchSingleTop 检测到栈顶是 Chat 则复用实例（触发 LaunchedEffect 切 session），
+                        // 不销毁 ViewModel，避免产生空白新对话
+                        popUpTo<Route.Chat> { inclusive = false }
                         launchSingleTop = true
                     }
                 } else {
                     navController.navigate(
-                        Route.AgentChat(agentId = approval.agentType, agentName = approval.agentType)
-                    ) { launchSingleTop = true }
+                        Route.AgentChat(
+                            agentId = approval.agentType,
+                            agentName = approval.agentType,
+                            sessionId = approval.sessionId,
+                        )
+                    ) {
+                        // 弹出已有 AgentChat 之上的页面，防止不同 sessionId 导致回栈堆叠
+                        popUpTo<Route.AgentChat> { inclusive = false }
+                        launchSingleTop = true
+                    }
                 }
             },
             modifier = Modifier

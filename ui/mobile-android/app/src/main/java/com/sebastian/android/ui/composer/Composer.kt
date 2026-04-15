@@ -40,6 +40,7 @@ fun Composer(
     activeProvider: Provider?,
     effort: ThinkingEffort,
     onEffortChange: (ThinkingEffort) -> Unit,
+    onShowEffortPicker: () -> Unit,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     // Phase 2 插槽预留
@@ -88,13 +89,14 @@ fun Composer(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ThinkButton(
                     activeProvider = activeProvider,
                     currentEffort = effort,
                     onEffortChange = onEffortChange,
+                    onShowPicker = onShowEffortPicker,
                 )
                 voiceSlot?.let {
                     Spacer(Modifier.width(4.dp))

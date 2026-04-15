@@ -44,6 +44,7 @@ class ToolResult(BaseModel):
     output: Any = None
     error: str | None = None
     empty_hint: str | None = None
+    display: str | None = None
 
 
 class Checkpoint(BaseModel):

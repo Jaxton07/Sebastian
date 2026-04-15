@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import inspect
 import json
 import logging
@@ -32,6 +33,7 @@ from sebastian.core.stream_events import (
 from sebastian.core.stream_events import (
     ToolResult as StreamToolResult,
 )
+from sebastian.core.types import ToolResult
 from sebastian.memory.episodic_memory import EpisodicMemory
 from sebastian.memory.working_memory import WorkingMemory
 from sebastian.permissions.gate import PolicyGate
@@ -41,6 +43,33 @@ from sebastian.protocol.events.types import Event, EventType
 from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
+
+_DISPLAY_MAX = 4000
+
+
+def _format_tool_display(result: ToolResult) -> str:
+    """把 ToolResult 转成人类可读的 result_summary 字符串。
+
+    优先使用 tool 自己提供的 display；否则回退 str(output)。
+    任意一种都会截断到 _DISPLAY_MAX 字符，超长加 `…`。
+
+    注意：这里的 fallback 用 str()（Python repr）不是 JSON，和 LLM-facing 的
+    agent_loop._tool_result_content 不对称是有意的——前者是 UI 显示路径，
+    只在 tool 未填 display 时起兜底作用；后者是模型输入，必须是规范 JSON。
+    不要把两者合并。
+    """
+    if result.display is not None:
+        text = result.display
+    elif result.empty_hint is not None:
+        text = result.empty_hint
+    elif result.output is not None:
+        text = str(result.output)
+    else:
+        text = ""
+    if len(text) > _DISPLAY_MAX:
+        return text[:_DISPLAY_MAX] + "…"
+    return text
+
 
 BASE_PERSONA = (
     "You are Sebastian, a personal AI butler for {owner_name}. "
@@ -384,7 +413,12 @@ class BaseAgent(ABC):
                     }
                     if event.signature is not None:
                         block["signature"] = event.signature
+                    if event.duration_ms is not None:
+                        block["duration_ms"] = event.duration_ms
                     assistant_blocks.append(block)
+
+                if isinstance(event, TextBlockStop):
+                    assistant_blocks.append({"type": "text", "text": event.text})
 
                 if isinstance(event, ToolCallReady):
                     await self._publish(
@@ -417,6 +451,9 @@ class BaseAgent(ABC):
                             task_id=task_id,
                             agent_type=agent_context,
                             depth=getattr(self, "_current_depth", {}).get(session_id, 1),
+                            progress_cb=functools.partial(
+                                self._publish, session_id, EventType.TOOL_RUNNING
+                            ),
                         )
                         result = await self._gate.call(event.name, event.inputs, context)
                     except asyncio.CancelledError:
@@ -442,15 +479,16 @@ class BaseAgent(ABC):
                         )
                     else:
                         if result.ok:
+                            display = _format_tool_display(result)
                             record["status"] = "done"
-                            record["result"] = str(result.output)[:200]
+                            record["result"] = display
                             await self._publish(
                                 session_id,
                                 EventType.TOOL_EXECUTED,
                                 {
                                     "tool_id": event.tool_id,
                                     "name": event.name,
-                                    "result_summary": str(result.output)[:200],
+                                    "result_summary": display,
                                 },
                             )
                         else:

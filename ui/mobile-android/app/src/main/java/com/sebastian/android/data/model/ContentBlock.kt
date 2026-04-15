@@ -13,7 +13,6 @@ sealed class ContentBlock {
         override val blockId: String,
         val text: String,
         val done: Boolean = false,
-        val renderedMarkdown: CharSequence? = null,
     ) : ContentBlock()
 
     data class ThinkingBlock(

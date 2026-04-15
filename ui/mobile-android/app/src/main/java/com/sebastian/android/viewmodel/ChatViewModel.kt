@@ -2,7 +2,6 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sebastian.android.data.local.MarkdownParser
 import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
@@ -24,7 +23,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -55,7 +53,6 @@ class ChatViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val settingsRepository: SettingsRepository,
     private val networkMonitor: NetworkMonitor,
-    private val markdownParser: MarkdownParser,
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -205,24 +202,13 @@ class ChatViewModel @Inject constructor(
                 val msgId = currentAssistantMessageId ?: return
                 // Flush remaining pending text synchronously so no delta is ever lost.
                 val pendingText = pendingDeltas.remove(event.blockId)?.toString() ?: ""
-                if (pendingText.isNotEmpty()) {
-                    updateBlockById(msgId, event.blockId) { existing ->
-                        if (existing is ContentBlock.TextBlock) existing.copy(text = existing.text + pendingText)
-                        else existing
-                    }
-                }
-                // Async: only markdown rendering — uses captured msgId, not currentAssistantMessageId.
-                viewModelScope.launch(dispatcher) {
-                    val rawText = _uiState.value.messages
-                        .find { it.id == msgId }
-                        ?.blocks?.find { it.blockId == event.blockId }
-                        ?.let { (it as? ContentBlock.TextBlock)?.text } ?: ""
-                    val rendered = withContext(dispatcher) { markdownParser.parse(rawText) }
-                    updateBlockById(msgId, event.blockId) { existing ->
-                        if (existing is ContentBlock.TextBlock)
-                            existing.copy(done = true, renderedMarkdown = rendered)
-                        else existing
-                    }
+                updateBlockById(msgId, event.blockId) { existing ->
+                    if (existing is ContentBlock.TextBlock)
+                        existing.copy(
+                            text = if (pendingText.isNotEmpty()) existing.text + pendingText else existing.text,
+                            done = true,
+                        )
+                    else existing
                 }
             }
 
@@ -482,14 +468,14 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(scrollFollowState = ScrollFollowState.FOLLOWING) }
     }
 
-    fun toggleThinkingBlock(blockId: String) {
-        updateBlock(blockId) { block ->
+    fun toggleThinkingBlock(msgId: String, blockId: String) {
+        updateBlockById(msgId, blockId) { block ->
             if (block is ContentBlock.ThinkingBlock) block.copy(expanded = !block.expanded) else block
         }
     }
 
-    fun toggleToolBlock(blockId: String) {
-        updateBlock(blockId) { block ->
+    fun toggleToolBlock(msgId: String, blockId: String) {
+        updateBlockById(msgId, blockId) { block ->
             if (block is ContentBlock.ToolBlock) block.copy(expanded = !block.expanded) else block
         }
     }
@@ -543,16 +529,6 @@ class ChatViewModel @Inject constructor(
                             else block
                         },
                     )
-                },
-            )
-        }
-    }
-
-    private fun updateBlock(blockId: String, transform: (ContentBlock) -> ContentBlock) {
-        _uiState.update { state ->
-            state.copy(
-                messages = state.messages.map { msg ->
-                    msg.copy(blocks = msg.blocks.map { b -> if (b.blockId == blockId) transform(b) else b })
                 },
             )
         }

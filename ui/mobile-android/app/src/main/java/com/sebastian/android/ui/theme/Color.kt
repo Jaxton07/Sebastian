@@ -5,15 +5,19 @@ import androidx.compose.ui.graphics.Color
 // Material3 动态颜色优先（Android 12+），以下为 fallback
 val PrimaryLight = Color(0xFF1A73E8)
 val OnPrimaryLight = Color(0xFFFFFFFF)
-val SurfaceLight = Color(0xFFF8F9FA)
+val SurfaceLight = Color(0xFFFFFFFF)
 val OnSurfaceLight = Color(0xFF202124)
 val BackgroundLight = Color(0xFFFFFFFF)
+val SurfaceVariantLight = Color(0xFFF1F3F4)
+val OnSurfaceVariantLight = Color(0xFF444746)
 
 val PrimaryDark = Color(0xFF8AB4F8)
 val OnPrimaryDark = Color(0xFF1A3A5C)
 val SurfaceDark = Color(0xFF202124)
 val OnSurfaceDark = Color(0xFFE8EAED)
 val BackgroundDark = Color(0xFF171717)
+val SurfaceVariantDark = Color(0xFF2D2F31)
+val OnSurfaceVariantDark = Color(0xFFC4C7C5)
 
 // 用户消息气泡
 val UserBubbleLight = Color(0xFF96EFA0)

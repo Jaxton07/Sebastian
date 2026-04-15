@@ -15,8 +15,7 @@ if TYPE_CHECKING:
 @dataclass
 class AgentConfig:
     agent_type: str
-    name: str  # agent class name (e.g. "CodeAgent")
-    display_name: str  # user-facing name (e.g. "铁匠")
+    name: str  # agent class name (e.g. "ForgeAgent")
     description: str
     max_children: int  # max concurrent depth=3 sessions
     stalled_threshold_minutes: int  # stalled detection threshold in minutes
@@ -76,7 +75,6 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
             configs[agent_type] = AgentConfig(
                 agent_type=agent_type,
                 name=agent_section.get("class_name", agent_type),
-                display_name=agent_section.get("name", agent_section.get("class_name", agent_type)),
                 description=agent_section.get("description", ""),
                 max_children=int(agent_section.get("max_children", 5)),
                 stalled_threshold_minutes=int(agent_section.get("stalled_threshold_minutes", 5)),
