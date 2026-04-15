@@ -1,10 +1,12 @@
 package com.sebastian.android
 
+import android.content.Intent
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -63,8 +65,14 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var sseDispatcher: GlobalSseDispatcher
     @Inject lateinit var stateReconciler: AppStateReconciler
 
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // 拒绝时不做处理；Settings 页提供重新打开入口
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeRequestNotificationPermission()
         enableEdgeToEdge()
         setContent {
             val themeMode by settingsDataStore.theme.collectAsState(initial = "system")
@@ -74,11 +82,31 @@ class MainActivity : ComponentActivity() {
                 SideEffect {
                     window.setBackgroundDrawable(ColorDrawable(surfaceColor.toArgb()))
                 }
+                val startSessionId = remember {
+                    intent?.data?.takeIf { it.scheme == "sebastian" && it.host == "session" }
+                        ?.pathSegments?.firstOrNull()
+                }
                 SebastianNavHost(
                     sseDispatcher = sseDispatcher,
                     stateReconciler = stateReconciler,
+                    startSessionId = startSessionId,
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTask 模式下通知点击会走这里；最简方案：recreate 让 Compose 重新读 intent.data
+        recreate()
+    }
+
+    private fun maybeRequestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
+        val perm = android.Manifest.permission.POST_NOTIFICATIONS
+        if (checkSelfPermission(perm) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestNotificationPermission.launch(perm)
         }
     }
 }
@@ -87,8 +115,18 @@ class MainActivity : ComponentActivity() {
 fun SebastianNavHost(
     sseDispatcher: GlobalSseDispatcher,
     stateReconciler: AppStateReconciler,
+    startSessionId: String? = null,
 ) {
     val navController = rememberNavController()
+    // Deep link: 若外部带 sebastian://session/{id} 进入，首次组合后切到对应 Chat
+    androidx.compose.runtime.LaunchedEffect(startSessionId) {
+        if (!startSessionId.isNullOrBlank()) {
+            navController.navigate(Route.Chat(sessionId = startSessionId)) {
+                popUpTo<Route.Chat> { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
     val globalApprovalViewModel: GlobalApprovalViewModel = hiltViewModel()
     val approvalState by globalApprovalViewModel.uiState.collectAsState()
     val animDuration = 300
