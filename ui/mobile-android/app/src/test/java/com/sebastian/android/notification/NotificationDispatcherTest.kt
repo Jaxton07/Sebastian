@@ -104,7 +104,7 @@ class NotificationDispatcherTest {
 
         verify(sink).notify(
             eq("a1".hashCode()),
-            matchNotification(NotificationChannels.APPROVAL, "shell"),
+            matchNotification(NotificationChannels.APPROVAL, "需要审批：shell"),
         )
         sut.stop()
         sse.stop()

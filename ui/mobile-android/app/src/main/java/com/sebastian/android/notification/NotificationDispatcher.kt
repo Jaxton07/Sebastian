@@ -42,7 +42,7 @@ class NotificationDispatcher(
     @Inject constructor(
         sseDispatcher: GlobalSseDispatcher,
         sink: NotificationSink,
-        @param:IoDispatcher dispatcher: CoroutineDispatcher,
+        @IoDispatcher dispatcher: CoroutineDispatcher,
     ) : this(
         sseDispatcher = sseDispatcher,
         sink = sink,
@@ -74,8 +74,8 @@ class NotificationDispatcher(
                     id = event.approvalId.hashCode(),
                     spec = NotificationSpec(
                         channelId = NotificationChannels.APPROVAL,
-                        title = event.toolName,
-                        body = event.reason,
+                        title = "需要审批：${event.toolName}",
+                        body = event.reason.take(120),
                         sessionId = event.sessionId,
                     ),
                 )
@@ -85,11 +85,11 @@ class NotificationDispatcher(
             is StreamEvent.SessionCompleted -> {
                 if (foregroundChecker()) return
                 sink.notify(
-                    id = event.sessionId.hashCode(),
+                    id = ("completed:" + event.sessionId).hashCode(),
                     spec = NotificationSpec(
                         channelId = NotificationChannels.TASK_PROGRESS,
-                        title = "任务完成",
-                        body = event.goal,
+                        title = "${event.agentType} 已完成",
+                        body = event.goal.take(120),
                         sessionId = event.sessionId,
                     ),
                 )
@@ -97,11 +97,11 @@ class NotificationDispatcher(
             is StreamEvent.SessionFailed -> {
                 if (foregroundChecker()) return
                 sink.notify(
-                    id = event.sessionId.hashCode(),
+                    id = ("failed:" + event.sessionId).hashCode(),
                     spec = NotificationSpec(
                         channelId = NotificationChannels.TASK_PROGRESS,
-                        title = "任务失败",
-                        body = event.error,
+                        title = "${event.agentType} 执行失败",
+                        body = (event.error.ifBlank { event.goal }).take(120),
                         sessionId = event.sessionId,
                     ),
                 )
