@@ -144,7 +144,6 @@ fun SebastianNavHost(
         stateReconciler.attach(
             scope = scope,
             approvalViewModelProvider = { globalApprovalViewModel },
-            reconcileChatSession = { /* 留作后续 task：需改 ChatScreen 签名上报 VM */ },
         )
         onDispose { scope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
     }

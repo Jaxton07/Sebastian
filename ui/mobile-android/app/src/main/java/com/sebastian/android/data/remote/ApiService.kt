@@ -29,12 +29,6 @@ interface ApiService {
     @GET("api/v1/sessions/{sessionId}")
     suspend fun getSession(@Path("sessionId") sessionId: String): SessionDetailResponse
 
-    @GET("api/v1/sessions/{sessionId}/recent")
-    suspend fun getSessionRecent(
-        @Path("sessionId") sessionId: String,
-        @Query("limit") limit: Int = 50,
-    ): SessionRecentResponse
-
     @DELETE("api/v1/sessions/{sessionId}")
     suspend fun deleteSession(@Path("sessionId") sessionId: String)
 

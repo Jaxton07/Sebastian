@@ -22,12 +22,10 @@ class AppStateReconcilerTest {
         val chatRepo: ChatRepository = mock()
         whenever(chatRepo.getPendingApprovals()).thenReturn(Result.success(emptyList()))
         val approvalVm: GlobalApprovalViewModel = mock()
-        val reconcileChat: suspend () -> Unit = mock()
 
         val reconciler = AppStateReconciler(
             chatRepository = chatRepo,
             approvalViewModelProvider = { approvalVm },
-            reconcileChatSession = reconcileChat,
             debounceMs = 150L,
             dispatcher = StandardTestDispatcher(testScheduler),
         )

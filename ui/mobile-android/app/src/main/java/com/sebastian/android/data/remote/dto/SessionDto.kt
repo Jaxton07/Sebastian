@@ -52,13 +52,6 @@ data class SessionDetailResponse(
 )
 
 @JsonClass(generateAdapter = true)
-data class SessionRecentResponse(
-    @param:Json(name ="session_id") val sessionId: String,
-    @param:Json(name ="status") val status: String,
-    @param:Json(name ="messages") val messages: List<MessageDto>,
-)
-
-@JsonClass(generateAdapter = true)
 data class PendingApprovalsResponse(
     @param:Json(name ="approvals") val approvals: List<PendingApprovalDto>,
 )

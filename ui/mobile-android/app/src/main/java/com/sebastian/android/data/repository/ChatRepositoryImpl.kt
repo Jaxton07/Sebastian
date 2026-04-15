@@ -73,11 +73,6 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getSessionRecent(sessionId: String, limit: Int): Result<List<Message>> = runCatching {
-        apiService.getSessionRecent(sessionId, limit).messages
-            .mapIndexed { index, dto -> dto.toDomain(sessionId, index) }
-    }
-
     private fun ThinkingEffort.toApiString(): String? = when (this) {
         ThinkingEffort.OFF -> null
         ThinkingEffort.ON -> "on"

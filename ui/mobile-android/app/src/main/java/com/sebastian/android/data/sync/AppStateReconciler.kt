@@ -6,8 +6,6 @@ import com.sebastian.android.viewmodel.GlobalApprovalViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -19,7 +17,6 @@ class AppStateReconciler @Inject constructor(
     @IoDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) {
     private var approvalViewModelProvider: (() -> GlobalApprovalViewModel)? = null
-    private var reconcileChatSession: (suspend () -> Unit)? = null
     private var externalScope: CoroutineScope? = null
     private var pendingJob: Job? = null
     private var debounceMs: Long = 150L
@@ -29,12 +26,10 @@ class AppStateReconciler @Inject constructor(
     internal constructor(
         chatRepository: ChatRepository,
         approvalViewModelProvider: () -> GlobalApprovalViewModel,
-        reconcileChatSession: suspend () -> Unit,
         debounceMs: Long,
         dispatcher: CoroutineDispatcher,
     ) : this(chatRepository, dispatcher) {
         this.approvalViewModelProvider = approvalViewModelProvider
-        this.reconcileChatSession = reconcileChatSession
         this.debounceMs = debounceMs
         this.dispatcher = dispatcher
     }
@@ -42,11 +37,9 @@ class AppStateReconciler @Inject constructor(
     fun attach(
         scope: CoroutineScope,
         approvalViewModelProvider: () -> GlobalApprovalViewModel,
-        reconcileChatSession: suspend () -> Unit,
     ) {
         this.externalScope = scope
         this.approvalViewModelProvider = approvalViewModelProvider
-        this.reconcileChatSession = reconcileChatSession
     }
 
     /** 测试专用 attach 重载 */
@@ -63,13 +56,8 @@ class AppStateReconciler @Inject constructor(
         }
     }
 
-    private suspend fun runReconcile() = coroutineScope {
-        val approvalsDeferred = async {
-            chatRepository.getPendingApprovals().getOrNull() ?: emptyList()
-        }
-        val chatReconcileDeferred = async { reconcileChatSession?.invoke() }
-        val approvals = approvalsDeferred.await()
+    private suspend fun runReconcile() {
+        val approvals = chatRepository.getPendingApprovals().getOrNull() ?: emptyList()
         approvalViewModelProvider?.invoke()?.replaceAll(approvals)
-        chatReconcileDeferred.await()
     }
 }

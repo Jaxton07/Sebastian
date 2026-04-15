@@ -17,5 +17,4 @@ interface ChatRepository {
     suspend fun grantApproval(approvalId: String): Result<Unit>
     suspend fun denyApproval(approvalId: String): Result<Unit>
     suspend fun getPendingApprovals(): Result<List<ApprovalSnapshot>>
-    suspend fun getSessionRecent(sessionId: String, limit: Int = 50): Result<List<Message>>
 }

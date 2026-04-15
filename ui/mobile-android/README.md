@@ -183,9 +183,10 @@ App 有两条 SSE 连接：
 - `NotificationDispatcher`（后台时发本地通知）
 - `AppStateReconciler`（监听 `connectionState` 的 `Connected` 转换，触发 reconcile）
 
-`AppStateReconciler` 在 `ProcessLifecycleOwner.ON_START` 或 SSE `onOpen` 时 150ms debounce 并行拉取：
+`AppStateReconciler` 在 `ProcessLifecycleOwner.ON_START` 或 SSE `onOpen` 时 150ms debounce 拉取：
 - `GET /api/v1/approvals` → `GlobalApprovalViewModel.replaceAll`
-- `GET /api/v1/sessions/{id}/recent` → `ChatViewModel.replaceMessages`
+
+> 注：chat 消息的一致性由 `switchSession` 全量 `getMessages` + SSE `Last-Event-Id` 回放两条既有路径保证，不走 reconciler。
 
 `NotificationDispatcher` 仅在 App 处于后台时发通知（`ProcessLifecycleOwner.currentState < STARTED`）；通知点击携带 `sebastian://session/{id}` deep link 回到对应 session。
 
