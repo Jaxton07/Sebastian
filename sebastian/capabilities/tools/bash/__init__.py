@@ -19,19 +19,33 @@ _DEFAULT_TIMEOUT = 600
 _HEARTBEAT_INTERVAL_S: float = 3.0
 
 # 执行后通常无 stdout 的命令——无输出时返回 "Done" 而非 "no output"
-_SILENT_COMMANDS: frozenset[str] = frozenset({
-    "mv", "cp", "rm", "mkdir", "rmdir", "chmod", "chown",
-    "chgrp", "touch", "ln", "cd", "export", "unset", "wait",
-})
+_SILENT_COMMANDS: frozenset[str] = frozenset(
+    {
+        "mv",
+        "cp",
+        "rm",
+        "mkdir",
+        "rmdir",
+        "chmod",
+        "chown",
+        "chgrp",
+        "touch",
+        "ln",
+        "cd",
+        "export",
+        "unset",
+        "wait",
+    }
+)
 
 # 退出码具有特殊语义的命令：exit code → 人类可读说明
 # 仅匹配命令行第一个 token（不处理 pipeline 中间的子命令）
 _EXIT_CODE_SEMANTICS: dict[str, dict[int, str]] = {
-    "grep":  {1: "No matches found (not an error)"},
-    "find":  {1: "No matches found (not an error)"},
-    "diff":  {1: "Files differ (not an error)"},
-    "test":  {1: "Condition false (not an error)"},
-    "[":     {1: "Condition false (not an error)"},
+    "grep": {1: "No matches found (not an error)"},
+    "find": {1: "No matches found (not an error)"},
+    "diff": {1: "Files differ (not an error)"},
+    "test": {1: "Condition false (not an error)"},
+    "[": {1: "Condition false (not an error)"},
 }
 
 
@@ -98,9 +112,7 @@ async def bash(
     stop_event = asyncio.Event()
     heartbeat_task: asyncio.Task[None] | None = None
     if ctx is not None and ctx.progress_cb is not None:
-        heartbeat_task = asyncio.create_task(
-            _heartbeat(ctx.progress_cb, stop_event)
-        )
+        heartbeat_task = asyncio.create_task(_heartbeat(ctx.progress_cb, stop_event))
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(

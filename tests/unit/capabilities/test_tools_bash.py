@@ -30,6 +30,7 @@ async def test_bash_display_omits_stderr_on_zero_exit() -> None:
 
 # ── description ──────────────────────────────────────────────────────────────
 
+
 async def test_bash_description_accepted_as_parameter() -> None:
     """description 参数不影响执行结果。"""
     r = await bash(command="printf 'hi'", description="Print hi")
@@ -52,10 +53,12 @@ async def test_bash_description_logged() -> None:
 
 # ── noOutputExpected ──────────────────────────────────────────────────────────
 
+
 async def test_bash_silent_command_empty_hint_is_done() -> None:
     """mv 等静默命令无输出时 empty_hint 应为 'Done'。"""
     import os
     import tempfile
+
     with tempfile.NamedTemporaryFile(delete=False) as f:
         src = f.name
     dst = src + "_moved"
@@ -79,6 +82,7 @@ async def test_bash_non_silent_command_empty_hint_contains_exit_code() -> None:
 # ── returnCodeInterpretation ──────────────────────────────────────────────────
 # 注意：_interpret_exit_code 只匹配命令行第一个 token。
 # 测试用例必须以 grep/diff 等作为第一个 token，pipeline 中间的子命令不会被识别。
+
 
 async def test_bash_grep_exit_1_interpretation_in_output() -> None:
     """grep 作为第一个 token 且找不到匹配时，output 含语义字段，empty_hint 含解释。"""
@@ -110,6 +114,7 @@ async def test_bash_grep_exit_0_no_interpretation() -> None:
     """grep 找到匹配返回 0，output 不含 returncode_interpretation 字段。"""
     import os
     import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write("hello\n")
         fname = f.name
@@ -124,6 +129,7 @@ async def test_bash_grep_exit_0_no_interpretation() -> None:
 
 # ── heartbeat ─────────────────────────────────────────────────────────────────
 
+
 async def test_bash_heartbeat_fires_on_long_command() -> None:
     """命令耗时超过心跳间隔时，progress_cb 应被调用。"""
     from unittest.mock import patch
@@ -137,9 +143,7 @@ async def test_bash_heartbeat_fires_on_long_command() -> None:
     async def fake_cb(data: dict) -> None:
         calls.append(data)
 
-    ctx = ToolCallContext(
-        task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb
-    )
+    ctx = ToolCallContext(task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb)
     token = _current_tool_ctx.set(ctx)
     try:
         with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 0.05):
@@ -165,9 +169,7 @@ async def test_bash_heartbeat_does_not_fire_on_short_command() -> None:
     async def fake_cb(data: dict) -> None:
         calls.append(data)
 
-    ctx = ToolCallContext(
-        task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb
-    )
+    ctx = ToolCallContext(task_goal="test", session_id="s1", task_id=None, progress_cb=fake_cb)
     token = _current_tool_ctx.set(ctx)
     try:
         with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 10.0):
@@ -204,9 +206,7 @@ async def test_bash_heartbeat_publish_failure_does_not_break_command() -> None:
     async def failing_cb(data: dict) -> None:
         raise RuntimeError("publish exploded")
 
-    ctx = ToolCallContext(
-        task_goal="test", session_id="s1", task_id=None, progress_cb=failing_cb
-    )
+    ctx = ToolCallContext(task_goal="test", session_id="s1", task_id=None, progress_cb=failing_cb)
     token = _current_tool_ctx.set(ctx)
     try:
         with patch("sebastian.capabilities.tools.bash._HEARTBEAT_INTERVAL_S", 0.05):

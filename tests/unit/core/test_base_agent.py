@@ -583,9 +583,7 @@ async def test_base_agent_progress_cb_calls_publish(tmp_path: Path) -> None:
 
     sessions_dir = tmp_path / "sessions"
     store = SessionStore(sessions_dir)
-    await store.create_session(
-        Session(id="prog-test", agent_type="sebastian", title="Test")
-    )
+    await store.create_session(Session(id="prog-test", agent_type="sebastian", title="Test"))
     agent = TestAgent(MagicMock(), store)
 
     captured_ctx = {}
@@ -619,9 +617,7 @@ async def test_base_agent_progress_cb_calls_publish(tmp_path: Path) -> None:
     assert "ctx" in captured_ctx
     assert captured_ctx["ctx"].progress_cb is not None
 
-    tool_running_calls = [
-        c for c in publish_calls if c[1] == EventType.TOOL_RUNNING
-    ]
+    tool_running_calls = [c for c in publish_calls if c[1] == EventType.TOOL_RUNNING]
     progress_calls = [c for c in tool_running_calls if "elapsed_seconds" in c[2]]
     assert len(progress_calls) == 1
     assert progress_calls[0][2]["elapsed_seconds"] == 5
