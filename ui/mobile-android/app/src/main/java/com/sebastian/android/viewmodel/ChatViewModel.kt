@@ -2,7 +2,6 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sebastian.android.data.local.MarkdownParser
 import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
@@ -24,7 +23,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -55,7 +53,6 @@ class ChatViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val settingsRepository: SettingsRepository,
     private val networkMonitor: NetworkMonitor,
-    private val markdownParser: MarkdownParser,
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -207,22 +204,14 @@ class ChatViewModel @Inject constructor(
                 val pendingText = pendingDeltas.remove(event.blockId)?.toString() ?: ""
                 if (pendingText.isNotEmpty()) {
                     updateBlockById(msgId, event.blockId) { existing ->
-                        if (existing is ContentBlock.TextBlock) existing.copy(text = existing.text + pendingText)
+                        if (existing is ContentBlock.TextBlock)
+                            existing.copy(text = existing.text + pendingText)
                         else existing
                     }
                 }
-                // Async: only markdown rendering — uses captured msgId, not currentAssistantMessageId.
-                viewModelScope.launch(dispatcher) {
-                    val rawText = _uiState.value.messages
-                        .find { it.id == msgId }
-                        ?.blocks?.find { it.blockId == event.blockId }
-                        ?.let { (it as? ContentBlock.TextBlock)?.text } ?: ""
-                    val rendered = withContext(dispatcher) { markdownParser.parse(rawText) }
-                    updateBlockById(msgId, event.blockId) { existing ->
-                        if (existing is ContentBlock.TextBlock)
-                            existing.copy(done = true, renderedMarkdown = rendered)
-                        else existing
-                    }
+                updateBlockById(msgId, event.blockId) { existing ->
+                    if (existing is ContentBlock.TextBlock) existing.copy(done = true)
+                    else existing
                 }
             }
 

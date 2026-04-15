@@ -1,7 +1,6 @@
 package com.sebastian.android.viewmodel
 
 import app.cash.turbine.test
-import com.sebastian.android.data.local.MarkdownParser
 import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
@@ -43,7 +42,6 @@ class ChatViewModelTest {
     private lateinit var sessionRepository: SessionRepository
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var networkMonitor: NetworkMonitor
-    private lateinit var markdownParser: MarkdownParser
     private lateinit var viewModel: ChatViewModel
     private val dispatcher = StandardTestDispatcher()
     private val sseFlow = MutableSharedFlow<StreamEvent>(extraBufferCapacity = 64)
@@ -57,8 +55,6 @@ class ChatViewModelTest {
         sessionRepository = mock()
         settingsRepository = mock()
         networkMonitor = mock()
-        markdownParser = mock()
-        whenever(markdownParser.parse(any())).thenAnswer { it.arguments[0] as String }
         whenever(networkMonitor.isOnline).thenReturn(onlineFlow)
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
         whenever(chatRepository.sessionStream(any(), any(), any())).thenReturn(sseFlow)
@@ -70,7 +66,7 @@ class ChatViewModelTest {
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
         }
-        viewModel = ChatViewModel(chatRepository, sessionRepository, settingsRepository, networkMonitor, markdownParser, dispatcher)
+        viewModel = ChatViewModel(chatRepository, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         dispatcher.scheduler.advanceTimeBy(200)
     }
 
@@ -265,7 +261,7 @@ class ChatViewModelTest {
             override suspend fun grantApproval(approvalId: String) = Result.success(Unit)
             override suspend fun denyApproval(approvalId: String) = Result.success(Unit)
         }
-        viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, markdownParser, dispatcher)
+        viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         dispatcher.scheduler.advanceTimeBy(200)
 
         vmTest {
