@@ -25,3 +25,29 @@ val OnUserBubbleLight = Color(0xFF1A3A1A)
 val UserBubbleDark = Color(0xFF2E2E2E)
 val OnUserBubbleDark = Color(0xFFE0E0E0)
 val UserBubbleBorderDark = Color(0xFF505050)
+
+// ── 补全 M3 token（日间）──────────────────────────────────────────────────────
+val SurfaceContainerLight = Color(0xFFF1F3F4)       // 卡片背景
+val SurfaceContainerHighestLight = Color(0xFFE8EAED) // 输入框容器
+val SurfaceContainerLowLight = Color(0xFFF8F9FA)     // 低层级容器
+val PrimaryContainerLight = Color(0xFFD3E3FD)        // 蓝色浅容器
+val ErrorLight = Color(0xFFB00020)                   // 错误红
+val OnErrorLight = Color(0xFFFFFFFF)                 // 错误上文字
+val ErrorContainerLight = Color(0xFFFFDAD6)          // 错误浅容器
+val OnErrorContainerLight = Color(0xFF410002)        // 错误容器上文字
+val OutlineVariantLight = Color(0xFFC7C7CC)          // 分割线
+
+// ── 补全 M3 token（夜间）──────────────────────────────────────────────────────
+val SurfaceContainerDark = Color(0xFF292B2D)
+val SurfaceContainerHighestDark = Color(0xFF36393B)
+val SurfaceContainerLowDark = Color(0xFF252729)
+val PrimaryContainerDark = Color(0xFF0A3266)
+val ErrorDark = Color(0xFFCF6679)
+val OnErrorDark = Color(0xFF690005)
+val ErrorContainerDark = Color(0xFF93000A)
+val OnErrorContainerDark = Color(0xFFFFDAD6)
+val OutlineVariantDark = Color(0xFF3C3F41)
+
+// ── SebastianSwitch 苹果绿 ───────────────────────────────────────────────────
+val SwitchCheckedLight = Color(0xFF34C759)  // 日间苹果绿
+val SwitchCheckedDark = Color(0xFF30D158)   // 夜间苹果绿（更亮）
