@@ -49,5 +49,6 @@ val OnErrorContainerDark = Color(0xFFFFDAD6)
 val OutlineVariantDark = Color(0xFF3C3F41)
 
 // ── SebastianSwitch 苹果绿 ───────────────────────────────────────────────────
+// 不进入 colorScheme，由 SebastianSwitch 直接引用
 val SwitchCheckedLight = Color(0xFF34C759)  // 日间苹果绿
 val SwitchCheckedDark = Color(0xFF30D158)   // 夜间苹果绿（更亮）
