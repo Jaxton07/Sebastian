@@ -1751,3 +1751,19 @@ EOF
 - 通知富交互、摘要合并、设备列表、Draft 同步
 
 **类型一致性检查：** `ApprovalSnapshot`（Task 3 定义）被 Task 4 的 Repository 返回，Task 6 Reconciler 传递，全链路一致；`NotificationSpec` 只在 Task 9 内使用；`ConnectionState` 在 Task 2 定义、Task 7 消费，一致。
+
+## Amendments
+
+### 2026-04-16: Chat reconcile 实现路径调整
+
+详见 [spec amendment](../specs/2026-04-15-app-state-recovery-and-local-notification-design.md#amendments)。
+
+落地差异：
+- 原 plan Task 4（`ChatViewModel.replaceMessages`）+ Task 5 的 chat 分支
+  + Task 6 的 `getSessionRecent` 接口 + 后端 `session_state` 字段，全部撤回
+  （commit `3ec08e0`）
+- 新增改动：`ChatViewModel.onAppStart()` 改造为 reconcile 入口，复用
+  `switchSession` 原语走完整 hydrate + `Last-Event-ID` replay，
+  覆盖 spec L25 "回前台半截气泡 / 输入框错乱" 场景
+- `ChatScreen` 已有的 `LifecycleEventObserver` 作为触发点，
+  `AppStateReconciler` 收敛为只做 approval reconcile

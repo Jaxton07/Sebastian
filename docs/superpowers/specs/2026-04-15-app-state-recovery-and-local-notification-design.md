@@ -234,3 +234,37 @@ App 内有完整的应用内 UI（GlobalApprovalBanner、ChatScreen 流式渲染
 - Session 状态机完整落地（multi-device spec 的主体）
 - 设备列表 / 踢下线（Phase 5 identity）
 - Draft 同步
+
+## Amendments
+
+### 2026-04-16: Chat reconcile 实现路径调整
+
+原设计（L74-78、落地改动 #4/#9/#10）让 `AppStateReconciler` 拉
+`GET /api/v1/sessions/{id}/recent` → `ChatViewModel.replaceAll(snapshot)` +
+消费 `session_state` 字段。落地时发现两个问题：
+
+1. **幂等 upsert 主键不对齐**：spec L53-61 要求按 `messageId` 幂等 merge，
+   但客户端流式消息 id 是 `UUID.randomUUID()`，REST 快照的 id 是后端没返
+   `id` 字段时由 [`MessageDto.toDomain`](../../../ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/MessageDto.kt)
+   合成 `"$sessionId-$index"`。两套 id space 不通，要落地真幂等 upsert
+   需改后端 schema + 协议 + 客户端，超出本 spec 范围。首次实现
+   （commit `ad20d23` 的 `replaceMessages`）退化为 `clear + replace`，
+   与正在流的 SSE 增量竞态，已在 commit `3ec08e0` 撤回。
+2. **能力重复**：[`ChatViewModel.switchSession`](../../../ui/mobile-android/app/src/main/java/com/sebastian/android/viewmodel/ChatViewModel.kt)
+   已实现"清空 → `getMessages` 全量 hydrate → SSE `Last-Event-ID` replay"
+   的完整原语，比 `replaceAll(snapshot)` 更严格（不残留旧状态）。
+
+**修订决策**：
+
+- 不引入 `getSessionRecent` / `replaceMessages`（已撤回）
+- 不在本 spec 加 `session_state` 字段。`switchSession` 已把 `composerState`
+  归位 `IDLE_EMPTY`，若有进行中 turn，SSE replay 会立刻推 `TurnReceived`
+  恢复 STREAMING；无进行中 turn，IDLE_EMPTY 本身正确
+- `ChatViewModel.onAppStart()` 升级为 reconcile 入口：非 streaming/sending/cancelling
+  且非离线时，调 `switchSession(activeSessionId)` 走完整 hydrate + replay
+- `ChatScreen` 已有的 `LifecycleEventObserver` 作为触发点，无需再走
+  `AppStateReconciler`（后者收敛为只做 approval reconcile）
+- spec L25 "半截 assistant 气泡 / 输入框错乱" 场景由此方案覆盖
+- `session_state` 字段 + 完整状态机留给
+  [multi-device-session-state-sync spec](2026-04-14-multi-device-session-state-sync-design.md)
+  的正题

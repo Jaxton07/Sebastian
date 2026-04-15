@@ -33,6 +33,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -406,5 +408,62 @@ class ChatViewModelTest {
             .blocks.first { it is ContentBlock.ToolBlock } as ContentBlock.ToolBlock
         assertTrue(after1.expanded)
         assertFalse(after2.expanded)
+    }
+
+    // ── onAppStart：回前台 chat reconcile ─────────────────────────────────────
+
+    @Test
+    fun `onAppStart in IDLE triggers switchSession re-hydrate`() = vmTest {
+        activateSession()  // getMessages 调用一次
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+        // activateSession + onAppStart = 两次 getMessages
+        runBlocking { verify(chatRepository, times(2)).getMessages("s1") }
+    }
+
+    @Test
+    fun `onAppStart during STREAMING skips reconcile`() = vmTest {
+        activateSession()
+        viewModel.uiState.test {
+            awaitItem()  // post-activation state
+            sseFlow.emit(StreamEvent.TurnReceived("s1"))
+            sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            // 等状态变 STREAMING
+            var streaming = false
+            while (!streaming) {
+                val state = awaitItem()
+                if (state.composerState == ComposerState.STREAMING) streaming = true
+            }
+
+            viewModel.onAppStart()
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            // 仅 activateSession 那次，onAppStart 不再触发
+            runBlocking { verify(chatRepository, times(1)).getMessages("s1") }
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `onAppStart when offline skips reconcile`() = vmTest {
+        activateSession()
+        onlineFlow.emit(false)
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        runBlocking { verify(chatRepository, times(1)).getMessages("s1") }
+    }
+
+    @Test
+    fun `onAppStart with null activeSessionId does not fetch`() = vmTest {
+        // 不 activate 任何 session
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        runBlocking { verify(chatRepository, never()).getMessages(any()) }
     }
 }
