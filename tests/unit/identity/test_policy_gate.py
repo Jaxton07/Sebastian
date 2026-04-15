@@ -526,7 +526,6 @@ async def test_low_tier_file_path_inside_workspace_no_approval(tmp_path) -> None
 
 def _make_gate_with_specs(
     native_specs: list[dict],
-    tool_tiers: dict[str, PermissionTier],
 ) -> "PolicyGate":
     """构造一个 PolicyGate，注入 registry 返回指定 native_specs。"""
     from sebastian.permissions.gate import PolicyGate
@@ -550,7 +549,7 @@ def test_get_callable_specs_filters_by_allowed_tools() -> None:
         {"name": "Read", "description": "read", "input_schema": {"properties": {}}},
         {"name": "Bash", "description": "bash", "input_schema": {"properties": {}}},
     ]
-    gate = _make_gate_with_specs(specs, {})
+    gate = _make_gate_with_specs(specs)
 
     with patch("sebastian.permissions.gate.get_tool") as mock_get_tool:
         mock_spec = MagicMock()
@@ -572,7 +571,7 @@ def test_get_callable_specs_injects_reason_for_model_decides() -> None:
             "input_schema": {"properties": {"command": {"type": "string"}}, "required": ["command"]},
         },
     ]
-    gate = _make_gate_with_specs(specs, {})
+    gate = _make_gate_with_specs(specs)
 
     with patch("sebastian.permissions.gate.get_tool") as mock_get_tool:
         mock_spec = MagicMock()
@@ -592,7 +591,7 @@ def test_get_all_tool_specs_still_works_as_shim() -> None:
     specs = [
         {"name": "Read", "description": "read", "input_schema": {"properties": {}}},
     ]
-    gate = _make_gate_with_specs(specs, {})
+    gate = _make_gate_with_specs(specs)
 
     with patch("sebastian.permissions.gate.get_tool") as mock_get_tool:
         mock_spec = MagicMock()
@@ -602,3 +601,22 @@ def test_get_all_tool_specs_still_works_as_shim() -> None:
         result = gate.get_all_tool_specs()
 
     assert [s["name"] for s in result] == ["Read"]
+
+
+def test_get_callable_specs_forwards_allowed_skills() -> None:
+    """PolicyGate.get_callable_specs 应把 allowed_skills 如实转发给 registry。"""
+    from sebastian.permissions.gate import PolicyGate
+
+    registry = MagicMock()
+    registry.get_callable_specs = MagicMock(return_value=[])
+    reviewer = MagicMock()
+    approval_manager = MagicMock()
+    gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
+
+    result = gate.get_callable_specs(
+        allowed_tools={"Read"},
+        allowed_skills={"code-review"},
+    )
+
+    assert result == []
+    registry.get_callable_specs.assert_called_once_with({"Read"}, {"code-review"})
