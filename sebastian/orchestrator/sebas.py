@@ -111,6 +111,23 @@ class Sebastian(BaseAgent):
         lines.append(
             "Use the `delegate_to_agent` tool to assign tasks. Pass the agent name as `agent_type`."
         )
+        lines.extend(
+            [
+                "",
+                "## Sub-Agent Delegation Protocol",
+                "",
+                "1. 委派是即发即忘（fire-and-forget）。`delegate_to_agent` 返回后，"
+                "任务已经在后台异步执行。",
+                "2. **禁止轮询**。不要在委派后的同一轮或紧接着的下一轮主动用 `check_sub_agents` /",
+                "   `inspect_session` 查刚委派任务的进度——系统会在子代理完成 / 失败 / 主动提问时，",
+                "   以 `[内部通知]` 的形式自动唤起你的下一轮 turn。",
+                "3. 委派后的正确动作是：向用户简短汇报“已安排 XX 处理 YYY”，"
+                "然后结束本轮 turn 等待通知。",
+                "4. 只有以下场景才允许主动检查：",
+                "   - 用户明确询问某个任务的进度",
+                "   - 收到 `[内部通知]` 后需要 `inspect_session` 查看子代理的详细 reasoning",
+            ]
+        )
         return "\n".join(lines)
 
     async def chat(self, user_message: str, session_id: str) -> str:

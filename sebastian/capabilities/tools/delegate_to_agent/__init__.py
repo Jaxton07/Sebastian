@@ -78,4 +78,12 @@ async def delegate_to_agent(
     )
     task.add_done_callback(_log_task_failure)
 
-    return ToolResult(ok=True, output=f"已安排 {agent_type.capitalize()} 处理：{goal}")
+    return ToolResult(
+        ok=True,
+        output=(
+            f"已安排 {agent_type.capitalize()} 处理：{goal}\n"
+            "（任务已后台异步执行。子代理完成、失败或需要你回复时，"
+            "系统会以 [内部通知] 的形式自动唤起你的下一轮 turn。"
+            "无需主动调用 check_sub_agents 或 inspect_session 轮询进度。）"
+        ),
+    )
