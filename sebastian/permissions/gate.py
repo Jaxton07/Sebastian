@@ -71,6 +71,8 @@ class PolicyGate:
 
     审批流顺序
     ----------
+    0. agent 身份白名单校验（所有 tier）：context.allowed_tools 非 None 且
+       tool_name 不在其中 → 立即返回错误，不执行工具。
     1. Workspace 边界检查（所有 tier）：含 file_path/path 参数且路径在 workspace 外
        → 直接请求用户审批。
     2. LOW tier：直接执行。
@@ -143,6 +145,17 @@ class PolicyGate:
         context: ToolCallContext,
     ) -> ToolResult:
         """Execute a tool after enforcing its permission tier."""
+        # Stage 0: agent 身份白名单校验
+        # 防止 LLM 幻觉工具名绕过 LLM 可见性层的过滤。
+        if context.allowed_tools is not None and tool_name not in context.allowed_tools:
+            return ToolResult(
+                ok=False,
+                error=(
+                    f"Tool {tool_name!r} not in allowed_tools for agent "
+                    f"{context.agent_type!r}"
+                ),
+            )
+
         native = get_tool(tool_name)
         tier = native[0].permission_tier if native else PermissionTier.MODEL_DECIDES
 

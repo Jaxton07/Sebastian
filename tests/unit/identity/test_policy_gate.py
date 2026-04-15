@@ -620,3 +620,109 @@ def test_get_callable_specs_forwards_allowed_skills() -> None:
 
     assert result == []
     registry.get_callable_specs.assert_called_once_with({"Read"}, {"code-review"})
+
+
+@pytest.mark.asyncio
+async def test_call_rejects_tool_outside_allowed_tools() -> None:
+    """context.allowed_tools 限制外的工具应被 Stage 0 拒绝，不到 registry。"""
+    from sebastian.permissions.gate import PolicyGate
+
+    registry = MagicMock()
+    registry.call = AsyncMock()
+    reviewer = MagicMock()
+    approval_manager = MagicMock()
+
+    gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
+
+    context = ToolCallContext(
+        task_goal="test",
+        session_id="s1",
+        task_id="t1",
+        agent_type="forge",
+        depth=2,
+        allowed_tools=frozenset({"Read"}),
+    )
+
+    result = await gate.call("Bash", {"command": "ls"}, context)
+
+    assert result.ok is False
+    assert "'Bash'" in (result.error or "")
+    assert "'forge'" in (result.error or "")
+    registry.call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_call_allows_tool_inside_allowed_tools(tmp_path) -> None:
+    """白名单内的工具应通过 Stage 0，正常走后续流程。"""
+    from sebastian.permissions.gate import PolicyGate
+
+    inside_path = tmp_path / "notes.txt"
+
+    registry = MagicMock()
+    registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
+    reviewer = MagicMock()
+    approval_manager = MagicMock()
+
+    gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
+
+    context = ToolCallContext(
+        task_goal="test",
+        session_id="s1",
+        task_id="t1",
+        agent_type="forge",
+        depth=2,
+        allowed_tools=frozenset({"file_read"}),
+    )
+
+    with (
+        patch("sebastian.permissions.gate.get_tool") as mock_get_tool,
+        patch("sebastian.permissions.gate.resolve_path", return_value=inside_path),
+        patch("sebastian.permissions.gate.settings") as mock_settings,
+    ):
+        mock_settings.workspace_dir = tmp_path
+        mock_spec = MagicMock()
+        mock_spec.permission_tier = PermissionTier.LOW
+        mock_get_tool.return_value = (mock_spec, MagicMock())
+
+        result = await gate.call("file_read", {"path": str(inside_path)}, context)
+
+    assert result.ok
+    registry.call.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_call_none_allowed_tools_means_unrestricted(tmp_path) -> None:
+    """context.allowed_tools=None 表示不限制，任意合法工具可调用（回归）。"""
+    from sebastian.permissions.gate import PolicyGate
+
+    inside_path = tmp_path / "notes.txt"
+
+    registry = MagicMock()
+    registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
+    reviewer = MagicMock()
+    approval_manager = MagicMock()
+
+    gate = PolicyGate(registry=registry, reviewer=reviewer, approval_manager=approval_manager)
+
+    context = ToolCallContext(
+        task_goal="test",
+        session_id="s1",
+        task_id="t1",
+        agent_type="forge",
+        depth=2,
+        allowed_tools=None,
+    )
+
+    with (
+        patch("sebastian.permissions.gate.get_tool") as mock_get_tool,
+        patch("sebastian.permissions.gate.resolve_path", return_value=inside_path),
+        patch("sebastian.permissions.gate.settings") as mock_settings,
+    ):
+        mock_settings.workspace_dir = tmp_path
+        mock_spec = MagicMock()
+        mock_spec.permission_tier = PermissionTier.LOW
+        mock_get_tool.return_value = (mock_spec, MagicMock())
+
+        result = await gate.call("file_read", {"path": str(inside_path)}, context)
+
+    assert result.ok
