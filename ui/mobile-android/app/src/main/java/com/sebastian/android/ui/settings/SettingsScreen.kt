@@ -17,12 +17,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.sebastian.android.ui.navigation.Route
 
@@ -78,8 +83,19 @@ fun SettingsScreen(navController: NavController) {
 @Composable
 private fun NotificationPermissionRow() {
     val context = LocalContext.current
-    val enabled by remember(context) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var enabled by remember(context) {
         mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
+    // 从系统设置页回到前台时重新读权限状态，避免陈旧快照
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if (enabled) return
 
