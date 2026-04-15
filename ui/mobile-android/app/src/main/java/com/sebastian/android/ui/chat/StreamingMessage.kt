@@ -139,26 +139,12 @@ private fun AssistantMessageBlocks(
                         .fillMaxWidth()
                         .alpha(alpha),
                 )
-                is ContentBlock.TextBlock -> {
-                    if (block.done) {
-                        MarkdownView(
-                            markdown = block.text,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(alpha),
-                        )
-                    } else {
-                        // Streaming in progress — show plain text
-                        Text(
-                            text = block.text,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(alpha),
-                        )
-                    }
-                }
+                is ContentBlock.TextBlock -> MarkdownView(
+                    text = block.text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(alpha),
+                )
             }
             Spacer(Modifier.height(8.dp))
         }

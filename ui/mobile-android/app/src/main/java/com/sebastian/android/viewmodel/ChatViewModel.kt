@@ -202,15 +202,12 @@ class ChatViewModel @Inject constructor(
                 val msgId = currentAssistantMessageId ?: return
                 // Flush remaining pending text synchronously so no delta is ever lost.
                 val pendingText = pendingDeltas.remove(event.blockId)?.toString() ?: ""
-                if (pendingText.isNotEmpty()) {
-                    updateBlockById(msgId, event.blockId) { existing ->
-                        if (existing is ContentBlock.TextBlock)
-                            existing.copy(text = existing.text + pendingText)
-                        else existing
-                    }
-                }
                 updateBlockById(msgId, event.blockId) { existing ->
-                    if (existing is ContentBlock.TextBlock) existing.copy(done = true)
+                    if (existing is ContentBlock.TextBlock)
+                        existing.copy(
+                            text = if (pendingText.isNotEmpty()) existing.text + pendingText else existing.text,
+                            done = true,
+                        )
                     else existing
                 }
             }

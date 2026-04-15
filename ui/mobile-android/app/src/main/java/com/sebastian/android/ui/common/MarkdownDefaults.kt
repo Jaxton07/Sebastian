@@ -22,6 +22,7 @@ object MarkdownDefaults {
     @Composable
     fun colors(): MarkdownColors = markdownColor(
         text = MaterialTheme.colorScheme.onSurface,
+        codeBackground = MaterialTheme.colorScheme.surfaceVariant,
         inlineCodeBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
         dividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
     )
