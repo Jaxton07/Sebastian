@@ -195,10 +195,10 @@ data class SettingsAgentBindingEditor(val agentType: String) : Route
 
 **删除**：
 
-- `ui/composer/ThinkButton.kt`
-- `ui/chat/EffortPickerCard.kt`（若存在）
-- `ChatScreen.kt` 中 `EffortPickerCard` 相关引用与 BottomSheet 触发
-- `Composer.kt` 中 `ThinkButton` 引用（位置保持不变，不收缩 Composer 高度）
+- `ui/composer/ThinkButton.kt` — 整个文件删除
+- `ui/composer/EffortPickerCard.kt` — 整个文件删除（`ThinkButton` 点击弹出的档位选择面板）
+- `ui/chat/ChatScreen.kt`：删除 `EffortPickerCard` import（L63）、`showEffortPicker` state（L154）、EffortPickerCard overlay 整块（L328-370 附近）、传给 Composer 的 `onShowEffortPicker` 回调（L379）
+- `ui/composer/Composer.kt`：删 `ThinkButton` 引用 + `onShowEffortPicker` 参数。ThinkButton 原占位不收缩 Composer 高度
 - `ChatViewModel.kt`：`activeThinkingEffort` state、`setEffort()` 方法、`sendTurn` 的 effort 参数
 - `SendTurnRequest.kt`：`thinkingEffort` 字段
 - `ChatRepositoryImpl.kt` L76-82：effort → 后端字符串的映射逻辑
@@ -455,6 +455,7 @@ Material3 `ListItem` + trailing `Switch`：
 - [ ] 切换 provider → snackbar `Thinking config reset for new provider`，且 effort 回到 Off
 - [ ] 返回列表页，item 副标题正确反映最新绑定
 - [ ] Composer 已无 ThinkButton，整体高度**不变**
+- [ ] 对话页 ChatScreen 已无 `EffortPickerCard` 浮层（不再有任何地方会弹出档位面板）
 - [ ] 发一条消息，后端日志可见 binding 中的 effort 被注入到 LLM 调用
 - [ ] 所有文案英文，无 emoji
 - [ ] `GET /api/v1/llm-providers` 无默认 provider 的极端情况下，编辑页显示 `No default provider configured`
@@ -504,10 +505,10 @@ Material3 `ListItem` + trailing `Switch`：
 - `app/src/main/java/com/sebastian/android/data/repository/AgentRepository.kt` — 接口扩展
 - `app/src/main/java/com/sebastian/android/data/repository/ChatRepositoryImpl.kt` — 删 effort 映射
 - `app/src/main/java/com/sebastian/android/viewmodel/ChatViewModel.kt` — 删 `activeThinkingEffort` 等
-- `app/src/main/java/com/sebastian/android/ui/composer/Composer.kt` — 删 `ThinkButton` 引用
+- `app/src/main/java/com/sebastian/android/ui/composer/Composer.kt` — 删 `ThinkButton` 引用与 `onShowEffortPicker` 参数
 - `app/src/main/java/com/sebastian/android/ui/composer/ThinkButton.kt` — 删除
-- `app/src/main/java/com/sebastian/android/ui/chat/EffortPickerCard.kt` — 删除（若存在）
-- `app/src/main/java/com/sebastian/android/ui/chat/ChatScreen.kt` — 删 effort picker 引用
+- `app/src/main/java/com/sebastian/android/ui/composer/EffortPickerCard.kt` — 删除
+- `app/src/main/java/com/sebastian/android/ui/chat/ChatScreen.kt` — 删 `EffortPickerCard` import、`showEffortPicker` state、overlay 渲染块、`onShowEffortPicker` 回调
 
 ### 文档
 - `ui/mobile-android/README.md` — 修改导航表更新 Composer 行、AgentBindings 行
