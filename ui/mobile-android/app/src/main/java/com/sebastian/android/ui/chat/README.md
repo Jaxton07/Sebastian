@@ -113,6 +113,7 @@ Session 按时间分桶的纯函数逻辑，不含 UI。提供：
 
 | 修改场景 | 优先看 |
 |---------|--------|
+| 改顶部 agent 胶囊 / 活动指示器动画 | `AgentPill.kt` + `AgentPillAnimations.kt` |
 | 改三栏布局（脚手架结构） | `ChatScreen.kt` |
 | 改手机单栏手势滑动逻辑 | `SlidingThreePaneLayout.kt` |
 | 改消息列表滚动行为 | `MessageList.kt` |

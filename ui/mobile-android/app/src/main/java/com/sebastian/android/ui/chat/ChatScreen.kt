@@ -249,18 +249,11 @@ fun ChatScreen(
                             .weight(1f)
                             .padding(horizontal = 8.dp),
                     ) {
-                        GlassSurface(
-                            state = glassState,
-                            shape = CircleShape,
-                            shadowCornerRadius = 100.dp,
-                        ) {
-                            Text(
-                                text = agentName ?: "Sebastian",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            )
-                        }
+                        AgentPill(
+                            agentName = agentName,
+                            agentAnimState = chatState.agentAnimState,
+                            glassState = glassState,
+                        )
                     }
 
                     GlassSurface(
