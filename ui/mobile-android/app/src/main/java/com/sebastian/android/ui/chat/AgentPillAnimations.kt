@@ -1,5 +1,6 @@
 package com.sebastian.android.ui.chat
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.InfiniteTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -18,7 +19,11 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -194,4 +199,127 @@ private fun DrawScope.drawOrb(
         center = center,
         blendMode = BlendMode.Plus,
     )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HudAnimation · ACTIVE · Jarvis 同心 HUD
+// ═══════════════════════════════════════════════════════════════
+
+private const val HUD_CONTAINER_W_DP = 28f
+private const val HUD_CONTAINER_H_DP = 20f
+
+/**
+ * 双圈带缺口断弧（PathEffect dash）反向旋转 + 径向 ping 扩散 +
+ * 核心脉冲，模拟钢铁侠 HUD。
+ * 外圈逆时针 1.4s，内圈顺时针 0.9s；ping 1.4s 扩散；核心 0.8s 脉冲。
+ */
+@Composable
+fun HudAnimation(
+    accent: Color,
+    glowAlphaScale: Float = 1f,
+    modifier: Modifier = Modifier,
+) {
+    val t = rememberInfiniteTransition(label = "hud")
+    val outerRot by t.animateFloat(
+        initialValue = 0f, targetValue = -360f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        label = "outerRot",
+    )
+    val innerRot by t.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "innerRot",
+    )
+    val pingPhase by t.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(1400, easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)),
+        ),
+        label = "ping",
+    )
+    val corePhase by t.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(800),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "core",
+    )
+
+    Canvas(
+        modifier
+            .size(HUD_CONTAINER_W_DP.dp, HUD_CONTAINER_H_DP.dp)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+
+        // Ping：半径 1..10dp，alpha 1..0
+        val pingRadius = lerpFloat(1.dp.toPx(), 10.dp.toPx(), pingPhase)
+        val pingAlpha = (1f - pingPhase) * glowAlphaScale
+        drawCircle(
+            color = accent.copy(alpha = pingAlpha * 0.8f),
+            radius = pingRadius,
+            center = center,
+            style = Stroke(width = 1.2.dp.toPx()),
+        )
+
+        // 外圈断弧：r=8dp，stroke 1.5dp，dash 22:28
+        drawDashedArcHalo(
+            center, radius = 8.dp.toPx(), strokeWidth = 1.5.dp.toPx(),
+            dashOn = 22f, dashOff = 28f, rotationDeg = outerRot,
+            accent = accent, glowAlphaScale = glowAlphaScale,
+        )
+
+        // 内圈断弧：r=4.5dp，stroke 1.2dp，dash 8:18
+        drawDashedArcHalo(
+            center, radius = 4.5.dp.toPx(), strokeWidth = 1.2.dp.toPx(),
+            dashOn = 8f, dashOff = 18f, rotationDeg = innerRot,
+            accent = accent, glowAlphaScale = glowAlphaScale,
+        )
+
+        // 核心：半径 1.8dp，scale 0.8..1.15，alpha 0.5..1.0
+        val coreScale = 0.8f + corePhase * 0.35f
+        val coreAlpha = 0.5f + corePhase * 0.5f
+        drawCircle(
+            color = accent.copy(alpha = coreAlpha),
+            radius = 1.8.dp.toPx() * coreScale,
+            center = center,
+        )
+    }
+}
+
+private fun DrawScope.drawDashedArcHalo(
+    center: Offset,
+    radius: Float,
+    strokeWidth: Float,
+    dashOn: Float,
+    dashOff: Float,
+    rotationDeg: Float,
+    accent: Color,
+    glowAlphaScale: Float,
+) {
+    rotate(rotationDeg, center) {
+        // Halo（加粗 2 倍，半透明，模拟 drop-shadow）
+        drawCircle(
+            color = accent.copy(alpha = 0.5f * glowAlphaScale),
+            radius = radius,
+            center = center,
+            style = Stroke(
+                width = strokeWidth * 2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashOn, dashOff)),
+                cap = StrokeCap.Round,
+            ),
+        )
+        // Main
+        drawCircle(
+            color = accent,
+            radius = radius,
+            center = center,
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashOn, dashOff)),
+                cap = StrokeCap.Round,
+            ),
+        )
+    }
 }
