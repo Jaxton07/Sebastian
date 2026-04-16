@@ -31,6 +31,19 @@ status: planned
 
 ---
 
+## Out of Scope（本次不做）
+
+- **自适应思考开关（adaptive thinking）**：原设计计划在 capability=adaptive 的 provider 上提供「自适应思考深度」用户开关，开启后 effort 档位置灰，由模型自决思考深度。**此功能本次实现已移除**，原因：
+  1. 当前支持 adaptive capability 的模型与 provider 较少，不方便对照实验
+  2. 单独 sentinel 透传机制在 provider adapter 端识别成本与设计风险高（Anthropic adaptive 模式还需要 output_config.effort 字段，sentinel 无法无损携带）
+  3. capability=adaptive 的 provider 仍可被绑定，UI 与 effort 档位等同 effort capability —— Anthropic API 内部仍按 adaptive mode 处理（thinking={"type":"adaptive"} + output_config.effort=<选择档位>）
+
+  数据模型上：`agent_llm_bindings.thinking_adaptive` 列已 DROP。`AgentLLMBindingRecord` / `ResolvedProvider` / `BindingUpdate` 均无 `thinking_adaptive` 字段。
+
+  如未来需要恢复，需在 provider adapter 引入无损双参传递（thinking_effort, thinking_adaptive）后再做 UI 暴露。
+
+---
+
 ## 2. 数据模型变更
 
 扩展 `agent_llm_bindings` 表（`sebastian/store/models.py` L90-103）：
@@ -45,7 +58,6 @@ class AgentLLMBindingRecord(Base):
     )
     # 新增
     thinking_effort: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    thinking_adaptive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # ---
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
@@ -59,21 +71,19 @@ class AgentLLMBindingRecord(Base):
   - `on` 仅用于 `TOGGLE` 能力
   - `low/medium/high` 用于 `EFFORT` 与 `ADAPTIVE`
   - `max` 仅 `ADAPTIVE`
-- `thinking_adaptive`：布尔，仅 `ADAPTIVE` 能力下有意义；为 true 时后端调 LLM 不传 effort，由模型自决
-- `NONE` / `ALWAYS_ON` 能力下两字段强制为 `null` / `false`
+- `NONE` / `ALWAYS_ON` 能力下字段强制为 `null`
 
-**迁移**：本项目不使用 Alembic。在 `sebastian/store/database.py:68-82` 的 `_apply_idempotent_migrations.patches` 列表中追加两条：
+**迁移**：本项目不使用 Alembic。在 `sebastian/store/database.py:68-82` 的 `_apply_idempotent_migrations.patches` 列表中追加一条：
 
 ```python
 patches: list[tuple[str, str, str]] = [
     ("llm_providers", "thinking_capability", "VARCHAR(20)"),
     # 新增
     ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
-    ("agent_llm_bindings", "thinking_adaptive", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 ```
 
-`create_all` 处理全新库；`_apply_idempotent_migrations` 处理存量库。所有现有行使用默认值（null / false）。
+`create_all` 处理全新库；`_apply_idempotent_migrations` 处理存量库。所有现有行使用默认值（null）。
 
 ---
 
@@ -83,8 +93,8 @@ patches: list[tuple[str, str, str]] = [
 
 **路由**：`sebastian/gateway/routes/agents.py`
 
-- `AgentBindingDto` 响应体加 `thinking_effort: str | None` + `thinking_adaptive: bool`
-- `SetBindingRequest` 请求体加同两字段（可选，默认 `null` / `false`）
+- `AgentBindingDto` 响应体加 `thinking_effort: str | None`
+- `SetBindingRequest` 请求体加同一字段（可选，默认 `null`）
 - `GET /api/v1/agents` 列表响应里每个 agent 附带完整 binding（省一次请求）
 - `PUT /api/v1/agents/{agent_type}/llm-binding` 切换 provider 时**强制重置**：
 
@@ -93,12 +103,12 @@ async def put_binding(agent_type: str, req: SetBindingRequest):
     old = await repo.get(agent_type)
     if old and old.provider_id != req.provider_id:
         # Provider 切换 → 无视请求体，强制重置
-        req = req.model_copy(update={"thinking_effort": None, "thinking_adaptive": False})
+        req = req.model_copy(update={"thinking_effort": None})
     # capability 判定（从新 provider 读）
     new_provider = await provider_repo.get(req.provider_id) if req.provider_id else None
     capability = new_provider.thinking_capability if new_provider else _default_capability()
     if capability in (ThinkingCapability.NONE, ThinkingCapability.ALWAYS_ON):
-        req = req.model_copy(update={"thinking_effort": None, "thinking_adaptive": False})
+        req = req.model_copy(update={"thinking_effort": None})
     await repo.upsert(agent_type, req)
 ```
 
@@ -129,7 +139,7 @@ class ResolvedProvider:
     provider: LLMProvider
     model: str
     thinking_effort: str | None      # 已按 capability 钳制过
-    thinking_adaptive: bool
+    capability: str | None
 
 async def get_provider(self, agent_type: str | None = None) -> ResolvedProvider:
     binding = await self._get_binding(agent_type) if agent_type else None
@@ -139,26 +149,21 @@ async def get_provider(self, agent_type: str | None = None) -> ResolvedProvider:
         else await self._get_default_record()
     )
     # 防御性钳制：record.thinking_capability 不支持时强制清空
-    effort, adaptive = _coerce_thinking(
+    effort = _coerce_thinking(
         binding.thinking_effort if binding else None,
-        binding.thinking_adaptive if binding else False,
         record.thinking_capability,
     )
-    return ResolvedProvider(self._instantiate(record), record.model, effort, adaptive)
+    return ResolvedProvider(self._instantiate(record), record.model, effort, record.thinking_capability)
 ```
 
 `sebastian/core/base_agent.py` 的 `turn()` 使用该结构：
 
 ```python
 resolved = await self._llm_registry.get_provider(self.name)
-llm_kwargs = {}
-if resolved.thinking_adaptive:
-    llm_kwargs["thinking"] = {"mode": "adaptive"}
-elif resolved.thinking_effort and resolved.thinking_effort != "off":
-    llm_kwargs["thinking"] = {"effort": resolved.thinking_effort}
+thinking_effort_for_llm = resolved.thinking_effort
 # ALWAYS_ON provider 由 adapter 内部处理，不传参
 
-response = await resolved.provider.chat(model=resolved.model, ..., **llm_kwargs)
+response = await resolved.provider.chat(model=resolved.model, ..., thinking_effort=thinking_effort_for_llm)
 ```
 
 具体 provider adapter（`sebastian/llm/providers/*.py`）按其 SDK 约定将 `thinking` 参数翻译为各自的入参（Anthropic 的 `thinking` 块、OpenAI 的 `reasoning_effort` 等）。
@@ -192,15 +197,14 @@ data class SettingsAgentBindingEditor(val agentType: String) : Route
 | `viewmodel/AgentBindingEditorViewModel.kt` | 单 binding 的状态 + 即时保存（debounce） |
 | `ui/settings/components/ProviderPickerDialog.kt` | 居中浮层 provider 选择（替代 BottomSheet） |
 | `ui/settings/components/EffortSlider.kt` | 按 capability 渲染的档位 slider |
-| `ui/settings/components/AdaptiveSwitch.kt` | ADAPTIVE 能力下的自适应开关 |
 
 ### 4.3 改造与删除
 
 **改造**：
 
 - `ui/settings/AgentBindingsPage.kt` — 删 `ModalBottomSheet` 与 `ProviderPickerContent`，保留列表；item 点击改为 navigate；列表加"Orchestrator / Sub-Agents"分区
-- `data/remote/dto/AgentBindingDto.kt` — 加 `thinking_effort` + `thinking_adaptive`
-- `data/remote/dto/SetBindingRequest.kt` — 加同两字段
+- `data/remote/dto/AgentBindingDto.kt` — 加 `thinking_effort`
+- `data/remote/dto/SetBindingRequest.kt` — 加同一字段
 - `data/repository/AgentRepository.kt` — `setBinding` 签名加两参数
 - `viewmodel/AgentBindingsViewModel.kt` — 原 sheet 相关 state 移除，仅保留列表加载
 
@@ -224,7 +228,6 @@ data class EditorUiState(
     val providers: List<Provider>,
     val selectedProvider: Provider?,       // null = 走 Use default
     val thinkingEffort: ThinkingEffort,    // OFF/ON/LOW/MEDIUM/HIGH/MAX
-    val thinkingAdaptive: Boolean,
     val isSaving: Boolean,
     val errorMessage: String?,
     val loadState: LoadState,              // Loading / Ready / Error
@@ -236,14 +239,13 @@ data class EditorUiState(
 class AgentBindingEditorViewModel : ViewModel() {
     fun selectProvider(providerId: String?)
     fun setEffort(effort: ThinkingEffort)
-    fun setAdaptive(enabled: Boolean)
     // 内部：所有 setter 合并走同一个 debounced PUT job（300ms）
 }
 ```
 
 **即时保存**：每个 setter 先改本地 state，`debounceJob?.cancel()` + `launch { delay(300); put(...) }`。PUT 失败 → snackbar + state 回滚到保存前快照。
 
-**Provider 切换即重置**：`selectProvider` 内部除了 `selectedProvider`，强制 `thinkingEffort = OFF` + `thinkingAdaptive = false`。仅当旧配置非空时 snackbar 提示 `Thinking config reset for new provider`。
+**Provider 切换即重置**：`selectProvider` 内部除了 `selectedProvider`，强制 `thinkingEffort = OFF`。仅当旧配置非空时 snackbar 提示 `Thinking config reset for new provider`。
 
 **capability fallback**：UI 渲染条件一律读 `effectiveCapability`，而非 `selectedProvider.thinkingCapability`。这样"Use default provider"时下方仍能按全局默认 provider 的能力渲染。
 
@@ -297,11 +299,6 @@ class AgentBindingEditorViewModel : ViewModel() {
 │  ●───○───○───○───○             │
 │  Off  Low  Med  High  Max       │
 │                                 │
-│ ┌─────────────────────────────┐ │
-│ │ Adaptive Thinking     [●─] │ │
-│ │ Let the model decide        │ │
-│ │ thinking depth              │ │
-│ └─────────────────────────────┘ │
 └─────────────────────────────────┘
 ```
 
@@ -309,8 +306,6 @@ class AgentBindingEditorViewModel : ViewModel() {
 - 所有区块不使用 emoji，图标一律 Material Icons
 - Provider 卡片：`ElevatedCard` with shadow，点击弹 `ProviderPickerDialog`
 - Thinking Depth slider 仅在 `effectiveCapability ∈ {TOGGLE, EFFORT, ADAPTIVE}` 时渲染
-- Adaptive switch 仅在 `effectiveCapability == ADAPTIVE` 时渲染
-- Adaptive switch 开启 → EffortSlider `enabled=false`（整体半透明 + 不响应点击）
 
 ### 5.3 `ProviderPickerDialog`
 
@@ -360,15 +355,7 @@ fun EffortSlider(
 
 **特例**：`TOGGLE` 不用 slider，用 `SebastianSwitch`（`ui/common/SebastianSwitch.kt`，苹果风绿色公共组件）+ leading label `Thinking`（Off/On）。视觉上和档位条区分。
 
-### 5.5 `AdaptiveSwitch`
-
-Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianSwitch.kt`，苹果风绿色）：
-
-- `headlineContent`: `Adaptive Thinking`
-- `supportingContent`: `Let the model decide thinking depth`
-- `trailingContent`: `SebastianSwitch(checked, onCheckedChange)`
-
-### 5.6 `ALWAYS_ON` / `NONE` 能力
+### 5.5 `ALWAYS_ON` / `NONE` 能力
 
 - `ALWAYS_ON` → 渲染只读 `ListItem`：`Thinking: Always on (controlled by model)`，无交互
 - `NONE` → 整个思考区块不渲染，页面只剩 Provider 卡片
@@ -387,9 +374,9 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 
 ### 6.2 Provider 切换重置
 
-**前端**：`selectProvider` 本地立刻重置 effort/adaptive。旧配置非空时 snackbar 提示 `Thinking config reset for new provider`。
+**前端**：`selectProvider` 本地立刻重置 effort。旧配置非空时 snackbar 提示 `Thinking config reset for new provider`。
 
-**后端**：`PUT` 检测到 `provider_id` 变化时强制把 effort/adaptive 置空，即使请求体里带了值。双保险。
+**后端**：`PUT` 检测到 `provider_id` 变化时强制把 effort 置空，即使请求体里带了值。双保险。
 
 ### 6.3 Use default provider 时的 capability fallback
 
@@ -419,18 +406,17 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 ### 7.1 后端单元测试（`tests/unit/`）
 
 - `test_agent_llm_binding_model.py`
-  - 新字段默认值：`thinking_effort=None, thinking_adaptive=False`
+  - 新字段默认值：`thinking_effort=None`
 - `test_agent_llm_binding_api.py`
-  - `PUT` 带完整字段 → 正确写入
+  - `PUT` 带 effort 字段 → 正确写入
   - `PUT` 切换 `provider_id` → 即使请求体带 effort 也被强制重置
   - `PUT` 同一 provider 改 effort → 正常保留
-  - `PUT` 到 NONE/ALWAYS_ON provider → effort/adaptive 强制 null/false
+  - `PUT` 到 NONE/ALWAYS_ON provider → effort 强制 null
   - `GET` Sebastian 不再返回 403
   - `GET /api/v1/agents` 响应包含 `sebastian` 条目且 `is_orchestrator=true`
   - 列表响应每项附带完整 binding
 - `test_base_agent_thinking_injection.py`
   - binding 有 effort → LLM 调用参数包含 `thinking.effort`
-  - binding adaptive=true → LLM 调用参数包含 `thinking.mode=adaptive`，不传 effort
   - NONE / ALWAYS_ON provider → 不传 thinking 参数
   - 无 binding / binding.provider_id=null → 用全局默认 provider，不传 thinking 参数
 
@@ -442,8 +428,8 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 ### 7.3 Android 单元测试（`app/src/test/`）
 
 - `AgentBindingEditorViewModelTest`
-  - `selectProvider` → 本地立即重置 effort/adaptive + debounce PUT
-  - `setEffort` / `setAdaptive` → debounce 合并连续改动为一次 PUT（用 fake dispatcher 控时间）
+  - `selectProvider` → 本地立即重置 effort + debounce PUT
+  - `setEffort` → debounce 合并连续改动为一次 PUT（用 fake dispatcher 控时间）
   - PUT 失败 → state 回滚 + errorMessage 设置
   - `effectiveCapability` 在 `selectedProvider == null` 时走 `isDefault=true` 的 provider
   - 越界钳制：初始 state `thinkingEffort=MAX` 但 provider capability=EFFORT → 钳到 HIGH 并触发 PUT
@@ -457,13 +443,12 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 - [ ] 点击任一条目进入 Editor 次级页
 - [ ] Provider 卡片点击弹出居中 `ProviderPickerDialog`（非 BottomSheet）
 - [ ] Dialog 首行 "Use default provider" 正常工作
-- [ ] 选 EFFORT capability provider → 4 档 slider，无 Adaptive 开关
-- [ ] 选 ADAPTIVE capability provider → 5 档 slider + Adaptive 开关
-- [ ] Adaptive 开关开启 → slider 整体半透明 + 不响应点击；关闭 → 恢复
+- [ ] 选 EFFORT capability provider → 4 档 slider
+- [ ] 选 ADAPTIVE capability provider → 5 档 slider（与 EFFORT 体验相同，无 Adaptive 用户开关）
 - [ ] 选 TOGGLE capability provider → Switch（非 slider）
 - [ ] 选 NONE 能力 provider → 思考区完全隐藏
 - [ ] 选 ALWAYS_ON provider → 显示只读 `Thinking: Always on` label
-- [ ] 切换 provider → snackbar `Thinking config reset for new provider`，且 effort 回到 Off
+- [ ] 切换 provider → snackbar `Thinking config reset for new provider`，且 effort 回到 Off（无 adaptive 重置）
 - [ ] 返回列表页，item 副标题正确反映最新绑定
 - [ ] Composer 已无 ThinkButton，整体高度**不变**
 - [ ] 对话页 ChatScreen 已无 `EffortPickerCard` 浮层（不再有任何地方会弹出档位面板）
@@ -493,7 +478,7 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 
 ### 后端
 - `sebastian/store/models.py` — 扩 `AgentLLMBindingRecord`
-- `sebastian/store/database.py` — `_apply_idempotent_migrations.patches` 列表追加两条
+- `sebastian/store/database.py` — `_apply_idempotent_migrations.patches` 列表追加一条（`thinking_effort`）；`_drop_obsolete_columns` 清理已废弃的 `thinking_adaptive` 列
 - `sebastian/llm/registry.py` — `set_binding`/`_get_binding` 签名扩展、新增 `ResolvedProvider` 返回类型
 - `sebastian/gateway/routes/agents.py` — DTO 扩展、解除 Sebastian 屏蔽、列表响应 attach binding
 - `sebastian/gateway/routes/sessions.py` — `SendTurnRequest` 移除 `thinking_effort`
@@ -507,7 +492,6 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 - `app/src/main/java/com/sebastian/android/ui/settings/AgentBindingEditorPage.kt` — 新建
 - `app/src/main/java/com/sebastian/android/ui/settings/components/ProviderPickerDialog.kt` — 新建
 - `app/src/main/java/com/sebastian/android/ui/settings/components/EffortSlider.kt` — 新建
-- `app/src/main/java/com/sebastian/android/ui/settings/components/AdaptiveSwitch.kt` — 新建
 - `app/src/main/java/com/sebastian/android/viewmodel/AgentBindingEditorViewModel.kt` — 新建
 - `app/src/main/java/com/sebastian/android/viewmodel/AgentBindingsViewModel.kt` — 简化
 - `app/src/main/java/com/sebastian/android/data/remote/dto/AgentBindingDto.kt` — 加两字段

@@ -4,7 +4,9 @@
 
 **Goal:** 把"思考档位"从 Composer 的内存状态迁移到 agent-llm-binding 级别持久化，Bindings 页每个 agent 点击进入独立次级编辑页；Sebastian 主管家一并纳入 bindings 列表。
 
-**Architecture:** 后端 `agent_llm_bindings` 表扩 `thinking_effort`/`thinking_adaptive` 两列；`LLMProviderRegistry.get_provider` 改返回 `ResolvedProvider(provider, model, effort, adaptive)`；`base_agent` 从该结构直接拿思考参数，不再从 HTTP `SendTurnRequest` 透传。Android 侧新建 `AgentBindingEditorPage` 次级页（Route / ViewModel / 3 个复用组件），删除 `ThinkButton` / `EffortPickerCard`。
+**Architecture:** 后端 `agent_llm_bindings` 表扩 `thinking_effort` 一列；`LLMProviderRegistry.get_provider` 改返回 `ResolvedProvider(provider, model, effort, capability)`；`base_agent` 从该结构直接拿思考参数，不再从 HTTP `SendTurnRequest` 透传。Android 侧新建 `AgentBindingEditorPage` 次级页（Route / ViewModel / 2 个复用组件），删除 `ThinkButton` / `EffortPickerCard`。
+
+> **Update 2026-04-16**: 实施过程中发现 adaptive sentinel 设计断裂——`capability=="adaptive"` 的 provider 在 adapter 端不识别用户级 `thinking_adaptive` 开关，思考被静默关闭。鉴于支持 adaptive 的 model/provider 较少、不便实验，决定整体下线用户级 adaptive 开关。**`thinking_adaptive` 已从数据库 schema、registry、gateway DTO、base_agent 全链路移除**。capability=adaptive 的 provider 仍可绑定，用户选 effort 档位，Anthropic 内部走 adaptive mode（provider adapter 行为，无需用户开关）。下文 A1-A4 代码示例中已同步更新；B5（AdaptiveSwitch）任务已标注为 Removed。
 
 **Tech Stack:** Python 3.12 + SQLAlchemy async + FastAPI (后端) / Kotlin + Jetpack Compose + Hilt + Retrofit/Moshi (Android)
 
@@ -24,7 +26,7 @@
 
 - [ ] **Step 1: 修改 model**
 
-编辑 `sebastian/store/models.py:90-103`，在 `provider_id` 之后、`updated_at` 之前插入两列：
+编辑 `sebastian/store/models.py:90-103`，在 `provider_id` 之后、`updated_at` 之前插入一列（`thinking_adaptive` 已删除）：
 
 ```python
 class AgentLLMBindingRecord(Base):
@@ -37,9 +39,6 @@ class AgentLLMBindingRecord(Base):
         nullable=True,
     )
     thinking_effort: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    thinking_adaptive: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="0",
-    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(UTC),
@@ -49,13 +48,12 @@ class AgentLLMBindingRecord(Base):
 
 - [ ] **Step 2: 扩展 idempotent migration**
 
-编辑 `sebastian/store/database.py:73-75`，把 `patches` 列表改为：
+编辑 `sebastian/store/database.py:73-75`，把 `patches` 列表改为（`thinking_adaptive` 已删除；存量 DB 通过 `_drop_obsolete_columns` 自动 DROP）：
 
 ```python
 patches: list[tuple[str, str, str]] = [
     ("llm_providers", "thinking_capability", "VARCHAR(20)"),
     ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
-    ("agent_llm_bindings", "thinking_adaptive", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 ```
 
@@ -92,7 +90,6 @@ async def test_new_binding_defaults_to_no_thinking(tmp_path, monkeypatch):
         await session.refresh(rec)
 
     assert rec.thinking_effort is None
-    assert rec.thinking_adaptive is False
 ```
 
 - [ ] **Step 4: 运行测试**
@@ -107,7 +104,7 @@ Expected: PASS
 
 ```bash
 git add sebastian/store/models.py sebastian/store/database.py tests/unit/test_agent_llm_binding_model.py
-git commit -m "feat(store): 扩 agent_llm_bindings 加 thinking_effort / thinking_adaptive 两列"
+git commit -m "feat(store): 扩 agent_llm_bindings 加 thinking_effort 一列"
 ```
 
 ---
@@ -130,30 +127,30 @@ import pytest
 from sebastian.llm.registry import LLMProviderRegistry, ResolvedProvider, _coerce_thinking
 
 
-def test_coerce_capability_none_clears_all():
-    assert _coerce_thinking("high", True, "none") == (None, False)
+def test_coerce_capability_none_clears_effort():
+    assert _coerce_thinking("high", "none") is None
 
 
-def test_coerce_capability_always_on_clears_all():
-    assert _coerce_thinking("high", True, "always_on") == (None, False)
+def test_coerce_capability_always_on_clears_effort():
+    assert _coerce_thinking("high", "always_on") is None
 
 
-def test_coerce_effort_drops_max_and_adaptive():
-    assert _coerce_thinking("max", True, "effort") == ("high", False)
+def test_coerce_effort_drops_max():
+    assert _coerce_thinking("max", "effort") == "high"
 
 
-def test_coerce_toggle_drops_effort_values():
-    assert _coerce_thinking("high", False, "toggle") == ("on", False)
-    assert _coerce_thinking("off", False, "toggle") == ("off", False)
+def test_coerce_toggle_normalizes_values():
+    assert _coerce_thinking("high", "toggle") == "on"
+    assert _coerce_thinking("off", "toggle") == "off"
 
 
-def test_coerce_adaptive_keeps_all():
-    assert _coerce_thinking("max", True, "adaptive") == ("max", True)
+def test_coerce_adaptive_passes_through():
+    assert _coerce_thinking("max", "adaptive") == "max"
 
 
 def test_coerce_none_capability_returns_unmodified():
     # capability is None → we just pass through
-    assert _coerce_thinking("high", False, None) == ("high", False)
+    assert _coerce_thinking("high", None) == "high"
 
 
 @pytest.mark.asyncio
@@ -185,32 +182,28 @@ _EFFORT_ALIASES = {"off", "on", "low", "medium", "high", "max"}
 
 def _coerce_thinking(
     effort: str | None,
-    adaptive: bool,
     capability: str | None,
-) -> tuple[str | None, bool]:
-    """按 provider capability 钳制 effort/adaptive 到合法组合。"""
+) -> str | None:
+    """按 provider capability 钳制 effort 到合法值。"""
     if capability in ("none", "always_on"):
-        return (None, False)
+        return None
     if capability == "toggle":
         # 仅允许 'on' / 'off' / null；effort 为非法 bucket 时归一到 'on' 或 'off'
         if effort in (None, "off"):
-            return ("off", False)
+            return "off"
         if effort == "on":
-            return ("on", False)
+            return "on"
         # low/medium/high/max → 统一视为 on
-        return ("on", False)
+        return "on"
     if capability == "effort":
         # 允许 off/low/medium/high；max 钳到 high；on 视为 high
-        if effort == "max":
-            return ("high", False)
-        if effort == "on":
-            return ("high", False)
-        return (effort, False)
+        if effort in ("max", "on"):
+            return "high"
+        return effort
     if capability == "adaptive":
-        # 允许 off/low/medium/high/max + adaptive flag
-        return (effort, adaptive)
+        return effort
     # capability 未知（None）→ pass-through
-    return (effort, adaptive)
+    return effort
 
 
 @dataclass
@@ -218,7 +211,6 @@ class ResolvedProvider:
     provider: LLMProvider
     model: str
     thinking_effort: str | None
-    thinking_adaptive: bool
     capability: str | None  # 原始 provider.thinking_capability
 ```
 
@@ -245,19 +237,17 @@ async def get_provider(self, agent_type: str | None = None) -> ResolvedProvider:
         raise RuntimeError("No default LLM provider configured. Add one via the Settings page.")
 
     effort_raw = binding.thinking_effort if binding else None
-    adaptive_raw = binding.thinking_adaptive if binding else False
-    effort, adaptive = _coerce_thinking(effort_raw, adaptive_raw, record.thinking_capability)
+    effort = _coerce_thinking(effort_raw, record.thinking_capability)
 
     return ResolvedProvider(
         provider=self._instantiate(record),
         model=record.model,
         thinking_effort=effort,
-        thinking_adaptive=adaptive,
         capability=record.thinking_capability,
     )
 ```
 
-替换 `set_binding` 签名支持两新字段：
+替换 `set_binding` 签名（已删 `thinking_adaptive`）：
 
 ```python
 async def set_binding(
@@ -265,7 +255,6 @@ async def set_binding(
     agent_type: str,
     provider_id: str | None,
     thinking_effort: str | None = None,
-    thinking_adaptive: bool = False,
 ) -> AgentLLMBindingRecord:
     async with self._db_factory() as session:
         result = await session.execute(
@@ -277,13 +266,11 @@ async def set_binding(
                 agent_type=agent_type,
                 provider_id=provider_id,
                 thinking_effort=thinking_effort,
-                thinking_adaptive=thinking_adaptive,
             )
             session.add(record)
         else:
             existing.provider_id = provider_id
             existing.thinking_effort = thinking_effort
-            existing.thinking_adaptive = thinking_adaptive
             record = existing
         await session.commit()
         await session.refresh(record)
@@ -347,10 +334,9 @@ async def test_set_binding_stores_thinking(db_factory):
     # 拿回新建的 provider_id
     records = await registry.list_all()
     pid = records[0].id
-    await registry.set_binding("foo", pid, thinking_effort="high", thinking_adaptive=True)
+    await registry.set_binding("foo", pid, thinking_effort="high")
     resolved = await registry.get_provider("foo")
     assert resolved.thinking_effort == "high"
-    assert resolved.thinking_adaptive is True
 
 
 @pytest.mark.asyncio
@@ -360,7 +346,6 @@ async def test_get_provider_falls_back_to_default_when_no_binding(db_factory):
     resolved = await registry.get_provider("missing_agent")
     assert resolved.capability == "effort"
     assert resolved.thinking_effort is None
-    assert resolved.thinking_adaptive is False
 
 
 @pytest.mark.asyncio
@@ -371,11 +356,10 @@ async def test_get_provider_coerces_max_down_in_effort_capability(db_factory):
     pid = records[0].id
     # 直接往 DB 写入一个越界配置（模拟用户先绑 adaptive 后切 effort 时数据库留下的旧值）
     async with db_factory() as session:
-        session.add(AgentLLMBindingRecord(agent_type="foo", provider_id=pid, thinking_effort="max", thinking_adaptive=True))
+        session.add(AgentLLMBindingRecord(agent_type="foo", provider_id=pid, thinking_effort="max"))
         await session.commit()
     resolved = await registry.get_provider("foo")
     assert resolved.thinking_effort == "high"
-    assert resolved.thinking_adaptive is False
 ```
 
 - [ ] **Step 7: 运行测试**
@@ -438,14 +422,12 @@ async def test_put_binding_with_thinking_fields(client, auth_headers, default_ad
         json={
             "provider_id": default_adaptive_provider.id,
             "thinking_effort": "high",
-            "thinking_adaptive": True,
         },
         headers=auth_headers,
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["thinking_effort"] == "high"
-    assert body["thinking_adaptive"] is True
 
 
 @pytest.mark.asyncio
@@ -458,7 +440,6 @@ async def test_put_binding_switching_provider_forces_reset(
         json={
             "provider_id": default_adaptive_provider.id,
             "thinking_effort": "high",
-            "thinking_adaptive": True,
         },
         headers=auth_headers,
     )
@@ -468,14 +449,12 @@ async def test_put_binding_switching_provider_forces_reset(
         json={
             "provider_id": effort_only_provider.id,
             "thinking_effort": "high",
-            "thinking_adaptive": False,
         },
         headers=auth_headers,
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["thinking_effort"] is None
-    assert body["thinking_adaptive"] is False
 
 
 @pytest.mark.asyncio
@@ -487,7 +466,6 @@ async def test_put_binding_to_none_capability_provider_clears_thinking(
         json={
             "provider_id": none_capability_provider.id,
             "thinking_effort": "high",
-            "thinking_adaptive": False,
         },
         headers=auth_headers,
     )
@@ -534,7 +512,6 @@ JSONDict = dict[str, Any]
 class BindingUpdate(BaseModel):
     provider_id: str | None = None
     thinking_effort: str | None = None
-    thinking_adaptive: bool = False
 
 
 def _binding_to_dict(binding) -> JSONDict:
@@ -542,7 +519,6 @@ def _binding_to_dict(binding) -> JSONDict:
         "agent_type": binding.agent_type,
         "provider_id": binding.provider_id,
         "thinking_effort": binding.thinking_effort,
-        "thinking_adaptive": binding.thinking_adaptive,
     }
 
 
@@ -606,7 +582,6 @@ async def get_agent_binding(
             "agent_type": agent_type,
             "provider_id": None,
             "thinking_effort": None,
-            "thinking_adaptive": False,
         }
     return _binding_to_dict(b)
 
@@ -636,20 +611,17 @@ async def set_agent_binding(
     provider_changed = existing is None or existing.provider_id != body.provider_id
 
     effort = None if provider_changed else body.thinking_effort
-    adaptive = False if provider_changed else body.thinking_adaptive
 
     # capability 硬约束：NONE / ALWAYS_ON 强制清空
     if body.provider_id is not None:
         capability = record.thinking_capability  # type: ignore[union-attr]
         if capability in ("none", "always_on"):
             effort = None
-            adaptive = False
 
     binding = await state.llm_registry.set_binding(
         agent_type,
         body.provider_id,
         thinking_effort=effort,
-        thinking_adaptive=adaptive,
     )
     return _binding_to_dict(binding)
 
@@ -728,7 +700,6 @@ async def test_base_agent_injects_effort_into_llm_call(make_agent, monkeypatch):
         provider=mock_provider,
         model="claude-3",
         thinking_effort="high",
-        thinking_adaptive=False,
         capability="effort",
     )
     agent = make_agent(resolved=resolved)
@@ -740,27 +711,12 @@ async def test_base_agent_injects_effort_into_llm_call(make_agent, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_base_agent_adaptive_maps_to_adaptive_marker(make_agent):
-    mock_provider = MagicMock()
-    mock_provider.chat_stream = AsyncMock(return_value=_empty_aiter())
-    resolved = ResolvedProvider(
-        provider=mock_provider, model="claude-3",
-        thinking_effort=None, thinking_adaptive=True, capability="adaptive",
-    )
-    agent = make_agent(resolved=resolved)
-    await agent.turn(messages=[], task_id=None)
-    kwargs = mock_provider.chat_stream.call_args.kwargs
-    # 与现有 provider 接口约定一致：adaptive 以特殊字符串透传
-    assert kwargs["thinking_effort"] == "adaptive"
-
-
-@pytest.mark.asyncio
 async def test_base_agent_no_thinking_when_effort_off(make_agent):
     mock_provider = MagicMock()
     mock_provider.chat_stream = AsyncMock(return_value=_empty_aiter())
     resolved = ResolvedProvider(
         provider=mock_provider, model="claude-3",
-        thinking_effort="off", thinking_adaptive=False, capability="toggle",
+        thinking_effort="off", capability="toggle",
     )
     agent = make_agent(resolved=resolved)
     await agent.turn(messages=[], task_id=None)
@@ -792,12 +748,7 @@ Expected: FAIL
 
 ```python
 resolved = await self._llm_registry.get_provider(self.name)
-# adaptive 用特殊 sentinel 'adaptive' 透传给 LLM provider；各 provider adapter
-# 负责识别（Anthropic → extended thinking adaptive mode；OpenAI 暂无，降级到 high）
-if resolved.thinking_adaptive:
-    thinking_effort_for_llm: str | None = "adaptive"
-else:
-    thinking_effort_for_llm = resolved.thinking_effort
+thinking_effort_for_llm = resolved.thinking_effort
 
 # 继续使用已有流程
 await self._agent_loop.run(
@@ -865,7 +816,7 @@ async def test_thinking_comes_from_binding(client, auth_headers, mock_llm_provid
     # 先绑定 effort=high
     await client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": mock_llm_provider.id, "thinking_effort": "high", "thinking_adaptive": False},
+        json={"provider_id": mock_llm_provider.id, "thinking_effort": "high"},
         headers=auth_headers,
     )
     # 发消息
@@ -982,7 +933,6 @@ import com.squareup.moshi.JsonClass
 data class SetBindingRequest(
     @param:Json(name = "provider_id") val providerId: String?,
     @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
-    @param:Json(name = "thinking_adaptive") val thinkingAdaptive: Boolean = false,
 )
 
 @JsonClass(generateAdapter = true)
@@ -990,7 +940,6 @@ data class AgentBindingDto(
     @param:Json(name = "agent_type") val agentType: String,
     @param:Json(name = "provider_id") val providerId: String?,
     @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
-    @param:Json(name = "thinking_adaptive") val thinkingAdaptive: Boolean = false,
 )
 ```
 
@@ -1010,7 +959,6 @@ data class AgentInfo(
     val isOrchestrator: Boolean = false,
     val boundProviderId: String?,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
-    val thinkingAdaptive: Boolean = false,
     // 保留 active_session_count / max_children 旧字段
     val activeSessionCount: Int = 0,
     val maxChildren: Int = 0,
@@ -1055,7 +1003,7 @@ Expected: BUILD SUCCESSFUL（后续 Task 清理 ChatRepositoryImpl 里同名 pri
 
 ```bash
 git add ui/mobile-android/app/src/main/java/com/sebastian/android/data/
-git commit -m "feat(android/data): 扩 AgentBinding DTO 含 thinking_effort/adaptive；公共 effort 字符串转换"
+git commit -m "feat(android/data): 扩 AgentBinding DTO 含 thinking_effort；公共 effort 字符串转换"
 ```
 
 ---
@@ -1086,7 +1034,6 @@ interface AgentRepository {
         agentType: String,
         providerId: String?,
         thinkingEffort: ThinkingEffort,
-        thinkingAdaptive: Boolean,
     ): Result<Unit>
     suspend fun clearBinding(agentType: String): Result<Unit>
 }
@@ -1099,14 +1046,12 @@ override suspend fun setBinding(
     agentType: String,
     providerId: String?,
     thinkingEffort: ThinkingEffort,
-    thinkingAdaptive: Boolean,
 ): Result<Unit> = runCatching {
     apiService.setAgentBinding(
         agentType,
         SetBindingRequest(
             providerId = providerId,
             thinkingEffort = thinkingEffort.toApiString(),
-            thinkingAdaptive = thinkingAdaptive,
         ),
     )
     Unit
@@ -1122,7 +1067,7 @@ override suspend fun getBinding(agentType: String): Result<AgentBindingDto> = ru
 ```kotlin
 fun bind(agentType: String, providerId: String) {
     viewModelScope.launch {
-        agentRepository.setBinding(agentType, providerId, ThinkingEffort.OFF, false)
+        agentRepository.setBinding(agentType, providerId, ThinkingEffort.OFF)
         ...
     }
 }
@@ -1385,53 +1330,9 @@ git commit -m "feat(android/ui): 新增 EffortSlider 组件（TOGGLE/EFFORT/ADAP
 
 ---
 
-### Task B5: 构造 `AdaptiveSwitch` 组件
+### Task B5: ~~构造 `AdaptiveSwitch` 组件~~ — **Removed**
 
-**Files:**
-- Create: `ui/mobile-android/app/src/main/java/com/sebastian/android/ui/settings/components/AdaptiveSwitch.kt`
-
-- [ ] **Step 1: 实现**
-
-```kotlin
-package com.sebastian.android.ui.settings.components
-
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import com.sebastian.android.ui.common.SebastianSwitch
-
-@Composable
-fun AdaptiveSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    ListItem(
-        headlineContent = { Text("Adaptive Thinking") },
-        supportingContent = { Text("Let the model decide thinking depth") },
-        trailingContent = {
-            SebastianSwitch(checked = checked, onCheckedChange = onCheckedChange)
-        },
-        modifier = modifier,
-    )
-}
-```
-
-- [ ] **Step 2: Build**
-
-```bash
-cd ui/mobile-android && ./gradlew compileDebugKotlin
-```
-
-Expected: BUILD SUCCESSFUL
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add ui/mobile-android/app/src/main/java/com/sebastian/android/ui/settings/components/AdaptiveSwitch.kt
-git commit -m "feat(android/ui): 新增 AdaptiveSwitch 组件（复用 SebastianSwitch）"
-```
+> **B5: Removed** — 用户级 adaptive 开关整体下线。`AdaptiveSwitch.kt` 不需要创建。capability=adaptive 的 provider 仍可绑定，EffortSlider 5 档显示，用户选 effort 档位即可。
 
 ---
 
@@ -1581,7 +1482,7 @@ class AgentBindingEditorViewModelTest {
         val adaptive = Provider(id = "p1", name = "Claude", type = "anthropic", model = "c", isDefault = false, thinkingCapability = ThinkingCapability.ADAPTIVE)
         val effort = Provider(id = "p2", name = "GPT", type = "openai", model = "g", isDefault = false, thinkingCapability = ThinkingCapability.EFFORT)
         whenever(agentRepo.getBinding("sebastian")).thenReturn(Result.success(
-            AgentBindingDto("sebastian", "p1", "high", true),
+            AgentBindingDto("sebastian", "p1", "high"),
         ))
         whenever(settingsRepo.getProviders()).thenReturn(Result.success(listOf(adaptive, effort)))
 
@@ -1592,18 +1493,17 @@ class AgentBindingEditorViewModelTest {
         vm.selectProvider("p2")
         // 本地立即重置
         assertEquals(ThinkingEffort.OFF, vm.uiState.value.thinkingEffort)
-        assertTrue(!vm.uiState.value.thinkingAdaptive)
 
         // 300ms 后 PUT
         dispatcher.scheduler.advanceTimeBy(350)
-        verify(agentRepo).setBinding("sebastian", "p2", ThinkingEffort.OFF, false)
+        verify(agentRepo).setBinding("sebastian", "p2", ThinkingEffort.OFF)
     }
 
     @Test
     fun `setEffort debounces consecutive changes into single put`() = runTest(dispatcher) {
         val p = Provider("p1", "C", "anthropic", "c", false, ThinkingCapability.EFFORT)
         whenever(agentRepo.getBinding("sebastian")).thenReturn(Result.success(
-            AgentBindingDto("sebastian", "p1", null, false),
+            AgentBindingDto("sebastian", "p1", null),
         ))
         whenever(settingsRepo.getProviders()).thenReturn(Result.success(listOf(p)))
 
@@ -1618,14 +1518,14 @@ class AgentBindingEditorViewModelTest {
         vm.setEffort(ThinkingEffort.HIGH)
         dispatcher.scheduler.advanceTimeBy(350)
 
-        verify(agentRepo).setBinding("sebastian", "p1", ThinkingEffort.HIGH, false)
+        verify(agentRepo).setBinding("sebastian", "p1", ThinkingEffort.HIGH)
     }
 
     @Test
     fun `effective capability falls back to default provider when binding has no provider`() = runTest(dispatcher) {
         val def = Provider("pd", "Default", "anthropic", "c", isDefault = true, thinkingCapability = ThinkingCapability.ADAPTIVE)
         whenever(agentRepo.getBinding("foo")).thenReturn(Result.success(
-            AgentBindingDto("foo", null, null, false),
+            AgentBindingDto("foo", null, null),
         ))
         whenever(settingsRepo.getProviders()).thenReturn(Result.success(listOf(def)))
 
@@ -1650,10 +1550,9 @@ class AgentBindingEditorViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(ThinkingEffort.HIGH, vm.uiState.value.thinkingEffort)
-        assertTrue(!vm.uiState.value.thinkingAdaptive)
         // 并且触发 PUT 纠正
         dispatcher.scheduler.advanceTimeBy(350)
-        verify(agentRepo).setBinding("foo", "p", ThinkingEffort.HIGH, false)
+        verify(agentRepo).setBinding("foo", "p", ThinkingEffort.HIGH)
     }
 }
 ```
@@ -1703,7 +1602,6 @@ data class EditorUiState(
     val providers: List<Provider> = emptyList(),
     val selectedProvider: Provider? = null,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
-    val thinkingAdaptive: Boolean = false,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val loading: Boolean = true,
@@ -1749,15 +1647,14 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
             val providers = providersR.getOrThrow()
             val selected = providers.firstOrNull { it.id == dto.providerId }
             val capability = (selected ?: providers.firstOrNull { it.isDefault })?.thinkingCapability
-            val (coercedEffort, coercedAdaptive, wasCoerced) =
-                coerceEffort(dto.thinkingEffort.toThinkingEffort(), dto.thinkingAdaptive, capability)
+            val (coercedEffort, wasCoerced) =
+                coerceEffort(dto.thinkingEffort.toThinkingEffort(), capability)
             _uiState.update {
                 it.copy(
                     loading = false,
                     providers = providers,
                     selectedProvider = selected,
                     thinkingEffort = coercedEffort,
-                    thinkingAdaptive = coercedAdaptive,
                 )
             }
             if (wasCoerced) schedulePut()
@@ -1768,12 +1665,11 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
         val prev = _uiState.value
         val next = prev.providers.firstOrNull { it.id == providerId }
         val providerChanged = prev.selectedProvider?.id != providerId
-        val hadConfig = prev.thinkingEffort != ThinkingEffort.OFF || prev.thinkingAdaptive
+        val hadConfig = prev.thinkingEffort != ThinkingEffort.OFF
         _uiState.update {
             it.copy(
                 selectedProvider = next,
                 thinkingEffort = if (providerChanged) ThinkingEffort.OFF else it.thinkingEffort,
-                thinkingAdaptive = if (providerChanged) false else it.thinkingAdaptive,
             )
         }
         if (providerChanged && hadConfig) {
@@ -1784,11 +1680,6 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
 
     fun setEffort(e: ThinkingEffort) {
         _uiState.update { it.copy(thinkingEffort = e) }
-        schedulePut()
-    }
-
-    fun setAdaptive(enabled: Boolean) {
-        _uiState.update { it.copy(thinkingAdaptive = enabled) }
         schedulePut()
     }
 
@@ -1803,7 +1694,6 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
                 agentType,
                 s.selectedProvider?.id,
                 s.thinkingEffort,
-                s.thinkingAdaptive,
             )
             _uiState.update { it.copy(isSaving = false) }
             r.onFailure { err ->
@@ -1816,19 +1706,15 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
 
     private fun coerceEffort(
         effort: ThinkingEffort,
-        adaptive: Boolean,
         capability: ThinkingCapability?,
-    ): Triple<ThinkingEffort, Boolean, Boolean> {
-        val steps = capability?.let { effortStepsFor(it) } ?: return Triple(effort, adaptive, false)
+    ): Pair<ThinkingEffort, Boolean> {
+        val steps = capability?.let { effortStepsFor(it) } ?: return Pair(effort, false)
         if (effort !in steps) {
             // 钳到最高合法档位
             val fallback = steps.lastOrNull { it != ThinkingEffort.OFF } ?: ThinkingEffort.OFF
-            return Triple(fallback, false, true)
+            return Pair(fallback, true)
         }
-        if (capability != ThinkingCapability.ADAPTIVE && adaptive) {
-            return Triple(effort, false, true)
-        }
-        return Triple(effort, adaptive, false)
+        return Pair(effort, false)
     }
 }
 ```
@@ -1902,7 +1788,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.sebastian.android.data.model.ThinkingCapability
-import com.sebastian.android.ui.settings.components.AdaptiveSwitch
 import com.sebastian.android.ui.settings.components.EffortSlider
 import com.sebastian.android.ui.settings.components.ProviderPickerDialog
 import com.sebastian.android.viewmodel.AgentBindingEditorViewModel
@@ -1993,14 +1878,7 @@ fun AgentBindingEditorPage(
                         capability = capability,
                         value = state.thinkingEffort,
                         onValueChange = vm::setEffort,
-                        enabled = !(capability == ThinkingCapability.ADAPTIVE && state.thinkingAdaptive),
                     )
-                    if (capability == ThinkingCapability.ADAPTIVE) {
-                        AdaptiveSwitch(
-                            checked = state.thinkingAdaptive,
-                            onCheckedChange = vm::setAdaptive,
-                        )
-                    }
                 }
             }
         }
@@ -2036,7 +1914,7 @@ Expected: BUILD SUCCESSFUL
 
 ```bash
 git add ui/mobile-android/app/src/main/java/com/sebastian/android/ui/settings/AgentBindingEditorPage.kt
-git commit -m "feat(android/ui): AgentBindingEditorPage 装配 provider/effort/adaptive 三控件"
+git commit -m "feat(android/ui): AgentBindingEditorPage 装配 provider/effort 两控件"
 ```
 
 ---
@@ -2239,7 +2117,6 @@ private fun AgentRow(
                         ThinkingEffort.OFF -> ""
                     }
                 )
-                if (agent.thinkingAdaptive) append(" · adaptive")
             }
         }
     } else {
