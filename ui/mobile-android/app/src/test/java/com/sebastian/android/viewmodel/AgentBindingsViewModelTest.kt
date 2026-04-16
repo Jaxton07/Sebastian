@@ -3,7 +3,6 @@ package com.sebastian.android.viewmodel
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.model.ThinkingCapability
-import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +39,15 @@ class AgentBindingsViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun sampleAgent(boundId: String? = null) = AgentInfo(
-        agentType = "forge",
-        displayName = "Forge",
+    private fun sampleAgent(
+        agentType: String = "forge",
+        boundId: String? = null,
+        isOrchestrator: Boolean = false,
+    ) = AgentInfo(
+        agentType = agentType,
+        displayName = agentType.replaceFirstChar { it.uppercase() },
         description = "Code",
+        isOrchestrator = isOrchestrator,
         boundProviderId = boundId,
     )
 
@@ -73,36 +77,24 @@ class AgentBindingsViewModelTest {
     }
 
     @Test
-    fun `bind sets provider and refreshes agents`() = runTest(dispatcher) {
-        wheneverBlocking { agentRepo.getAgents() }.thenReturn(Result.success(listOf(sampleAgent("p1"))))
-        wheneverBlocking { settingsRepo.getProviders() }.thenReturn(Result.success(listOf(sampleProvider())))
-        wheneverBlocking { agentRepo.setBinding("forge", "p1", ThinkingEffort.OFF) }.thenReturn(
-            Result.success(Unit)
+    fun `load partitions orchestrator from sub-agents`() = runTest(dispatcher) {
+        val orchestrator = sampleAgent(agentType = "orchestrator", isOrchestrator = true)
+        val subAgent = sampleAgent(agentType = "forge", isOrchestrator = false)
+        wheneverBlocking { agentRepo.getAgents() }.thenReturn(
+            Result.success(listOf(orchestrator, subAgent))
         )
+        wheneverBlocking { settingsRepo.getProviders() }.thenReturn(Result.success(emptyList()))
 
         val vm = AgentBindingsViewModel(agentRepo, settingsRepo)
         vm.load()
         advanceUntilIdle()
-        vm.bind("forge", "p1")
-        advanceUntilIdle()
 
-        assertEquals("p1", vm.uiState.value.agents.first().boundProviderId)
-        assertEquals(AgentBindingsEvent.BindingUpdated, vm.events.replayCache.last())
-    }
-
-    @Test
-    fun `useDefault clears binding and refreshes`() = runTest(dispatcher) {
-        wheneverBlocking { agentRepo.getAgents() }.thenReturn(Result.success(listOf(sampleAgent(null))))
-        wheneverBlocking { settingsRepo.getProviders() }.thenReturn(Result.success(listOf(sampleProvider())))
-        wheneverBlocking { agentRepo.clearBinding("forge") }.thenReturn(Result.success(Unit))
-
-        val vm = AgentBindingsViewModel(agentRepo, settingsRepo)
-        vm.load()
-        advanceUntilIdle()
-        vm.useDefault("forge")
-        advanceUntilIdle()
-
-        assertNull(vm.uiState.value.agents.first().boundProviderId)
-        assertEquals(AgentBindingsEvent.BindingUpdated, vm.events.replayCache.last())
+        val agents = vm.uiState.value.agents
+        assertEquals(2, agents.size)
+        val (orch, subs) = agents.partition { it.isOrchestrator }
+        assertEquals(1, orch.size)
+        assertEquals(1, subs.size)
+        assertEquals("orchestrator", orch.first().agentType)
+        assertEquals("forge", subs.first().agentType)
     }
 }
