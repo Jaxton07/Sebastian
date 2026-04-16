@@ -8,14 +8,35 @@ MVVM ViewModel 层，使用 Hilt 注入依赖，通过 `StateFlow<UiState>` 向 
 
 ```text
 viewmodel/
-├── ChatViewModel.kt          # 主对话状态机（SSE 订阅、消息渲染、审批）
-├── ProviderFormViewModel.kt  # Provider 新增/编辑表单状态
-├── SessionViewModel.kt       # Session 列表与新建
-├── SettingsViewModel.kt      # 设置页状态（serverUrl、当前 provider）
-└── SubAgentViewModel.kt      # Sub-Agent 列表与 Agent Session 管理
+├── AgentBindingsViewModel.kt  # Agent LLM 绑定管理（列表加载、绑定/解绑）
+├── ChatViewModel.kt           # 主对话状态机（SSE 订阅、消息渲染）
+├── GlobalApprovalViewModel.kt # 全局审批队列（跨 session 的审批事件处理）
+├── ProviderFormViewModel.kt   # Provider 新增/编辑表单状态
+├── SessionViewModel.kt        # Session 列表与新建
+├── SettingsViewModel.kt       # 设置页状态（serverUrl、当前 provider）
+└── SubAgentViewModel.kt       # Sub-Agent 列表与 Agent Session 管理
 ```
 
 ## 模块说明
+
+### `GlobalApprovalViewModel`
+
+全局审批队列管理，负责：
+
+1. **SSE 事件订阅**：通过 `GlobalSseDispatcher.events` 监听 `ApprovalRequested` / `ApprovalGranted` / `ApprovalDenied` 事件，实时 upsert / 移除审批项
+2. **REST 快照同步**：由 `AppStateReconciler` 在 App 前台恢复时调用 `replaceAll(snapshot)` 覆盖本地审批列表
+3. **审批操作**：`grantApproval(approvalId)` / `denyApproval(approvalId)` 先乐观移除本地项，再异步调用 Repository
+
+暴露 `GlobalApprovalUiState`（`approvals: List<GlobalApproval>`）。
+
+### `AgentBindingsViewModel`
+
+Agent LLM 绑定管理，负责：
+
+- `load()`：并发加载 agent 列表和 provider 列表，合并到 `AgentBindingsUiState`
+- `bind(agentType, providerId)`：绑定指定 agent 到 provider，乐观更新本地列表
+- `useDefault(agentType)`：清除绑定（使用系统默认 provider）
+- 操作结果通过 `events: SharedFlow<AgentBindingsEvent>`（`BindingUpdated` / `Error`）通知 UI
 
 ### `ChatViewModel`
 
@@ -79,6 +100,7 @@ ViewModel (sendMessage / switchSession / ...)
 | 改主对话消息处理逻辑 | `ChatViewModel.handleEvent()` |
 | 改 SSE 重连/断线逻辑 | `ChatViewModel.startSseCollection()` / `observeNetwork()` |
 | 改全局审批处理 | `GlobalApprovalViewModel.grantApproval()` / `denyApproval()` |
+| 改 Agent LLM 绑定逻辑 | `AgentBindingsViewModel.bind()` / `useDefault()` |
 | 改思考档位状态 | `ChatViewModel.setEffort()` |
 | 改滚动跟随逻辑 | `ChatViewModel.onUserScrolled()` / `onScrolledNearBottom()` 等 |
 | 改 session 列表加载 | `SessionViewModel` |
