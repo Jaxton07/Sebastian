@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 
 from sebastian.llm.provider import LLMProvider
-from sebastian.store.models import LLMProviderRecord
+from sebastian.store.models import AgentLLMBindingRecord, LLMProviderRecord
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -114,6 +114,61 @@ class LLMProviderRegistry:
             await session.delete(record)
             await session.commit()
             return True
+
+    async def list_bindings(self) -> list[AgentLLMBindingRecord]:
+        async with self._db_factory() as session:
+            result = await session.execute(select(AgentLLMBindingRecord))
+            return list(result.scalars().all())
+
+    async def set_binding(
+        self, agent_type: str, provider_id: str | None
+    ) -> AgentLLMBindingRecord:
+        async with self._db_factory() as session:
+            result = await session.execute(
+                select(AgentLLMBindingRecord).where(
+                    AgentLLMBindingRecord.agent_type == agent_type
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is None:
+                record = AgentLLMBindingRecord(
+                    agent_type=agent_type, provider_id=provider_id
+                )
+                session.add(record)
+            else:
+                existing.provider_id = provider_id
+                record = existing
+            await session.commit()
+            await session.refresh(record)
+            return record
+
+    async def clear_binding(self, agent_type: str) -> None:
+        async with self._db_factory() as session:
+            result = await session.execute(
+                select(AgentLLMBindingRecord).where(
+                    AgentLLMBindingRecord.agent_type == agent_type
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                await session.delete(existing)
+                await session.commit()
+
+    async def _get_binding(self, agent_type: str) -> AgentLLMBindingRecord | None:
+        async with self._db_factory() as session:
+            result = await session.execute(
+                select(AgentLLMBindingRecord).where(
+                    AgentLLMBindingRecord.agent_type == agent_type
+                )
+            )
+            return result.scalar_one_or_none()
+
+    async def _get_record(self, provider_id: str) -> LLMProviderRecord | None:
+        async with self._db_factory() as session:
+            result = await session.execute(
+                select(LLMProviderRecord).where(LLMProviderRecord.id == provider_id)
+            )
+            return result.scalar_one_or_none()
 
     async def _clear_default_provider(
         self,
