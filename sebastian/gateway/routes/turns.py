@@ -29,7 +29,6 @@ class TokenResponse(BaseModel):
 class SendTurnRequest(BaseModel):
     content: str
     session_id: str | None = None
-    thinking_effort: str | None = None
 
 
 async def _ensure_llm_ready(agent_type: str) -> None:
@@ -80,7 +79,6 @@ async def send_turn(
 
     await _ensure_llm_ready("sebastian")
     session = await state.sebastian.get_or_create_session(body.session_id, body.content)
-    # TODO A5: remove thinking_effort field from SendTurnRequest DTO
     task = asyncio.create_task(
         state.sebastian.run_streaming(body.content, session.id)
     )

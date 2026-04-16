@@ -40,8 +40,8 @@ routes/
 | `GET /sessions` — 列出会话（支持过滤/分页） | [sessions.py](sessions.py) |
 | `GET /sessions/{id}` — 查询单个会话及其消息 | [sessions.py](sessions.py) |
 | `DELETE /sessions/{id}` — 删除会话 | [sessions.py](sessions.py) |
-| `POST /sessions/{id}/turns` — 向已有会话发送消息（支持 `thinking_effort`） | [sessions.py](sessions.py) |
-| `POST /agents/{agent_type}/sessions` — 创建 sub-agent 会话（首条消息即透传 `thinking_effort`，无需先建会话再发 turn） | [sessions.py](sessions.py) |
+| `POST /sessions/{id}/turns` — 向已有会话发送消息 | [sessions.py](sessions.py) |
+| `POST /agents/{agent_type}/sessions` — 创建 sub-agent 会话（首条消息即透传，无需先建会话再发 turn） | [sessions.py](sessions.py) |
 | `GET /sessions/{id}/tasks` — 列出会话下的 Task | [sessions.py](sessions.py) |
 | `POST /sessions/{id}/tasks/{tid}/pause` — 暂停 Task | [sessions.py](sessions.py) |
 | `DELETE /sessions/{id}/tasks/{tid}` — 取消 Task（DELETE）| [sessions.py](sessions.py) |
@@ -49,7 +49,7 @@ routes/
 | `GET /stream` — 订阅全局 SSE 事件流 | [stream.py](stream.py) |
 | `GET /sessions/{id}/stream` — 订阅单会话 SSE 事件流 | [stream.py](stream.py) |
 | `POST /auth/login` — 密码登录，获取 JWT | [turns.py](turns.py) |
-| `POST /turns` — 发送消息，触发主对话轮次（支持 `thinking_effort`） | [turns.py](turns.py) |
+| `POST /turns` — 发送消息，触发主对话轮次（effort 由 binding 决定） | [turns.py](turns.py) |
 
 ---
 

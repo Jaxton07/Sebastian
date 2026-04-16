@@ -200,3 +200,39 @@ def test_put_binding_to_none_capability_provider_clears_thinking(client) -> None
     data = resp.json()
     assert data["thinking_effort"] is None
     assert data["thinking_adaptive"] is False
+
+
+def test_send_turn_with_extra_thinking_effort_field_is_accepted(client) -> None:
+    """带 thinking_effort 字段的请求体不应导致 422；字段被静默忽略（pydantic 默认 extra='ignore'）。
+
+    A5 回归：DTO 里已删除该字段，客户端旧版本带此字段也不应报错。
+    """
+    from unittest.mock import AsyncMock, patch
+
+    http_client, token = client
+
+    with patch(
+        "sebastian.gateway.state.sebastian.get_or_create_session",
+        new_callable=AsyncMock,
+    ) as mock_session, patch(
+        "sebastian.gateway.state.sebastian.run_streaming",
+        new_callable=AsyncMock,
+    ):
+        from sebastian.core.types import Session
+
+        mock_session.return_value = Session(
+            agent_type="sebastian",
+            title="test",
+            goal="test",
+        )
+
+        resp = http_client.post(
+            "/api/v1/turns",
+            json={
+                "content": "hello",
+                "thinking_effort": "high",  # 已从 DTO 移除，应被 pydantic 静默忽略
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200

@@ -121,7 +121,6 @@ async def get_session(
 
 class SendTurnBody(BaseModel):
     content: str
-    thinking_effort: str | None = None
 
 
 def _log_background_turn_failure(task: asyncio.Task[object]) -> None:
@@ -275,7 +274,7 @@ async def send_turn_to_session(
     session = await _resolve_session(state, session_id)
     await _ensure_llm_ready(session.agent_type)
     now = await _touch_session(state, session)
-    await _schedule_session_turn(session, body.content)  # TODO A5: remove thinking_effort from HTTP DTO
+    await _schedule_session_turn(session, body.content)
 
     return {
         "session_id": session_id,
