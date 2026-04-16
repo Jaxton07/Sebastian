@@ -19,6 +19,7 @@ core/
 ├── protocols.py         # 结构子类型 Protocol 定义：ApprovalManagerProtocol、ToolSpecProvider
 ├── stream_events.py     # LLM 流式输出的内部事件 dataclass（TextDelta、ToolCallReady、TurnDone 等）
 ├── tool.py              # @tool 装饰器系统：自动提取函数签名生成 ToolSpec，注册到全局 _tools 字典
+├── tool_context.py      # ContextVar 封装：暴露当前执行工具的 ToolCallContext，供 PolicyGate 读取
 └── types.py             # 核心数据类型：Task、Session、TaskStatus 状态机枚举、ToolResult、Checkpoint 等
 ```
 
@@ -44,6 +45,7 @@ CREATED → PLANNING → RUNNING → COMPLETED
 | 僵死 session 检测与恢复 | [stalled_watchdog.py](stalled_watchdog.py) |
 | 新增核心数据类型 | [types.py](types.py) |
 | 注册新工具（@tool 装饰器） | [tool.py](tool.py)，工具实现放 `capabilities/tools/` |
+| 读取当前工具执行上下文（ToolCallContext） | [tool_context.py](tool_context.py) 的 `get_tool_context()` |
 | Approval / ToolSpec 跨模块接口 | [protocols.py](protocols.py) |
 | LLM 流式事件结构 | [stream_events.py](stream_events.py) |
 
