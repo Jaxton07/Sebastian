@@ -64,6 +64,12 @@ fun SettingsScreen(navController: NavController) {
             )
             HorizontalDivider()
             SettingsItem(
+                title = "Agent LLM Bindings",
+                subtitle = "为每个 Agent 选择 Provider",
+                onClick = { navController.navigate(Route.SettingsAgentBindings) { launchSingleTop = true } },
+            )
+            HorizontalDivider()
+            SettingsItem(
                 title = "外观",
                 subtitle = "主题模式",
                 onClick = { navController.navigate(Route.SettingsAppearance) { launchSingleTop = true } },
