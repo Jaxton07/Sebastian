@@ -64,11 +64,6 @@ def client(tmp_path):
                 yield test_client, token
 
 
-@pytest.fixture(autouse=True)
-def set_env():
-    os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test")
-
-
 def _create_provider(http_client, token, *, name: str, thinking_capability: str | None) -> str:
     """Helper: create a provider and return its id."""
     resp = http_client.post(

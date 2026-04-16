@@ -9,6 +9,8 @@ from sebastian.gateway.auth import require_auth
 
 router = APIRouter(tags=["agents"])
 
+ORCHESTRATOR_AGENT_TYPE = "sebastian"
+
 AuthPayload = dict[str, Any]
 JSONDict = dict[str, Any]
 
@@ -38,10 +40,10 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
     agents: list[JSONDict] = []
 
     # Sebastian 置顶
-    seb_binding = binding_map.get("sebastian")
+    seb_binding = binding_map.get(ORCHESTRATOR_AGENT_TYPE)
     agents.append(
         {
-            "agent_type": "sebastian",
+            "agent_type": ORCHESTRATOR_AGENT_TYPE,
             "description": "主管家 AI，负责对话调度与任务分解",
             "is_orchestrator": True,
             "active_session_count": 0,
@@ -51,7 +53,7 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
     )
 
     for agent_type, config in state.agent_registry.items():
-        if agent_type == "sebastian":
+        if agent_type == ORCHESTRATOR_AGENT_TYPE:
             continue  # 已置顶，跳过重复
 
         sessions = await state.index_store.list_by_agent_type(agent_type)
@@ -79,11 +81,10 @@ async def get_agent_binding(
 ) -> JSONDict:
     import sebastian.gateway.state as state
 
-    if agent_type != "sebastian" and agent_type not in state.agent_registry:
+    if agent_type != ORCHESTRATOR_AGENT_TYPE and agent_type not in state.agent_registry:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    bindings = await state.llm_registry.list_bindings()
-    binding = next((b for b in bindings if b.agent_type == agent_type), None)
+    binding = await state.llm_registry.get_binding(agent_type)
     if binding is None:
         return {
             "agent_type": agent_type,
@@ -102,20 +103,18 @@ async def set_agent_binding(
 ) -> JSONDict:
     import sebastian.gateway.state as state
 
-    if agent_type != "sebastian" and agent_type not in state.agent_registry:
+    if agent_type != ORCHESTRATOR_AGENT_TYPE and agent_type not in state.agent_registry:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     # 查 provider record（需要读 thinking_capability）
     record = None
     if body.provider_id is not None:
-        all_records = await state.llm_registry.list_all()
-        record = next((r for r in all_records if r.id == body.provider_id), None)
+        record = await state.llm_registry.get_record(body.provider_id)
         if record is None:
             raise HTTPException(status_code=400, detail="Provider not found")
 
     # 查现有 binding，判断 provider 是否切换
-    existing_bindings = await state.llm_registry.list_bindings()
-    existing = next((b for b in existing_bindings if b.agent_type == agent_type), None)
+    existing = await state.llm_registry.get_binding(agent_type)
     provider_changed = existing is None or existing.provider_id != body.provider_id
 
     if provider_changed:
@@ -146,7 +145,7 @@ async def clear_agent_binding(
 ) -> Response:
     import sebastian.gateway.state as state
 
-    if agent_type != "sebastian" and agent_type not in state.agent_registry:
+    if agent_type != ORCHESTRATOR_AGENT_TYPE and agent_type not in state.agent_registry:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     await state.llm_registry.clear_binding(agent_type)

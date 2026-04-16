@@ -10,12 +10,24 @@ from httpx import ASGITransport, AsyncClient
 def _build_app_with_mocks(agents: dict, bindings: list, all_records: list | None = None) -> FastAPI:
     import sebastian.gateway.state as state
 
+    _records = all_records or []
+
     state.agent_registry = agents
     state.index_store = MagicMock()
     state.index_store.list_by_agent_type = AsyncMock(return_value=[])
     state.llm_registry = MagicMock()
     state.llm_registry.list_bindings = AsyncMock(return_value=bindings)
-    state.llm_registry.list_all = AsyncMock(return_value=all_records or [])
+    state.llm_registry.list_all = AsyncMock(return_value=_records)
+    state.llm_registry.get_binding = AsyncMock(
+        side_effect=lambda agent_type: next(
+            (b for b in bindings if b.agent_type == agent_type), None
+        )
+    )
+    state.llm_registry.get_record = AsyncMock(
+        side_effect=lambda provider_id: next(
+            (r for r in _records if r.id == provider_id), None
+        )
+    )
 
     app = FastAPI()
     from sebastian.gateway.auth import require_auth

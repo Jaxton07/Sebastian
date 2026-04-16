@@ -12,9 +12,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
-_EFFORT_ALIASES = {"off", "on", "low", "medium", "high", "max"}
-
-
 def _coerce_thinking(
     effort: str | None,
     adaptive: bool,
@@ -26,14 +23,10 @@ def _coerce_thinking(
     if capability == "toggle":
         if effort in (None, "off"):
             return ("off", False)
-        if effort == "on":
-            return ("on", False)
-        # low/medium/high/max → 统一视为 on
+        # 任何非空非 off 的值（包括 on/low/medium/high/max）→ on
         return ("on", False)
     if capability == "effort":
-        if effort == "max":
-            return ("high", False)
-        if effort == "on":
+        if effort in ("max", "on"):
             return ("high", False)
         return (effort, False)
     if capability == "adaptive":
@@ -94,9 +87,9 @@ class LLMProviderRegistry:
         record: LLMProviderRecord | None = None
         binding: AgentLLMBindingRecord | None = None
         if agent_type is not None:
-            binding = await self._get_binding(agent_type)
+            binding = await self.get_binding(agent_type)
             if binding is not None and binding.provider_id is not None:
-                record = await self._get_record(binding.provider_id)
+                record = await self.get_record(binding.provider_id)
 
         if record is None:
             # fallback: 全局默认
@@ -207,14 +200,14 @@ class LLMProviderRegistry:
                 await session.delete(existing)
                 await session.commit()
 
-    async def _get_binding(self, agent_type: str) -> AgentLLMBindingRecord | None:
+    async def get_binding(self, agent_type: str) -> AgentLLMBindingRecord | None:
         async with self._db_factory() as session:
             result = await session.execute(
                 select(AgentLLMBindingRecord).where(AgentLLMBindingRecord.agent_type == agent_type)
             )
             return result.scalar_one_or_none()
 
-    async def _get_record(self, provider_id: str) -> LLMProviderRecord | None:
+    async def get_record(self, provider_id: str) -> LLMProviderRecord | None:
         async with self._db_factory() as session:
             result = await session.execute(
                 select(LLMProviderRecord).where(LLMProviderRecord.id == provider_id)
