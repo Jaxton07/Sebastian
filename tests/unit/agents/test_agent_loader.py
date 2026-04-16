@@ -65,7 +65,8 @@ def test_load_agents_reads_allowed_tools_from_manifest(tmp_path: Path) -> None:
     assert cfg.allowed_tools is not None
     assert set(cfg.allowed_tools) == {"file_read"} | {
         "ask_parent",
-        "reply_to_agent",
+        "resume_agent",
+        "stop_agent",
         "spawn_sub_agent",
         "check_sub_agents",
         "inspect_session",
@@ -131,7 +132,8 @@ def test_load_agents_defaults_stalled_threshold_to_5(tmp_path: Path) -> None:
 
 PROTOCOL_TOOLS = {
     "ask_parent",
-    "reply_to_agent",
+    "resume_agent",
+    "stop_agent",
     "spawn_sub_agent",
     "check_sub_agents",
     "inspect_session",

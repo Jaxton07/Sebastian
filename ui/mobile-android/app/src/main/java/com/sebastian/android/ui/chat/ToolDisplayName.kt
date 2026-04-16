@@ -27,6 +27,14 @@ internal object ToolDisplayName {
                 summary = "",
             )
             "spawn_sub_agent" -> Display(title = "Worker", summary = rawSummary)
+            "stop_agent" -> Display(
+                title = "Stop Agent: ${rawSummary.replaceFirstChar { it.uppercase() }}",
+                summary = "",
+            )
+            "resume_agent" -> Display(
+                title = "Resume Agent: ${rawSummary.replaceFirstChar { it.uppercase() }}",
+                summary = "",
+            )
             else -> Display(title = toolName, summary = rawSummary)
         }
     }

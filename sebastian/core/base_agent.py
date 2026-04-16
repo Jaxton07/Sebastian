@@ -10,7 +10,7 @@ import time
 from abc import ABC
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from sebastian.llm.provider import LLMProvider
@@ -45,6 +45,7 @@ from sebastian.store.session_store import SessionStore
 logger = logging.getLogger(__name__)
 
 _DISPLAY_MAX = 4000
+CancelIntent = Literal["cancel", "stop"]
 
 
 def _format_tool_display(result: ToolResult) -> str:
@@ -117,7 +118,10 @@ class BaseAgent(ABC):
         self._episodic = EpisodicMemory(session_store)
         self.working_memory = WorkingMemory()
         self._active_streams: dict[str, asyncio.Task[str]] = {}  # session_id → task
-        self._cancel_requested: set[str] = set()
+        # session_id → intent: "cancel" ends as cancelled; "stop" keeps context for resume.
+        self._cancel_requested: dict[str, CancelIntent] = {}
+        # session_id → completed cancel intent, available for outer consumers after teardown.
+        self._completed_cancel_intents: dict[str, CancelIntent] = {}
         self._partial_buffer: dict[str, str] = {}
 
         # instance-level overrides class-level defaults
@@ -270,6 +274,7 @@ class BaseAgent(ABC):
         agent_name: str | None = None,
         thinking_effort: str | None = None,
     ) -> str:
+        self._completed_cancel_intents.pop(session_id, None)
         self._current_task_goals[session_id] = user_message
 
         if not self._provider_injected and self._llm_registry is not None:
@@ -332,30 +337,42 @@ class BaseAgent(ABC):
         try:
             return await current_stream
         finally:
-            was_cancelled = session_id in self._cancel_requested
-            self._cancel_requested.discard(session_id)
+            cancel_intent = self._cancel_requested.pop(session_id, None)
+            was_cancelled = cancel_intent is not None
             self._active_streams.pop(session_id, None)
             self._current_task_goals.pop(session_id, None)
             self._current_depth.pop(session_id, None)
 
             if was_cancelled:
+                assert cancel_intent is not None
+                self._completed_cancel_intents[session_id] = cancel_intent
                 partial = self._partial_buffer.pop(session_id, "")
                 if partial:
-                    partial += "\n\n[用户中断]"
                     try:
                         await self._episodic.add_turn(
                             session_id,
                             "assistant",
-                            partial,
+                            (f"{partial}\n\n[用户中断]" if cancel_intent == "cancel" else partial),
                             agent=agent_context,
                         )
                     except Exception:
                         logger.warning("Failed to flush partial text on cancel", exc_info=True)
-                await self._publish(
-                    session_id,
-                    EventType.TURN_CANCELLED,
-                    {"agent_type": agent_context, "had_partial": bool(partial)},
-                )
+                if cancel_intent == "cancel":
+                    await self._publish(
+                        session_id,
+                        EventType.TURN_CANCELLED,
+                        {"agent_type": agent_context, "had_partial": bool(partial)},
+                    )
+                else:
+                    await self._publish(
+                        session_id,
+                        EventType.TURN_INTERRUPTED,
+                        {
+                            "agent_type": agent_context,
+                            "intent": cancel_intent,
+                            "partial_content": partial,
+                        },
+                    )
                 await self._publish(session_id, EventType.TURN_RESPONSE, {})
             else:
                 self._partial_buffer.pop(session_id, None)
@@ -578,18 +595,42 @@ class BaseAgent(ABC):
             )
         )
 
-    async def cancel_session(self, session_id: str) -> bool:
+    async def cancel_session(self, session_id: str, intent: CancelIntent = "cancel") -> bool:
         """Cancel the active streaming turn for session_id.
+
+        Args:
+            session_id: Target session to stop.
+            intent: "cancel" for terminal cancellation, or "stop" to preserve
+                resumable context for the caller to handle after the stream exits.
 
         Returns True if a stream was cancelled, False if no active stream exists.
         """
+        validated_intent = self._validate_cancel_intent(intent)
         stream = self._active_streams.get(session_id)
         if stream is None or stream.done():
             return False
-        self._cancel_requested.add(session_id)
+        previous = self._cancel_requested.get(session_id)
+        if previous is not None and previous != validated_intent:
+            logger.warning(
+                "cancel_session overriding pending intent for session %s: %s -> %s",
+                session_id,
+                previous,
+                validated_intent,
+            )
+        self._cancel_requested[session_id] = validated_intent
         stream.cancel()
         try:
             await stream
         except (asyncio.CancelledError, Exception):
             pass
         return True
+
+    def consume_cancel_intent(self, session_id: str) -> CancelIntent | None:
+        """Return and clear the completed cancel intent for a session, if any."""
+        return self._completed_cancel_intents.pop(session_id, None)
+
+    @staticmethod
+    def _validate_cancel_intent(intent: str) -> CancelIntent:
+        if intent not in ("cancel", "stop"):
+            raise ValueError(f"Invalid cancel intent: {intent}")
+        return cast(CancelIntent, intent)

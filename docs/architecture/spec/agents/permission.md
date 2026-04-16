@@ -341,13 +341,20 @@ Sub-agent 的 `allowed_tools` 白名单在两层强制生效：
 | 类别 | 说明 | 控制方式 |
 |------|------|---------|
 | **能力工具** | 决定 Agent 能做什么（Read / Write / Bash 等） | manifest `allowed_tools` 白名单 |
-| **协议工具** | 决定 Agent 如何在层级中通信（ask_parent / reply_to_agent / spawn_sub_agent / check_sub_agents / inspect_session） | 按角色自动注入，不受白名单影响 |
+| **协议工具** | 决定 Agent 如何在层级中通信（ask_parent / resume_agent / stop_agent / spawn_sub_agent / check_sub_agents / inspect_session） | 按角色自动注入，不受白名单影响 |
 
 ### 实现：`_loader.py` 自动追加
 
 ```python
 # sebastian/agents/_loader.py
-_SUBAGENT_PROTOCOL_TOOLS: tuple[str, ...] = ("ask_parent",)
+_SUBAGENT_PROTOCOL_TOOLS: tuple[str, ...] = (
+    "ask_parent",
+    "resume_agent",
+    "stop_agent",
+    "spawn_sub_agent",
+    "check_sub_agents",
+    "inspect_session",
+)
 
 if raw_tools is not None:
     protocol_extra = [t for t in _SUBAGENT_PROTOCOL_TOOLS if t not in raw_tools]
@@ -359,6 +366,7 @@ else:
 - 仅影响经 `_loader.py` 加载的子代理（`agents/` 目录）
 - Sebastian 在 `app.py` 直接实例化，不经过此路径，完全不受影响
 - `spawn_sub_agent` / `check_sub_agents` / `inspect_session` 同属协议工具：`check_sub_agents` 内部按 depth 分支（depth=1 看 depth=2，depth=2 看 depth=3），天然支持组长使用；`inspect_session` 按 session_id 查询，层级无关
+- `resume_agent` / `stop_agent` 的具体作用域由工具内部基于 `ToolCallContext.depth` 和 parent 关系做硬校验（depth>=3 直接拒绝）
 
 ### 决策依据
 

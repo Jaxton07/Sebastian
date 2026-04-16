@@ -129,7 +129,8 @@ async def test_waiting_event_triggers_sebastian_turn_with_question():
 
     notification = sebastian.run_streaming.call_args[0][0]
     assert "config.yaml 文件要覆盖吗？" in notification
-    assert "reply_to_agent" in notification
+    assert "resume_agent" in notification
+    assert "agent_type：code" in notification
 
 
 @pytest.mark.asyncio

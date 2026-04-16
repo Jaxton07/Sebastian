@@ -113,7 +113,9 @@ class CompletionNotifier:
                 f"[内部通知] 子代理 {display} 遇到问题，需要你的指示\n"
                 f"目标：{goal}\n"
                 f"问题：{question}\n"
-                f"session_id：{session_id}（回复请使用 reply_to_agent 工具）"
+                f"agent_type：{agent_type}\n"
+                f"session_id：{session_id}"
+                "（回复请使用 resume_agent(agent_type, session_id, instruction)）"
             )
 
         # COMPLETED / FAILED

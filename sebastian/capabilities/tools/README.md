@@ -81,7 +81,7 @@ return ToolResult(
 | 类别 | 工具 | 控制方式 | 说明 |
 |------|------|---------|------|
 | **能力工具** | Read / Write / Edit / Bash / Glob / Grep / todo_write 等 | manifest `allowed_tools` 白名单 | 决定 Agent 的领域执行范围 |
-| **协议工具** | ask_parent / reply_to_agent / spawn_sub_agent / check_sub_agents / inspect_session / delegate_to_agent 等 | 按 Agent 层级角色自动注入 | 决定 Agent 在层级中的通信与监控方式 |
+| **协议工具** | ask_parent / resume_agent / stop_agent / spawn_sub_agent / check_sub_agents / inspect_session（sub-agent 自动注入）；delegate_to_agent（Sebastian 手工配置） | 按 Agent 层级角色分配 | 决定 Agent 在层级中的通信与监控方式 |
 
 **`manifest.toml` 的 `allowed_tools` 只需声明能力工具。**
 协议工具由 `_loader.py` 根据 Agent 角色自动追加，无需手动填写。

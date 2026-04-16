@@ -61,6 +61,8 @@ class EventType(StrEnum):
     SESSION_CANCELLED = "session.cancelled"
     SESSION_STALLED = "session.stalled"
     SESSION_WAITING = "session.waiting"
+    SESSION_PAUSED = "session.paused"
+    SESSION_RESUMED = "session.resumed"
 
     # Conversation
     TURN_RECEIVED = "turn.received"
