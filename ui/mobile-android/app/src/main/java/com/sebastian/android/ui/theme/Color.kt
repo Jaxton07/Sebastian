@@ -52,3 +52,8 @@ val OutlineVariantDark = Color(0xFF3C3F41)
 // 不进入 colorScheme，由 SebastianSwitch 直接引用
 val SwitchCheckedLight = Color(0xFF34C759)  // 日间苹果绿
 val SwitchCheckedDark = Color(0xFF30D158)   // 夜间苹果绿（更亮）
+
+// ── Agent 活动指示器（Jarvis 蓝）────────────────────────────────
+// 不进入 colorScheme，由 AgentPill 直接引用（参考 SwitchChecked 的 pattern）
+val AgentAccentLight = Color(0xFF6FC3FF)
+val AgentAccentDark = Color(0xFF9FD6FF)
