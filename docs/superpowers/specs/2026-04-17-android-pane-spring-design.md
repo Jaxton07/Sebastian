@@ -36,15 +36,19 @@ iOS / 主流 Material 3 App 在类似交互上普遍带 rubberband 阻尼 + spri
 新增文件级 private 纯函数：
 
 ```kotlin
-private fun rubberband(distance: Float, dimension: Float): Float =
-    distance * dimension / (distance + dimension * 0.55f)
+internal fun rubberband(distance: Float, dimension: Float): Float {
+    if (dimension <= 0f) return 0f
+    val k = 0.55f
+    return (k * distance * dimension) / (k * distance + dimension)
+}
 ```
 
 性质：
 - `rubberband(0, dim) == 0`
 - 单调递增
-- `lim distance→∞ rubberband(distance, dim) = dim / 0.55 ≈ 1.82 * dim`（渐近线）
-- 对应公式与 iOS UIScrollView 的 overscroll 行为一致，0.55 为社区共识默认系数
+- `f(x) < x` 恒成立（衰减性，无放大区段）
+- `lim distance→∞ rubberband(distance, dim) = dim`（渐近线）
+- 对应公式与 iOS UIKit UIScrollView 的 overscroll 行为一致，0.55 为社区共识默认系数
 
 ### 2. 拖拽阶段应用 rubberband
 
@@ -69,7 +73,7 @@ val newOffset = when {
 }
 ```
 
-中间区段（`|newRaw| <= paneWidthPx`）保持 1:1 跟手；越界时按 rubberband 衰减。`maxOver = 25%` 决定了"再使劲拖也拖不出去多少"——按渐近线计算实际越界上限约为 `0.25 * paneWidthPx * 1.82 ≈ 0.45 * paneWidthPx`，但需要"无限大"的拖动距离才会接近。
+中间区段（`|newRaw| <= paneWidthPx`）保持 1:1 跟手；越界时按 rubberband 衰减。`maxOver = 25%` 决定越界距离上限——渐近趋近 `0.25 * paneWidthPx`（约屏宽 19%），需要"无限大"的拖动距离才会接近。在等于 `maxOver` 距离的拖动下实际越界 ≈ `0.355 * 0.25 * paneWidthPx`。
 
 ### 3. Spring 替代 tween
 
@@ -136,7 +140,7 @@ scope.launch {
 |---|---|
 | `rubberband(0, 100)` | `== 0f` |
 | `rubberband(50, 100)` | `> 0f && < 50f` |
-| `rubberband(10000, 100)` | `< 100 / 0.55 ≈ 181.8f`（渐近线） |
+| `rubberband(10000, 100)` | 趋近 `100f`（渐近线） |
 | 单调性 | `d1 < d2 ⇒ rubberband(d1, 100) < rubberband(d2, 100)` |
 | `rubberband(d, 0)` | `== 0f`（防御除零，公式天然成立） |
 
