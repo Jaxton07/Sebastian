@@ -281,6 +281,13 @@ class BaseAgent(ABC):
             provider, model = await self._llm_registry.get_provider(self.name)
             self._loop._provider = provider
             self._loop._model = model
+            logger.info(
+                "LLM resolved: agent=%s session=%s provider=%s model=%s",
+                self.name,
+                session_id,
+                type(provider).__name__,
+                model,
+            )
 
         agent_context = agent_name or self.name
         existing_stream = self._active_streams.get(session_id)
