@@ -62,7 +62,18 @@ class AgentLLMBindingRecord(Base):
 - `thinking_adaptive`：布尔，仅 `ADAPTIVE` 能力下有意义；为 true 时后端调 LLM 不传 effort，由模型自决
 - `NONE` / `ALWAYS_ON` 能力下两字段强制为 `null` / `false`
 
-**迁移**：新增 Alembic migration `add_thinking_fields_to_agent_llm_bindings`，`ALTER TABLE` 加两列，所有现有行使用默认值（null / false）。
+**迁移**：本项目不使用 Alembic。在 `sebastian/store/database.py:68-82` 的 `_apply_idempotent_migrations.patches` 列表中追加两条：
+
+```python
+patches: list[tuple[str, str, str]] = [
+    ("llm_providers", "thinking_capability", "VARCHAR(20)"),
+    # 新增
+    ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
+    ("agent_llm_bindings", "thinking_adaptive", "BOOLEAN NOT NULL DEFAULT 0"),
+]
+```
+
+`create_all` 处理全新库；`_apply_idempotent_migrations` 处理存量库。所有现有行使用默认值（null / false）。
 
 ---
 
@@ -482,8 +493,8 @@ Material3 `ListItem` + trailing `SebastianSwitch`（复用 `ui/common/SebastianS
 
 ### 后端
 - `sebastian/store/models.py` — 扩 `AgentLLMBindingRecord`
-- `sebastian/store/migrations/versions/xxxx_add_thinking_fields.py` — 新建
-- `sebastian/store/agent_binding_repository.py` — repo 方法签名扩展
+- `sebastian/store/database.py` — `_apply_idempotent_migrations.patches` 列表追加两条
+- `sebastian/llm/registry.py` — `set_binding`/`_get_binding` 签名扩展、新增 `ResolvedProvider` 返回类型
 - `sebastian/gateway/routes/agents.py` — DTO 扩展、解除 Sebastian 屏蔽、列表响应 attach binding
 - `sebastian/gateway/routes/sessions.py` — `SendTurnRequest` 移除 `thinking_effort`
 - `sebastian/core/base_agent.py` — 读 binding 注入 LLM 参数
