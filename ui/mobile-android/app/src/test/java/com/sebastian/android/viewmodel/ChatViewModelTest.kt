@@ -2,6 +2,7 @@ package com.sebastian.android.viewmodel
 
 import app.cash.turbine.test
 import com.sebastian.android.data.local.NetworkMonitor
+import com.sebastian.android.data.model.ApprovalSnapshot
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
@@ -32,6 +33,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -260,6 +263,7 @@ class ChatViewModelTest {
             override suspend fun cancelTurn(sessionId: String) = Result.success(Unit)
             override suspend fun grantApproval(approvalId: String) = Result.success(Unit)
             override suspend fun denyApproval(approvalId: String) = Result.success(Unit)
+            override suspend fun getPendingApprovals() = Result.success(emptyList<ApprovalSnapshot>())
         }
         viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         dispatcher.scheduler.advanceTimeBy(200)
@@ -404,5 +408,81 @@ class ChatViewModelTest {
             .blocks.first { it is ContentBlock.ToolBlock } as ContentBlock.ToolBlock
         assertTrue(after1.expanded)
         assertFalse(after2.expanded)
+    }
+
+    // ── onAppStart：回前台 chat reconcile ─────────────────────────────────────
+
+    @Test
+    fun `onAppStart in IDLE triggers switchSession re-hydrate`() = vmTest {
+        activateSession()  // getMessages 调用一次
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+        // activateSession + onAppStart = 两次 getMessages
+        runBlocking { verify(chatRepository, times(2)).getMessages("s1") }
+    }
+
+    @Test
+    fun `onAppStart during STREAMING skips reconcile`() = vmTest {
+        activateSession()
+        viewModel.uiState.test {
+            awaitItem()  // post-activation state
+            sseFlow.emit(StreamEvent.TurnReceived("s1"))
+            sseFlow.emit(StreamEvent.TextBlockStart("s1", "b0_0"))
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            // 等状态变 STREAMING
+            var streaming = false
+            while (!streaming) {
+                val state = awaitItem()
+                if (state.composerState == ComposerState.STREAMING) streaming = true
+            }
+
+            viewModel.onAppStart()
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            // 仅 activateSession 那次，onAppStart 不再触发
+            runBlocking { verify(chatRepository, times(1)).getMessages("s1") }
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `onAppStart when offline skips reconcile`() = vmTest {
+        activateSession()
+        onlineFlow.emit(false)
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        runBlocking { verify(chatRepository, times(1)).getMessages("s1") }
+    }
+
+    @Test
+    fun `onAppStart with null activeSessionId does not fetch`() = vmTest {
+        // 不 activate 任何 session
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        runBlocking { verify(chatRepository, never()).getMessages(any()) }
+    }
+
+    @Test
+    fun `onAppStart in IDLE_READY skips reconcile`() = vmTest {
+        activateSession()  // getMessages #1
+        // 构造 IDLE_READY：发送失败后 ViewModel 会把 composerState 拨到 IDLE_READY + 保留 error
+        runBlocking {
+            whenever(chatRepository.sendTurn(any(), any(), any()))
+                .thenReturn(Result.failure(RuntimeException("boom")))
+        }
+        viewModel.sendMessage("半截话")
+        dispatcher.scheduler.advanceTimeBy(200)
+        assertEquals(ComposerState.IDLE_READY, viewModel.uiState.value.composerState)
+
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        // 仅 activateSession 那次
+        runBlocking { verify(chatRepository, times(1)).getMessages("s1") }
     }
 }

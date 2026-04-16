@@ -15,7 +15,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -26,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.sebastian.android.ui.common.SebastianSwitch
 import com.sebastian.android.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,7 +119,7 @@ private fun SettingToggleRow(
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )
-        Switch(
+        SebastianSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
         )

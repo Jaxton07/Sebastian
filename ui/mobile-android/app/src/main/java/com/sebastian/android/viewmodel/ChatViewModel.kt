@@ -441,10 +441,26 @@ class ChatViewModel @Inject constructor(
         startSseCollection()
     }
 
+    /**
+     * 回前台时调用。承担 spec 的 chat reconcile 职责：复用 [switchSession] 作为幂等
+     * reconcile 原语（清空 → getMessages 全量 hydrate → SSE Last-Event-ID replay），
+     * 覆盖"切后台回来半截 assistant 气泡 / 输入框状态错乱"场景。
+     *
+     * Streaming/Sending/Cancelling 期间跳过，避免把正在流的 turn 切断；离线时跳过，
+     * 留给 [observeNetwork] 在网络恢复后接管重连。IDLE_READY 期间跳过，避免把用户
+     * 在 Composer 里未发送的半截输入对应的发送按钮状态拨回 IDLE_EMPTY（Composer 文本
+     * 存在 ChatScreen 的 local remember state，ViewModel 不感知）造成视觉错位。
+     */
     fun onAppStart() {
-        if (sseJob?.isActive != true && !_uiState.value.isOffline && _uiState.value.activeSessionId != null) {
-            startSseCollection()
-        }
+        val state = _uiState.value
+        val sessionId = state.activeSessionId ?: return
+        if (state.isOffline) return
+        if (state.composerState == ComposerState.STREAMING ||
+            state.composerState == ComposerState.SENDING ||
+            state.composerState == ComposerState.CANCELLING ||
+            state.composerState == ComposerState.IDLE_READY
+        ) return
+        switchSession(sessionId)
     }
 
     fun onAppStop() {

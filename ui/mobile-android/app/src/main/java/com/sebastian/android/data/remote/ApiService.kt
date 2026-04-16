@@ -64,7 +64,7 @@ interface ApiService {
 
     // Approvals
     @GET("api/v1/approvals")
-    suspend fun getPendingApprovals(): List<Map<String, Any>>
+    suspend fun getPendingApprovals(): PendingApprovalsResponse
 
     @POST("api/v1/approvals/{approvalId}/grant")
     suspend fun grantApproval(@Path("approvalId") approvalId: String): OkResponse

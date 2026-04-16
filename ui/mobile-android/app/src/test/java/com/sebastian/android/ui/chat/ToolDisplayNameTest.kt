@@ -34,6 +34,26 @@ class ToolDisplayNameTest {
     }
 
     @Test
+    fun `stop_agent resolves to Stop Agent display`() {
+        val display = ToolDisplayName.resolve(
+            "stop_agent",
+            """{"agent_type":"forge","session_id":"abc-123"}""",
+        )
+        assertEquals("Stop Agent: Forge", display.title)
+        assertEquals("", display.summary)
+    }
+
+    @Test
+    fun `resume_agent resolves to Resume Agent display`() {
+        val display = ToolDisplayName.resolve(
+            "resume_agent",
+            """{"agent_type":"forge","session_id":"abc-123"}""",
+        )
+        assertEquals("Resume Agent: Forge", display.title)
+        assertEquals("", display.summary)
+    }
+
+    @Test
     fun `unknown tool keeps raw tool name as title and shows summary`() {
         val display = ToolDisplayName.resolve(
             "Read",

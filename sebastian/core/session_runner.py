@@ -11,8 +11,15 @@ if TYPE_CHECKING:
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
 
+from sebastian.capabilities.tools._session_lock import release_session_lock
 from sebastian.core.types import Session, SessionStatus
 from sebastian.protocol.events.types import Event, EventType
+
+_TERMINAL_STATUSES = {
+    SessionStatus.COMPLETED,
+    SessionStatus.FAILED,
+    SessionStatus.CANCELLED,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -26,41 +33,54 @@ async def run_agent_session(
     event_bus: EventBus | None = None,
     thinking_effort: str | None = None,
 ) -> None:
-    """Run an agent on a session asynchronously. Sets status on completion/failure."""
+    """Run an agent on a session asynchronously. Sets status on completion/failure.
+
+    当 cancel_intent == "stop" 时，run_agent_session 不接管状态机与落库，
+    完全交由 stop_agent 工具负责 status=IDLE、update_session、upsert、事件发布，
+    避免两处都写导致的状态双写。
+    """
+    stopped_by_tool = False
     try:
         await agent.run_streaming(goal, session.id, thinking_effort=thinking_effort)
         # ask_parent 工具会把 session.status 设为 WAITING；此时不覆盖为 COMPLETED
         if session.status != SessionStatus.WAITING:
             session.status = SessionStatus.COMPLETED
     except asyncio.CancelledError:
-        session.status = SessionStatus.CANCELLED
-        raise  # finally block runs first, then CancelledError propagates
+        cancel_intent = agent.consume_cancel_intent(session.id)
+        if cancel_intent == "stop":
+            stopped_by_tool = True
+        else:
+            session.status = SessionStatus.CANCELLED
+            raise  # finally block runs first, then CancelledError propagates
     except Exception:
         logger.exception("Agent session %s failed", session.id)
         session.status = SessionStatus.FAILED
     finally:
-        session.updated_at = datetime.now(UTC)
-        session.last_activity_at = datetime.now(UTC)
-        await session_store.update_session(session)
-        await index_store.upsert(session)
-        if event_bus is not None and session.status != SessionStatus.WAITING:
-            # WAITING 状态由 ask_parent 工具自己发布 SESSION_WAITING 事件，此处跳过
-            event_type = (
-                EventType.SESSION_COMPLETED
-                if session.status == SessionStatus.COMPLETED
-                else EventType.SESSION_CANCELLED
-                if session.status == SessionStatus.CANCELLED
-                else EventType.SESSION_FAILED
-            )
-            await event_bus.publish(
-                Event(
-                    type=event_type,
-                    data={
-                        "session_id": session.id,
-                        "parent_session_id": session.parent_session_id,
-                        "agent_type": session.agent_type,
-                        "goal": session.goal,
-                        "status": session.status.value,
-                    },
+        if not stopped_by_tool:
+            session.updated_at = datetime.now(UTC)
+            session.last_activity_at = datetime.now(UTC)
+            await session_store.update_session(session)
+            await index_store.upsert(session)
+            if session.status in _TERMINAL_STATUSES:
+                release_session_lock(session.id)
+            if event_bus is not None and session.status != SessionStatus.WAITING:
+                # WAITING 状态由 ask_parent 工具自己发布 SESSION_WAITING 事件
+                event_type = (
+                    EventType.SESSION_COMPLETED
+                    if session.status == SessionStatus.COMPLETED
+                    else EventType.SESSION_CANCELLED
+                    if session.status == SessionStatus.CANCELLED
+                    else EventType.SESSION_FAILED
                 )
-            )
+                await event_bus.publish(
+                    Event(
+                        type=event_type,
+                        data={
+                            "session_id": session.id,
+                            "parent_session_id": session.parent_session_id,
+                            "agent_type": session.agent_type,
+                            "goal": session.goal,
+                            "status": session.status.value,
+                        },
+                    )
+                )

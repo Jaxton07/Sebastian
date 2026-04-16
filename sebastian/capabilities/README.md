@@ -26,7 +26,8 @@ capabilities/
 │   ├── grep/            # 文件内容搜索工具（优先 ripgrep）
 │   ├── inspect_session/ # 查看指定 session 的最近消息与状态
 │   ├── read/            # 文件读取工具
-│   ├── reply_to_agent/  # 向 waiting 子代理发送指示并恢复其任务执行
+│   ├── resume_agent/    # 恢复 waiting/idle 子代理执行
+│   ├── stop_agent/      # 暂停运行中的子代理到 idle（可恢复）
 │   ├── spawn_sub_agent/ # Sebastian 创建新的 Sub-Agent session
 │   └── write/           # 文件写入工具（含 mtime 保护）
 ├── mcps/                # MCP server 配置目录，每个子目录一个 config.toml，启动时自动连接

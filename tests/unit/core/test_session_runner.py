@@ -64,6 +64,38 @@ async def test_run_agent_session_cancelled():
 
 
 @pytest.mark.asyncio
+async def test_run_agent_session_stop_intent_yields_to_stop_agent_without_persisting():
+    """CancelledError + stop intent：不再由 run_agent_session 写 IDLE/落库/发事件，
+    全部交由 stop_agent 工具负责，避免状态双写。"""
+    import asyncio
+
+    agent = MagicMock()
+    agent.run_streaming = AsyncMock(side_effect=asyncio.CancelledError())
+    agent.consume_cancel_intent = MagicMock(return_value="stop")
+    session = Session(id="s5", agent_type="code", title="test", depth=2)
+    session_store = AsyncMock()
+    index_store = AsyncMock()
+    event_bus = AsyncMock()
+
+    await run_agent_session(
+        agent=agent,
+        session=session,
+        goal="pausable task",
+        session_store=session_store,
+        index_store=index_store,
+        event_bus=event_bus,
+    )
+
+    # stop 分支：session_runner 不触碰存储，也不发事件
+    session_store.update_session.assert_not_awaited()
+    index_store.upsert.assert_not_awaited()
+    event_bus.publish.assert_not_called()
+    # status 不被 session_runner 改写（保留 stop_agent 发起时的状态）
+    assert session.status != SessionStatus.IDLE
+    assert session.status != SessionStatus.CANCELLED
+
+
+@pytest.mark.asyncio
 async def test_run_agent_session_failure():
     agent = MagicMock()
     agent.run_streaming = AsyncMock(side_effect=RuntimeError("boom"))

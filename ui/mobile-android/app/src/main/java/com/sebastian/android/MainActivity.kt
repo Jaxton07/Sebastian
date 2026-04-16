@@ -1,10 +1,12 @@
 package com.sebastian.android
 
+import android.content.Intent
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -30,12 +32,16 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.sebastian.android.data.local.SettingsDataStore
+import com.sebastian.android.data.remote.ConnectionState
+import com.sebastian.android.data.remote.GlobalSseDispatcher
+import com.sebastian.android.data.sync.AppStateReconciler
+import kotlinx.coroutines.launch
 import com.sebastian.android.ui.chat.ChatScreen
 import com.sebastian.android.ui.common.GlobalApprovalBanner
 import com.sebastian.android.ui.common.glass.rememberGlassState
@@ -56,9 +62,17 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsDataStore: SettingsDataStore
+    @Inject lateinit var sseDispatcher: GlobalSseDispatcher
+    @Inject lateinit var stateReconciler: AppStateReconciler
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // 拒绝时不做处理；Settings 页提供重新打开入口
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeRequestNotificationPermission()
         enableEdgeToEdge()
         setContent {
             val themeMode by settingsDataStore.theme.collectAsState(initial = "system")
@@ -68,15 +82,51 @@ class MainActivity : ComponentActivity() {
                 SideEffect {
                     window.setBackgroundDrawable(ColorDrawable(surfaceColor.toArgb()))
                 }
-                SebastianNavHost()
+                val startSessionId = remember {
+                    intent?.data?.takeIf { it.scheme == "sebastian" && it.host == "session" }
+                        ?.pathSegments?.firstOrNull()
+                }
+                SebastianNavHost(
+                    sseDispatcher = sseDispatcher,
+                    stateReconciler = stateReconciler,
+                    startSessionId = startSessionId,
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTask 模式下通知点击会走这里；最简方案：recreate 让 Compose 重新读 intent.data
+        recreate()
+    }
+
+    private fun maybeRequestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
+        val perm = android.Manifest.permission.POST_NOTIFICATIONS
+        if (checkSelfPermission(perm) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestNotificationPermission.launch(perm)
         }
     }
 }
 
 @Composable
-fun SebastianNavHost() {
+fun SebastianNavHost(
+    sseDispatcher: GlobalSseDispatcher,
+    stateReconciler: AppStateReconciler,
+    startSessionId: String? = null,
+) {
     val navController = rememberNavController()
+    // Deep link: 若外部带 sebastian://session/{id} 进入，首次组合后切到对应 Chat
+    androidx.compose.runtime.LaunchedEffect(startSessionId) {
+        if (!startSessionId.isNullOrBlank()) {
+            navController.navigate(Route.Chat(sessionId = startSessionId)) {
+                popUpTo<Route.Chat> { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
     val globalApprovalViewModel: GlobalApprovalViewModel = hiltViewModel()
     val approvalState by globalApprovalViewModel.uiState.collectAsState()
     val animDuration = 300
@@ -86,17 +136,45 @@ fun SebastianNavHost() {
     // 单例 Toast：连点时先 cancel 上一个，避免排队连续弹
     var alreadyInSessionToast by remember { mutableStateOf<Toast?>(null) }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    // Attach reconciler 到 globalApprovalViewModel（chat 消息 reconcile 留作后续 task）
+    DisposableEffect(Unit) {
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
+        )
+        stateReconciler.attach(
+            scope = scope,
+            approvalViewModelProvider = { globalApprovalViewModel },
+        )
+        onDispose { scope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
+    }
+
+    // 进程级生命周期：ON_START 启动 SSE + reconcile；ON_STOP 停止 SSE；Connected 时 reconcile
+    DisposableEffect(Unit) {
+        val owner = ProcessLifecycleOwner.get()
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
+        )
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> globalApprovalViewModel.onAppStart()
-                Lifecycle.Event.ON_STOP -> globalApprovalViewModel.onAppStop()
-                else -> {}
+                Lifecycle.Event.ON_START -> {
+                    sseDispatcher.start(scope)
+                    stateReconciler.reconcile()
+                }
+                Lifecycle.Event.ON_STOP -> sseDispatcher.stop()
+                else -> Unit
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        owner.lifecycle.addObserver(observer)
+        val connectionJob = scope.launch {
+            sseDispatcher.connectionState.collect { state ->
+                if (state == ConnectionState.Connected) stateReconciler.reconcile()
+            }
+        }
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            connectionJob.cancel()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
     }
 
     val glassState = rememberGlassState(MaterialTheme.colorScheme.background)

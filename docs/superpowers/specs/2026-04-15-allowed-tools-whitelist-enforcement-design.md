@@ -6,7 +6,7 @@
 
 ## 背景
 
-Sebastian 的子代理通过 `manifest.toml` 的 `allowed_tools` 字段声明能力白名单，`sebastian/agents/_loader.py` 会自动追加协议工具（`ask_parent` / `reply_to_agent` / `spawn_sub_agent` / `check_sub_agents` / `inspect_session`）。
+Sebastian 的子代理通过 `manifest.toml` 的 `allowed_tools` 字段声明能力白名单，`sebastian/agents/_loader.py` 会自动追加协议工具（`ask_parent` / `resume_agent` / `stop_agent` / `spawn_sub_agent` / `check_sub_agents` / `inspect_session`）。
 
 经代码审查发现：**当前 `allowed_tools` 形同虚设**。白名单只影响 system prompt 里罗列的工具描述清单，并没有真正限制 LLM 能调用的工具。
 
@@ -29,7 +29,7 @@ Sebastian 的子代理通过 `manifest.toml` 的 `allowed_tools` 字段声明能
 
 - 不改变 `PolicyGate` 的三档 tier 逻辑（LOW / MODEL_DECIDES / HIGH_RISK）。
 - 不改变 MCP 工具、Skill 工具的注册与调用路径。
-- 不重新设计 depth=3 组员的协议工具集（当前 depth=2 和 depth=3 共用同一套协议 5 工具，属于已知简化，本次不动）。
+- 不重新设计 depth=3 组员的协议工具集（当前 depth=2 和 depth=3 共用同一套协议 6 工具，属于已知简化，本次不动）。
 
 ## 整体架构
 
@@ -40,7 +40,7 @@ manifest.toml
  allowed_tools = ["Read", "Glob"]
         ↓
 _loader.py 自动追加协议工具
- effective = ["Read", "Glob", "ask_parent", "reply_to_agent",
+ effective = ["Read", "Glob", "ask_parent", "resume_agent", "stop_agent",
               "spawn_sub_agent", "check_sub_agents", "inspect_session"]
         ↓
 BaseAgent.__init__ 存 self.allowed_tools
@@ -209,23 +209,23 @@ async def call(self, tool_name, inputs, context):
 
 文档字符串里的审批流顺序也同步更新。
 
-### 改动 5：Sebastian 补 `reply_to_agent`
+### 改动 5：Sebastian 补 `resume_agent` / `stop_agent`
 
 **文件**：`sebastian/orchestrator/sebas.py`
 
-当前 `allowed_tools` 列表（`sebas.py:86-97`）的注释说 `reply_to_agent` 是"sub-agent-only，依赖 sub-agent ToolContext"而被排除。但 Sebastian 作为主管家，当组长调用 `ask_parent` 向它请示时，需要 `reply_to_agent` 来响应。白名单真正生效后，Sebastian 必须在白名单里声明这个工具。
+当前 `allowed_tools` 列表（`sebas.py`）里需要显式声明 `resume_agent` / `stop_agent`，否则白名单真正生效后，Sebastian 无法恢复或暂停下属 session。
 
 修改为：
 
 ```python
-# Orchestrator-scope tools. 包含 reply_to_agent：用于回复组长通过 ask_parent
-# 向 Sebastian 发起的请示。不含 spawn_sub_agent / ask_parent：前者由
-# delegate_to_agent 承担，后者因 Sebastian 无上级。
+# Orchestrator-scope tools. 包含 resume_agent/stop_agent：用于恢复或暂停下属 session。
+# 不含 spawn_sub_agent / ask_parent：前者由 delegate_to_agent 承担，后者因 Sebastian 无上级。
 allowed_tools = [
     "delegate_to_agent",
     "check_sub_agents",
     "inspect_session",
-    "reply_to_agent",   # 新增
+    "resume_agent",
+    "stop_agent",
     "todo_write",
     "Read", "Write", "Edit", "Bash", "Glob", "Grep",
 ]
@@ -238,12 +238,13 @@ allowed_tools = [
 | manifest 声明 | Subagent 最终白名单 | 含义 |
 |---|---|---|
 | 未声明 | `None` | 不限制，可用全量工具（含协议工具） |
-| `allowed_tools = []` | 5 个协议工具 | 仅具备通信能力，无领域工具 |
-| `allowed_tools = ["Read"]` | `Read` + 5 个协议工具 | Read + 通信能力 |
+| `allowed_tools = []` | 6 个协议工具 | 仅具备通信能力，无领域工具 |
+| `allowed_tools = ["Read"]` | `Read` + 6 个协议工具 | Read + 通信能力 |
 
-其中协议 5 工具：
+其中协议 6 工具：
 - `ask_parent` — 向上级请示
-- `reply_to_agent` — 回复等待中的下属
+- `resume_agent` — 恢复 waiting/idle 下属
+- `stop_agent` — 暂停运行中的下属
 - `spawn_sub_agent` — 向下分派 depth=3 组员
 - `check_sub_agents` — 查看自己组员的任务状态
 - `inspect_session` — 查看指定 session 的详细进展
@@ -253,7 +254,8 @@ allowed_tools = [
 | 能力 | Sebastian (depth=1) | 组长 (depth=2) | 组员 (depth=3) |
 |---|---|---|---|
 | 向下派活 | `delegate_to_agent` | `spawn_sub_agent` | — |
-| 回复下属 | `reply_to_agent` | `reply_to_agent` | — |
+| 回复下属 | `resume_agent` | `resume_agent` | — |
+| 暂停下属 | `stop_agent` | `stop_agent` | — |
 | 问上级 | — (无上级) | `ask_parent` | `ask_parent` |
 | 查下属进度 | `check_sub_agents` | `check_sub_agents` | — |
 | 查 session | `inspect_session` | `inspect_session` | `inspect_session` |
@@ -279,12 +281,12 @@ allowed_tools = [
 
 3. **Loader 语义**（`tests/unit/test_agent_loader.py`）
    - `allowed_tools` 未声明 → 最终 `None`。
-   - `allowed_tools = []` → 最终等于协议 5 工具。
-   - `allowed_tools = ["Read"]` → 最终包含 `Read` + 协议 5 工具，无重复。
+   - `allowed_tools = []` → 最终等于协议 6 工具。
+   - `allowed_tools = ["Read"]` → 最终包含 `Read` + 协议 6 工具，无重复。
 
 4. **Sebastian 集成**（`tests/integration/` 或 `test_sebas.py`）
-   - Sebastian 实例的 `allowed_tools` 包含 `reply_to_agent`。
-   - 经过 `PolicyGate.call("reply_to_agent", ...)` 白名单校验通过。
+   - Sebastian 实例的 `allowed_tools` 包含 `resume_agent` 与 `stop_agent`。
+   - 经过 `PolicyGate.call("resume_agent", ...)` 与 `PolicyGate.call("stop_agent", ...)` 白名单校验通过。
 
 ### 回归
 
@@ -297,7 +299,7 @@ allowed_tools = [
 
 1. **`sebastian/agents/README.md`**
    - 新增一节 "`allowed_tools` 三种语义"，列清楚 `None` / `[]` / `["..."]` 的最终效果。
-   - 列出协议 5 工具（即 `_SUBAGENT_PROTOCOL_TOOLS`）的名称与用途。
+   - 列出协议 6 工具（即 `_SUBAGENT_PROTOCOL_TOOLS`）的名称与用途。
    - 放上述 "Sebastian vs Subagent 协议工具对比" 表。
    - 说明 "Sebastian 不经过 `_loader.py`，手工维护 `allowed_tools`"。
 
@@ -310,7 +312,7 @@ allowed_tools = [
 
 - [ ] 子代理 LLM 看到的 `tools` 参数 = `allowed_tools`（含自动注入的协议工具）
 - [ ] 子代理调用白名单外工具时被 `PolicyGate` Stage 0 拒绝，错误清晰
-- [ ] Sebastian 能成功调用 `reply_to_agent`
+- [ ] Sebastian 能成功调用 `resume_agent` 与 `stop_agent`
 - [ ] `allowed_tools = None / [] / [...]` 三种语义与文档一致
 - [ ] 新增单测覆盖上述 4 组场景
 - [ ] `pytest` / `ruff check` / `ruff format` / `mypy` 全绿

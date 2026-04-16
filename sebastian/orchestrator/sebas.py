@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING, Any
 from sebastian.capabilities.tools import (
     delegate_to_agent as _delegate_tools,  # noqa: F401  # registers delegate_to_agent tool
 )
+from sebastian.capabilities.tools import (
+    resume_agent as _resume_tools,  # noqa: F401  # registers resume_agent tool
+)
+from sebastian.capabilities.tools import (
+    stop_agent as _stop_tools,  # noqa: F401  # registers stop_agent tool
+)
 from sebastian.core.base_agent import BaseAgent
 from sebastian.core.task_manager import TaskManager
 from sebastian.core.types import Session, Task
@@ -81,14 +87,15 @@ When in doubt: delegate. A butler who does the work himself is wasting the staff
 class Sebastian(BaseAgent):
     name = "sebastian"
     persona = SEBASTIAN_PERSONA
-    # Orchestrator-scope tools. 包含 reply_to_agent：用于回复组长通过 ask_parent
-    # 向 Sebastian 发起的请示。不含 spawn_sub_agent / ask_parent：前者由
+    # Orchestrator-scope tools. 包含 resume_agent / stop_agent：用于恢复或终止
+    # 通过 ask_parent 发起请示后进入 waiting 的下属。不含 spawn_sub_agent / ask_parent：前者由
     # delegate_to_agent 承担，后者因 Sebastian 无上级。
     allowed_tools = [
         "delegate_to_agent",
         "check_sub_agents",
         "inspect_session",
-        "reply_to_agent",
+        "resume_agent",
+        "stop_agent",
         "todo_write",
         "Read",
         "Write",

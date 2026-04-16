@@ -25,6 +25,24 @@ class ToolCallInputExtractorTest {
     }
 
     @Test
+    fun `stop_agent summary picks agent_type`() {
+        val summary = ToolCallInputExtractor.extractInputSummary(
+            "stop_agent",
+            """{"agent_type":"forge","session_id":"abc-123","reason":"过时了"}""",
+        )
+        assertEquals("forge", summary)
+    }
+
+    @Test
+    fun `resume_agent summary picks agent_type`() {
+        val summary = ToolCallInputExtractor.extractInputSummary(
+            "resume_agent",
+            """{"agent_type":"forge","session_id":"abc-123","instruction":"继续"}""",
+        )
+        assertEquals("forge", summary)
+    }
+
+    @Test
     fun `non-json input falls back to raw string truncated at 80 chars`() {
         val short = "not json at all"
         assertEquals(short, ToolCallInputExtractor.extractInputSummary("Bash", short))

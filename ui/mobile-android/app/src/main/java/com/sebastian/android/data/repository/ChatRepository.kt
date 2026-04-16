@@ -1,5 +1,6 @@
 package com.sebastian.android.data.repository
 
+import com.sebastian.android.data.model.ApprovalSnapshot
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.StreamEvent
 import com.sebastian.android.data.model.ThinkingEffort
@@ -15,4 +16,5 @@ interface ChatRepository {
     suspend fun cancelTurn(sessionId: String): Result<Unit>
     suspend fun grantApproval(approvalId: String): Result<Unit>
     suspend fun denyApproval(approvalId: String): Result<Unit>
+    suspend fun getPendingApprovals(): Result<List<ApprovalSnapshot>>
 }

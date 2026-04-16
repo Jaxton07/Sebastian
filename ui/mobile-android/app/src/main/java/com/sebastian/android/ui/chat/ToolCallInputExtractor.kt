@@ -23,6 +23,8 @@ internal object ToolCallInputExtractor {
         "Glob" to listOf("pattern", "path"),
         "delegate_to_agent" to listOf("agent_type"),
         "spawn_sub_agent" to listOf("goal"),
+        "stop_agent" to listOf("agent_type"),
+        "resume_agent" to listOf("agent_type"),
     )
 
     private val GENERIC_KEYS = listOf("command", "file_path", "path", "pattern", "query")

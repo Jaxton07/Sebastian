@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 # 注意：Sebastian 不经过 _loader.py，因此不受此影响。
 _SUBAGENT_PROTOCOL_TOOLS: tuple[str, ...] = (
     "ask_parent",  # 向上级请示，暂停等待回复
-    "reply_to_agent",  # 回复等待中的下属，恢复其执行（ask_parent 的对称操作）
+    "resume_agent",  # 恢复等待中的下属执行（ask_parent 的对称操作）
+    "stop_agent",  # 停止指定下属代理
     "spawn_sub_agent",  # 向下分派 depth=3 组员
     "check_sub_agents",  # 查看自己的组员任务状态
     "inspect_session",  # 查看指定 session 的详细进展

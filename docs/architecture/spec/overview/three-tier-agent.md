@@ -101,11 +101,13 @@ class Session(BaseModel):
 ```
 active → completed     （任务正常完成）
 active → failed        （执行出错）
-active → idle          （等待输入 / 暂停）
+active → idle          （用户暂停 / stop_agent 推入）
 active → stalled       （无活动超过阈值，watchdog 标记）
 active → cancelled     （上级或用户主动取消）
-idle   → active        （收到新消息继续）
+idle   → active        （resume_agent 或用户消息继续）
+waiting → active       （resume_agent 追加指令恢复）
 stalled → active       （收到干预消息后恢复）
+stalled → idle         （stop_agent 可直接暂停 stalled session）
 stalled → cancelled    （上级或用户取消）
 ```
 
@@ -202,6 +204,30 @@ async def check_sub_agents() -> ToolResult:
 async def inspect_session(session_id: str, recent_n: int = 5) -> ToolResult:
     # 返回该 session 最近 N 条消息 + 状态 + goal
     # 上级据此判断：卡在哪了、要不要干预
+```
+
+### 5.5 stop_agent（Sebastian 和组长共用）
+
+```python
+@tool(name="stop_agent", permission_tier=PermissionTier.LOW)
+async def stop_agent(agent_type: str, session_id: str, reason: str = "") -> ToolResult:
+    # 1. 权限：Sebastian 可停 depth=2/3；组长仅可停自己创建的 depth=3
+    # 2. 校验传入 agent_type 与目标 session 的 agent_type 一致
+    # 3. 调 BaseAgent.cancel_session(intent="stop") 打断 stream
+    # 4. status 置为 idle，并写入 [上级暂停] system message
+    # 5. 发布 SESSION_PAUSED
+```
+
+### 5.6 resume_agent（Sebastian 和组长共用）
+
+```python
+@tool(name="resume_agent", permission_tier=PermissionTier.LOW)
+async def resume_agent(agent_type: str, session_id: str, instruction: str = "") -> ToolResult:
+    # 1. 同 stop_agent 的权限与 agent_type 交叉校验
+    # 2. 接受 waiting / idle 状态
+    # 3. instruction 非空则 append_message，空字符串则按原计划继续
+    # 4. status 切回 active 并重启 run loop
+    # 5. 发布 SESSION_RESUMED
 ```
 
 ---

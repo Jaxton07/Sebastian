@@ -91,20 +91,21 @@ Sub-agent 在 `manifest.toml` 中通过 `allowed_tools` 声明能力边界。
 | manifest 声明 | Sub-agent 最终白名单 | 含义 |
 |---|---|---|
 | 未声明（缺省） | `None` | 不限制，可用全量工具（含协议工具） |
-| `allowed_tools = []` | 5 个协议工具 | 仅具备通信能力，无领域工具 |
-| `allowed_tools = ["Read"]` | `Read` + 5 个协议工具 | Read + 通信能力 |
+| `allowed_tools = []` | 6 个协议工具 | 仅具备通信能力，无领域工具 |
+| `allowed_tools = ["Read"]` | `Read` + 6 个协议工具 | Read + 通信能力 |
 
-### 协议工具（5 个，由 `_loader.py` 自动追加）
+### 协议工具（6 个，由 `_loader.py` 自动追加）
 
 | 工具 | 用途 |
 |---|---|
 | `ask_parent` | 向上级请示，暂停等待回复 |
-| `reply_to_agent` | 回复等待中的下属，恢复其执行 |
+| `resume_agent` | 恢复 waiting/idle 下属 session 的执行 |
+| `stop_agent` | 暂停运行中的下属 session（转 idle） |
 | `spawn_sub_agent` | 向下分派 depth=3 组员 |
 | `check_sub_agents` | 查看自己组员的任务状态 |
 | `inspect_session` | 查看指定 session 的详细进展 |
 
-这 5 个工具决定 sub-agent 在层级中的通信能力，不属于领域能力范畴，所以自动注入，不需要每个 manifest 手动声明。
+这 6 个工具决定 sub-agent 在层级中的通信能力，不属于领域能力范畴，所以自动注入，不需要每个 manifest 手动声明。
 
 ### Sebastian vs Sub-agent 协议工具对比
 
@@ -113,12 +114,13 @@ Sebastian 主管家**不经过 `_loader.py`**，`allowed_tools` 在 `sebastian/o
 | 能力 | Sebastian (depth=1) | 组长 (depth=2) | 组员 (depth=3) |
 |---|---|---|---|
 | 向下派活 | `delegate_to_agent` | `spawn_sub_agent` | — |
-| 回复下属 | `reply_to_agent` | `reply_to_agent` | — |
+| 回复下属 | `resume_agent` | `resume_agent` | — |
+| 暂停下属 | `stop_agent` | `stop_agent` | — |
 | 问上级 | — (无上级) | `ask_parent` | `ask_parent` |
 | 查下属进度 | `check_sub_agents` | `check_sub_agents` | — |
 | 查 session | `inspect_session` | `inspect_session` | `inspect_session` |
 
-> 当前实现中 depth=2 和 depth=3 共用同一套协议 5 工具，是已知的简化（组员事实上不会用 `spawn_sub_agent` / `check_sub_agents`）。
+> 当前实现中 depth=2 和 depth=3 共用同一套协议 6 工具：组员可见但会被工具内部权限校验拦截（例如 `resume_agent` / `stop_agent` 对 depth>=3 返回拒绝）。
 
 ### 3. 重启服务
 
