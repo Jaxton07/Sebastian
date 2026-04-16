@@ -16,6 +16,9 @@ JSONDict = dict[str, Any]
 async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
     import sebastian.gateway.state as state
 
+    bindings = await state.llm_registry.list_bindings()
+    binding_map = {b.agent_type: b.provider_id for b in bindings}
+
     agents = []
     for agent_type, config in state.agent_registry.items():
         if agent_type == "sebastian":
@@ -30,6 +33,7 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
                 "description": config.description,
                 "active_session_count": active_count,
                 "max_children": config.max_children,
+                "bound_provider_id": binding_map.get(agent_type),
             }
         )
 
