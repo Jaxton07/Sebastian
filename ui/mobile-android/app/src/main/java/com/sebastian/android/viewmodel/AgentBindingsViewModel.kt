@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.Provider
+import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,7 +60,7 @@ class AgentBindingsViewModel @Inject constructor(
 
     fun bind(agentType: String, providerId: String) {
         viewModelScope.launch {
-            val result = agentRepository.setBinding(agentType, providerId)
+            val result = agentRepository.setBinding(agentType, providerId, ThinkingEffort.OFF)
             result.fold(
                 onSuccess = {
                     _uiState.update { state ->

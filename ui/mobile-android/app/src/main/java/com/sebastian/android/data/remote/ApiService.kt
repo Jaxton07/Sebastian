@@ -49,6 +49,9 @@ interface ApiService {
     @GET("api/v1/agents")
     suspend fun getAgents(): AgentListResponse
 
+    @GET("api/v1/agents/{agentType}/llm-binding")
+    suspend fun getAgentBinding(@Path("agentType") agentType: String): AgentBindingDto
+
     @PUT("api/v1/agents/{agentType}/llm-binding")
     suspend fun setAgentBinding(
         @Path("agentType") agentType: String,

@@ -3,7 +3,7 @@ package com.sebastian.android.viewmodel
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.model.ThinkingCapability
-import com.sebastian.android.data.remote.dto.AgentBindingDto
+import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -76,8 +76,8 @@ class AgentBindingsViewModelTest {
     fun `bind sets provider and refreshes agents`() = runTest(dispatcher) {
         wheneverBlocking { agentRepo.getAgents() }.thenReturn(Result.success(listOf(sampleAgent("p1"))))
         wheneverBlocking { settingsRepo.getProviders() }.thenReturn(Result.success(listOf(sampleProvider())))
-        wheneverBlocking { agentRepo.setBinding("forge", "p1") }.thenReturn(
-            Result.success(AgentBindingDto(agentType = "forge", providerId = "p1"))
+        wheneverBlocking { agentRepo.setBinding("forge", "p1", ThinkingEffort.OFF) }.thenReturn(
+            Result.success(Unit)
         )
 
         val vm = AgentBindingsViewModel(agentRepo, settingsRepo)

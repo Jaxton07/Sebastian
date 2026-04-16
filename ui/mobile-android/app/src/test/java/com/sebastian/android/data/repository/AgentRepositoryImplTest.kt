@@ -1,11 +1,10 @@
 package com.sebastian.android.data.repository
 
+import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.remote.ApiService
 import com.sebastian.android.data.remote.dto.AgentBindingDto
-import com.sebastian.android.data.remote.dto.SetBindingRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito.*
@@ -22,9 +21,8 @@ class AgentRepositoryImplTest {
         )
         val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
 
-        val result = repo.setBinding("forge", "p1")
+        val result = repo.setBinding("forge", "p1", ThinkingEffort.OFF)
         assertTrue(result.isSuccess)
-        assertEquals("p1", result.getOrNull()?.providerId)
     }
 
     @Test

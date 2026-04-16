@@ -1,6 +1,8 @@
 package com.sebastian.android.data.repository
 
 import com.sebastian.android.data.model.AgentInfo
+import com.sebastian.android.data.model.ThinkingEffort
+import com.sebastian.android.data.model.toApiString
 import com.sebastian.android.data.remote.ApiService
 import com.sebastian.android.data.remote.dto.AgentBindingDto
 import com.sebastian.android.data.remote.dto.SetBindingRequest
@@ -22,11 +24,26 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun setBinding(
-        agentType: String, providerId: String
-    ): Result<AgentBindingDto> = runCatching {
+    override suspend fun getBinding(agentType: String): Result<AgentBindingDto> = runCatching {
         withContext(dispatcher) {
-            apiService.setAgentBinding(agentType, SetBindingRequest(providerId))
+            apiService.getAgentBinding(agentType)
+        }
+    }
+
+    override suspend fun setBinding(
+        agentType: String,
+        providerId: String?,
+        thinkingEffort: ThinkingEffort,
+    ): Result<Unit> = runCatching {
+        withContext(dispatcher) {
+            apiService.setAgentBinding(
+                agentType,
+                SetBindingRequest(
+                    providerId = providerId,
+                    thinkingEffort = thinkingEffort.toApiString(),
+                ),
+            )
+            Unit
         }
     }
 
