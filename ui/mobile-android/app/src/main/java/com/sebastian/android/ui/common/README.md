@@ -9,11 +9,13 @@
 ```text
 common/
 ├── AnimationTokens.kt      # 全局动画时长常量
+├── ApprovalSummary.kt      # 审批摘要生成（summarizeApproval / clipReason）
 ├── ErrorBanner.kt          # 错误横幅（可选操作按钮）
 ├── GlobalApprovalBanner.kt # 全局审批横幅（悬浮，覆盖所有页面）
 ├── MarkdownDefaults.kt     # Markdown 颜色/排版/组件配置（含代码块语法高亮）
 ├── MarkdownView.kt         # 纯 Compose Markdown 渲染组件
 ├── SebastianIcons.kt       # 自定义图标集（ImageVector 懒加载）
+├── SebastianSwitch.kt      # 苹果风格绿色 Switch（跟随 Light/Dark 自动切换色值）
 ├── ToastCenter.kt          # 公共 Toast 入口（节流 + 同时刻最多一条）
 └── glass/                  → [glass/README.md](glass/README.md)  # 液态玻璃组件库
 ```
@@ -35,6 +37,19 @@ common/
 ### `ErrorBanner`
 
 通用错误横幅，支持可选 `actionLabel` + `onAction` 操作按钮。三态复用于 `ChatScreen`：服务器未配置 / 网络断开 / SSE 连接失败（含重试按钮）。
+
+### `ApprovalSummary`
+
+审批摘要生成工具，将 tool 名 + inputs JSON 转换成供 `GlobalApprovalBanner` 展示的可读标题与详情：
+
+- `summarizeApproval(toolName, toolInputJson)` — 按 tool 类型（bash/write/read/delete/http/其他）返回 `ApprovalSummary(title, detail)`，detail 最长 120 字符
+- `clipReason(reason)` — 裁剪后端 reason 字符串到第一个意义子句（截止 `（` / `，` / `,` / `。`）
+
+### `SebastianSwitch`
+
+苹果风格绿色 Switch，签名与 Material3 `Switch` 完全一致（`checked` / `onCheckedChange` / `modifier` / `enabled`）。跟随系统 Dark/Light 模式自动切换绿色色值（`SwitchCheckedDark` / `SwitchCheckedLight`）。
+
+> 所有设置页的开关应使用 `SebastianSwitch` 替代原生 `Switch`，以保持视觉一致。
 
 ### `AnimationTokens`
 
@@ -77,11 +92,13 @@ ToastCenter.show(context, message = "...", throttleMs = 3000L)
 | 修改场景 | 优先看 |
 |---------|--------|
 | 改全局审批横幅逻辑 | `GlobalApprovalBanner.kt` + `viewmodel/GlobalApprovalViewModel.kt` |
+| 改审批摘要显示（标题/详情抽取规则） | `ApprovalSummary.kt` |
 | 改错误横幅样式/状态 | `ErrorBanner.kt` |
 | 改 Markdown 渲染样式/配置 | `MarkdownDefaults.kt` |
 | 改 Markdown 渲染逻辑 | `MarkdownView.kt` |
 | 新增/修改自定义图标 | `SebastianIcons.kt` |
 | 改动画时长全局常量 | `AnimationTokens.kt` |
+| 改设置页开关样式/颜色 | `SebastianSwitch.kt` |
 | 弹一次性 Toast 提示（防重复 + 同时刻最多一条） | `ToastCenter.kt` |
 | 改液态玻璃组件 API | `glass/` → [glass/README.md](glass/README.md) |
 
