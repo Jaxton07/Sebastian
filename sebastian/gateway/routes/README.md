@@ -11,7 +11,7 @@
 ```
 routes/
 ├── __init__.py        # 空文件，包标识
-├── agents.py          # Agent 状态查询与健康检查（GET /agents, GET /health）
+├── agents.py          # Agent 状态查询与 LLM 绑定管理（GET /agents, PUT/DELETE /agents/{type}/llm-binding, GET /health）
 ├── approvals.py       # 高危操作审批流（列出/批准/拒绝 pending approval）
 ├── debug.py           # 运行时调试接口（查询/动态修改日志级别）
 ├── llm_providers.py   # LLM Provider 配置管理（CRUD）
@@ -24,7 +24,9 @@ routes/
 
 | 如果要修改… | 看这里 |
 |------------|--------|
-| `GET /agents` — 查询所有 Agent 运行状态 | [agents.py](agents.py) |
+| `GET /agents` — 查询所有 Agent 运行状态（含 `bound_provider_id` 字段） | [agents.py](agents.py) |
+| `PUT /agents/{agent_type}/llm-binding` — 为 Agent 绑定指定 LLM Provider（`provider_id: null` 清除绑定） | [agents.py](agents.py) |
+| `DELETE /agents/{agent_type}/llm-binding` — 清除 Agent 的 LLM Provider 绑定 | [agents.py](agents.py) |
 | `GET /health` — 健康检查 | [agents.py](agents.py) |
 | `GET /approvals` — 列出待审批操作 | [approvals.py](approvals.py) |
 | `POST /approvals/{id}/grant` — 批准操作 | [approvals.py](approvals.py) |

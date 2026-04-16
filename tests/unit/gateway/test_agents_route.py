@@ -76,3 +76,140 @@ async def test_list_agents_returns_null_bound_provider_when_unbound() -> None:
         resp = await client.get("/api/v1/agents")
     data = resp.json()
     assert data["agents"][0]["bound_provider_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_put_binding_sets_provider_id() -> None:
+    from sebastian.agents._loader import AgentConfig
+    from sebastian.store.models import AgentLLMBindingRecord, LLMProviderRecord
+
+    agents = {
+        "forge": AgentConfig(
+            agent_type="forge",
+            name="ForgeAgent",
+            description="Code writer",
+            max_children=5,
+            stalled_threshold_minutes=5,
+            agent_class=MagicMock(),
+        )
+    }
+    app = _build_app_with_mocks(agents, [])
+    import sebastian.gateway.state as state
+
+    # Allow provider validation
+    state.llm_registry._get_record = AsyncMock(
+        return_value=LLMProviderRecord(
+            id="prov-1",
+            name="x",
+            provider_type="anthropic",
+            api_key_enc="k",
+            model="m",
+            is_default=False,
+        )
+    )
+    state.llm_registry.set_binding = AsyncMock(
+        return_value=AgentLLMBindingRecord(agent_type="forge", provider_id="prov-1")
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.put(
+            "/api/v1/agents/forge/llm-binding",
+            json={"provider_id": "prov-1"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == {"agent_type": "forge", "provider_id": "prov-1"}
+    state.llm_registry.set_binding.assert_awaited_once_with("forge", "prov-1")
+
+
+@pytest.mark.asyncio
+async def test_put_binding_with_null_clears_binding() -> None:
+    from sebastian.agents._loader import AgentConfig
+    from sebastian.store.models import AgentLLMBindingRecord
+
+    agents = {
+        "forge": AgentConfig(
+            agent_type="forge", name="ForgeAgent", description="",
+            max_children=5, stalled_threshold_minutes=5, agent_class=MagicMock(),
+        )
+    }
+    app = _build_app_with_mocks(agents, [])
+    import sebastian.gateway.state as state
+
+    state.llm_registry.set_binding = AsyncMock(
+        return_value=AgentLLMBindingRecord(agent_type="forge", provider_id=None)
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.put(
+            "/api/v1/agents/forge/llm-binding",
+            json={"provider_id": None},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["provider_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_put_binding_404_for_unknown_agent() -> None:
+    app = _build_app_with_mocks({}, [])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.put(
+            "/api/v1/agents/ghost/llm-binding",
+            json={"provider_id": "prov-1"},
+        )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_put_binding_400_for_unknown_provider() -> None:
+    from sebastian.agents._loader import AgentConfig
+
+    agents = {
+        "forge": AgentConfig(
+            agent_type="forge", name="ForgeAgent", description="",
+            max_children=5, stalled_threshold_minutes=5, agent_class=MagicMock(),
+        )
+    }
+    app = _build_app_with_mocks(agents, [])
+    import sebastian.gateway.state as state
+
+    state.llm_registry._get_record = AsyncMock(return_value=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.put(
+            "/api/v1/agents/forge/llm-binding",
+            json={"provider_id": "bogus"},
+        )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_delete_binding_returns_204() -> None:
+    from sebastian.agents._loader import AgentConfig
+
+    agents = {
+        "forge": AgentConfig(
+            agent_type="forge", name="ForgeAgent", description="",
+            max_children=5, stalled_threshold_minutes=5, agent_class=MagicMock(),
+        )
+    }
+    app = _build_app_with_mocks(agents, [])
+    import sebastian.gateway.state as state
+
+    state.llm_registry.clear_binding = AsyncMock(return_value=None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete("/api/v1/agents/forge/llm-binding")
+    assert resp.status_code == 204
+    state.llm_registry.clear_binding.assert_awaited_once_with("forge")
+
+
+@pytest.mark.asyncio
+async def test_delete_binding_404_for_unknown_agent() -> None:
+    app = _build_app_with_mocks({}, [])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete("/api/v1/agents/ghost/llm-binding")
+    assert resp.status_code == 404
