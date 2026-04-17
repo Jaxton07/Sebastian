@@ -57,14 +57,15 @@ Agent LLM 绑定主列表页的 ViewModel，仅负责数据加载：
 3. **消息状态机**：处理全部 `StreamEvent` 类型，按 blockId 精确更新对应 `ContentBlock`
 4. **三态连接错误**：`isServerNotConfigured` / `isOffline` / `connectionFailed`，优先级从高到低
 5. **全局审批**：审批事件由 `GlobalApprovalViewModel` 统一处理，不再由 `ChatViewModel` 管理
-6. **滚动跟随**：`ScrollFollowState`（FOLLOWING / DETACHED / NEAR_BOTTOM）
+
+> 滚动跟随语义由 UI 层（`MessageList`）自行维护（`atBottom` / `isUserDragging` / `userAway` 三层模型），
+> ViewModel 不再持有 `ScrollFollowState` 字段或相关回调。
 
 关键状态枚举：
 
 | 枚举 | 值 |
 |------|-----|
 | `ComposerState` | IDLE_EMPTY / IDLE_READY / PENDING / STREAMING / CANCELLING |
-| `ScrollFollowState` | FOLLOWING / DETACHED / NEAR_BOTTOM |
 | `AgentAnimState` | IDLE / PENDING / THINKING / STREAMING / WORKING |
 
 ### PENDING 语义
@@ -122,7 +123,7 @@ ViewModel (sendMessage / switchSession / ...)
 | 改全局审批处理 | `GlobalApprovalViewModel.grantApproval()` / `denyApproval()` |
 | 改 Agent LLM 绑定主列表加载 | `AgentBindingsViewModel.load()` |
 | 改单个 Agent 绑定编辑（Provider + Thinking） | `AgentBindingEditorViewModel.selectProvider()` / `setEffort()` |
-| 改滚动跟随逻辑 | `ChatViewModel.onUserScrolled()` / `onScrolledNearBottom()` 等 |
+| 改滚动跟随逻辑 | `ui/chat/MessageList.kt`（UI 层，ViewModel 不参与） |
 | 改 session 列表加载 | `SessionViewModel` |
 | 改设置页状态（serverUrl / provider） | `SettingsViewModel` |
 | 改 Provider 表单逻辑 | `ProviderFormViewModel` |

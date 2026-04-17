@@ -32,13 +32,11 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 enum class ComposerState { IDLE_EMPTY, IDLE_READY, PENDING, STREAMING, CANCELLING }
-enum class ScrollFollowState { FOLLOWING, DETACHED, NEAR_BOTTOM }
 enum class AgentAnimState { IDLE, PENDING, THINKING, STREAMING, WORKING }
 
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val composerState: ComposerState = ComposerState.IDLE_EMPTY,
-    val scrollFollowState: ScrollFollowState = ScrollFollowState.FOLLOWING,
     val agentAnimState: AgentAnimState = AgentAnimState.IDLE,
     val activeSessionId: String? = null,       // null = 新对话
     val isOffline: Boolean = false,
@@ -321,7 +319,6 @@ class ChatViewModel @Inject constructor(
                 messages = state.messages + userMsg,
                 composerState = ComposerState.PENDING,
                 agentAnimState = AgentAnimState.PENDING,
-                scrollFollowState = ScrollFollowState.FOLLOWING,
             )
         }
         startPendingTimeout()
@@ -366,7 +363,6 @@ class ChatViewModel @Inject constructor(
                 messages = state.messages + userMsg,
                 composerState = ComposerState.PENDING,
                 agentAnimState = AgentAnimState.PENDING,
-                scrollFollowState = ScrollFollowState.FOLLOWING,
             )
         }
         startPendingTimeout()
@@ -409,7 +405,6 @@ class ChatViewModel @Inject constructor(
                 messages = state.messages + userMsg,
                 composerState = ComposerState.PENDING,
                 agentAnimState = AgentAnimState.PENDING,
-                scrollFollowState = ScrollFollowState.FOLLOWING,
             )
         }
         viewModelScope.launch(dispatcher) {
@@ -555,18 +550,6 @@ class ChatViewModel @Inject constructor(
         pausePendingTimeout()
         sseJob?.cancel()
         sseJob = null
-    }
-
-    fun onUserScrolled() {
-        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.DETACHED) }
-    }
-
-    fun onScrolledNearBottom() {
-        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.NEAR_BOTTOM) }
-    }
-
-    fun onScrolledToBottom() {
-        _uiState.update { it.copy(scrollFollowState = ScrollFollowState.FOLLOWING) }
     }
 
     fun toggleThinkingBlock(msgId: String, blockId: String) {
