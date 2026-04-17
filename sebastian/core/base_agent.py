@@ -347,6 +347,14 @@ class BaseAgent(ABC):
             )
         )
         self._active_streams[session_id] = current_stream
+        # Consume pre-cancel: user clicked stop before we finished setup.
+        pending_intent = self._pending_cancel_intents.pop(session_id, None)
+        pending_timer = self._pending_cancel_timers.pop(session_id, None)
+        if pending_timer is not None:
+            pending_timer.cancel()
+        if pending_intent is not None:
+            self._cancel_requested[session_id] = pending_intent
+            current_stream.cancel()
         try:
             return await current_stream
         finally:

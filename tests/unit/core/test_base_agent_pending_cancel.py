@@ -36,3 +36,33 @@ async def test_cancel_session_registers_pending_with_stop_intent(agent) -> None:
 
     assert cancelled is True
     assert agent._pending_cancel_intents["s1"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_consumes_pending_cancel_on_registration(tmp_path: Path) -> None:
+    """REST 200 后用户立即点停止 → pending cancel 写入 → run_streaming 登记后立即消费."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class DummyAgent(BaseAgent):
+        name = "sebastian"
+
+    session_store = SessionStore(tmp_path / "sessions")
+    await session_store.create_session(Session(id="s1", agent_type="sebastian", title="S1"))
+    gate = MagicMock()
+    agent = DummyAgent(gate=gate, session_store=session_store)
+
+    # Simulate race: user cancels before run_streaming registers _active_streams.
+    cancelled = await agent.cancel_session("s1", intent="cancel")
+    assert cancelled is True
+    assert "s1" in agent._pending_cancel_intents
+
+    # run_streaming should consume the pending cancel and raise CancelledError.
+    with pytest.raises((asyncio.CancelledError, Exception)):
+        await agent.run_streaming("hello", "s1")
+
+    # Pending intent must be consumed.
+    assert "s1" not in agent._pending_cancel_intents
