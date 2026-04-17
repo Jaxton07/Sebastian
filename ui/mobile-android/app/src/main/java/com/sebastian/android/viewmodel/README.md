@@ -67,6 +67,16 @@ Agent LLM 绑定主列表页的 ViewModel，仅负责数据加载：
 | `ScrollFollowState` | FOLLOWING / DETACHED / NEAR_BOTTOM |
 | `AgentAnimState` | IDLE / PENDING / THINKING / STREAMING / WORKING |
 
+### PENDING 语义
+
+- **进入：** `sendMessage()` 入口（用户点发送）
+- **持续：** 从发送到首个 SSE block 事件（`ThinkingBlockStart` / `TextBlockStart` / `ToolBlockStart`）；`TurnReceived` 不触发切换
+- **退出：** 首个 block SSE 事件 → STREAMING/THINKING/WORKING；或 `TurnCancelled` / `TurnInterrupted` / `TurnResponse` → IDLE_EMPTY
+- `SendButton` 显示可点停止；无 `activeSessionId` 时点停止走本地取消（保留 Composer 文本 + 用户气泡）
+- 15s 前台累计超时触发"响应较慢"提示，`onAppStop` 暂停计时 / `onAppStart` 按剩余时长恢复
+- `onAppStart` 在 PENDING 下调 `getMessages` 判断后台期是否已完成 turn；无论成败均重连 SSE
+- AgentPill 显示 `BREATHING`（彩虹呼吸动画），文案"等待响应"
+
 ### `SessionViewModel`
 
 - 加载 session 列表（`SessionRepository.getSessions()`）
