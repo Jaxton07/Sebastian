@@ -27,7 +27,7 @@ status: in-progress
 |------|------|
 | [overview.md](overview.md) | 项目定位、技术栈决策、目录结构、Phase 功能规划、与后端协议对接约定 |
 | [navigation.md](navigation.md) | ThreePaneScaffold 三面板导航、WindowSizeClass 自适应（手机覆盖/平板常驻）、页面路由结构 |
-| [streaming.md](streaming.md) | SSE 连接稳定性架构、流式 Markdown 渲染（块级增量）、ThinkingCard 极简风格、逐块淡入动画、滚动跟随逻辑 |
+| [streaming.md](streaming.md) | SSE 连接稳定性架构、流式 Markdown 渲染（multiplatform-markdown-renderer 纯 Composable）、代码块高亮、ThinkingCard 极简风格、逐块淡入动画、滚动跟随逻辑 |
 | [composer.md](composer.md) | Composer 插槽架构、Phase 1 实现、Phase 2-3 预留扩展路径（语音/附件/全双工）|
 | [data-layer.md](data-layer.md) | Repository 分层、ViewModel + StateFlow、Hilt 注入、本地持久化（DataStore）|
 | [global-approval.md](global-approval.md) | 全局审批系统（GlobalApprovalViewModel + Banner）、SubAgent 对话页复用 ChatScreen、路由变更 |
