@@ -156,18 +156,13 @@ fun ChatScreen(
                 // 内容层：MessageList 铺满全屏，顶部留出悬浮栏空间
                 MessageList(
                     messages = chatState.messages,
-                    scrollFollowState = chatState.scrollFollowState,
                     flushTick = chatState.flushTick,
-                    onUserScrolled = chatViewModel::onUserScrolled,
-                    onScrolledNearBottom = chatViewModel::onScrolledNearBottom,
-                    onScrolledToBottom = chatViewModel::onScrolledToBottom,
-                    onScrollToBottom = chatViewModel::onScrolledToBottom,
                     onToggleThinking = chatViewModel::toggleThinkingBlock,
                     onToggleTool = chatViewModel::toggleToolBlock,
+                    glassState = glassState,
                     contentPadding = PaddingValues(top = 88.dp, bottom = 112.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(glassState.contentModifier),
+                    fabBottomOffset = 128.dp,
+                    modifier = Modifier.fillMaxSize(),
                 )
 
                 // Error banners：显示在悬浮顶部栏下方

@@ -243,7 +243,6 @@ class ChatViewModelTest {
             val state = awaitItem()
             assertEquals(ComposerState.PENDING, state.composerState)
             assertEquals(AgentAnimState.PENDING, state.agentAnimState)
-            assertEquals(ScrollFollowState.FOLLOWING, state.scrollFollowState)
             val userMsg = state.messages.lastOrNull { it.role == MessageRole.USER }
             assertTrue(userMsg != null)
             assertEquals("你好", userMsg!!.text)
@@ -294,19 +293,6 @@ class ChatViewModelTest {
                 assertNull(clearedState.error)
                 cancelAndIgnoreRemainingEvents()
             }
-        }
-    }
-
-    @Test
-    fun `onUserScrolled sets scrollFollowState DETACHED`() = vmTest {
-        viewModel.uiState.test {
-            awaitItem() // initial (FOLLOWING)
-
-            viewModel.onUserScrolled()
-            dispatcher.scheduler.advanceTimeBy(200)
-
-            val state = awaitItem()
-            assertEquals(ScrollFollowState.DETACHED, state.scrollFollowState)
         }
     }
 

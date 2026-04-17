@@ -46,7 +46,16 @@ chat/
 
 ### `MessageList`
 
-管理滚动跟随状态（`FOLLOWING` / `DETACHED` / `NEAR_BOTTOM`），由 `flushTick` 驱动每帧滚动更新。
+消息列表 + 滚动跟随 + 回到底部 FAB。滚动语义由 UI 层自己维护（ViewModel 推不出 `atBottom`），采用事实/中介/意图三层模型：
+
+- **事实层 `atBottom`**：从 `LazyListState` 派生 —— 当前视口是否贴近底部
+- **中介层 `isUserDragging`**：从 `DragInteraction` 派生 —— 手指是否正在拖拽
+- **意图层 `userAway`**：是否应暂停自动跟随
+  - `atBottom=true` → 恒等于 `false`（回到底部即放弃"离开"意图）
+  - `atBottom=false` 且 `isUserDragging=true` → `true`（用户主动拖离底部）
+  - 其余情形保持不变（fling / programmatic 不改变意图）
+
+UI 映射：FAB 显示 = `userAway`（绑意图而非事实 —— 流式中 `atBottom` 会因"新内容到达→50ms flusher→auto-scroll"节奏抖动，直接绑 `!atBottom` 会导致 FAB 闪烁）；自动跟随 = `!userAway && !isUserDragging`（避免打断用户手势）。用户发新消息（末尾出现 USER role）时立即清除 `userAway` 以保证跟上 AI 响应。FAB 用 `MaterialTheme.colorScheme.surface/onSurface` 实现日/夜间自动配色。
 
 ### `StreamingMessage`
 
