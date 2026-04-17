@@ -17,18 +17,17 @@ data class AgentDto(
     @param:Json(name ="display_name") val displayName: String? = null,
     @param:Json(name ="is_orchestrator") val isOrchestrator: Boolean = false,
     @param:Json(name ="active_session_count") val activeSessionCount: Int = 0,
-    @param:Json(name ="max_children") val maxChildren: Int = 0,
-    @param:Json(name = "bound_provider_id") val boundProviderId: String? = null,
-    @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
+    @param:Json(name ="max_children") val maxChildren: Int? = null,
+    @param:Json(name = "binding") val binding: AgentBindingDto? = null,
 ) {
     fun toDomain() = AgentInfo(
         agentType = agentType,
         displayName = displayName ?: agentType.replaceFirstChar { it.uppercase() },
         description = description,
         isOrchestrator = isOrchestrator,
-        boundProviderId = boundProviderId,
-        thinkingEffort = thinkingEffort.toThinkingEffort(),
+        boundProviderId = binding?.providerId,
+        thinkingEffort = binding?.thinkingEffort.toThinkingEffort(),
         activeSessionCount = activeSessionCount,
-        maxChildren = maxChildren,
+        maxChildren = maxChildren ?: 0,
     )
 }
