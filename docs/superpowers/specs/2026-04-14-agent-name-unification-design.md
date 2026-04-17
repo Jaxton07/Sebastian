@@ -1,3 +1,8 @@
+---
+integrated_to: agents/agent-naming.md
+integrated_at: 2026-04-17
+---
+
 # Agent 命名统一：移除 display_name，只保留 agent_type
 
 ## Context

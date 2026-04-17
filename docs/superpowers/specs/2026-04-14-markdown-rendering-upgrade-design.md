@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/streaming.md
+integrated_at: 2026-04-17
+---
+
 # Markdown 渲染升级设计文档
 
 **日期**：2026-04-14  

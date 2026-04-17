@@ -2,6 +2,8 @@
 version: "1.0"
 last_updated: 2026-04-16
 status: implemented
+integrated_to: gateway/agent-stop-resume.md
+integrated_at: 2026-04-17
 ---
 
 # Sub-Agent 生命周期控制：stop_agent + resume_agent

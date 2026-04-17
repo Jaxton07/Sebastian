@@ -1,3 +1,8 @@
+---
+integrated_to: capabilities/core-tools.md
+integrated_at: 2026-04-17
+---
+
 # Tool Result 显示优化设计
 
 **日期**：2026-04-14

@@ -1,3 +1,8 @@
+---
+integrated_to: gateway/subagent-notification.md
+integrated_at: 2026-04-17
+---
+
 # Sub-Agent 主动通知与双向通信设计
 
 **日期**：2026-04-12  
