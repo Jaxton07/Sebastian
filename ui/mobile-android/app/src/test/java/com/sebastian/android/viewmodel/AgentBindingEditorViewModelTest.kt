@@ -6,8 +6,10 @@ import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.remote.dto.AgentBindingDto
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -31,18 +33,24 @@ class AgentBindingEditorViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private lateinit var agentRepo: AgentRepository
     private lateinit var settingsRepo: SettingsRepository
+    private lateinit var appScope: CoroutineScope
 
     @Before
     fun before() {
         Dispatchers.setMain(dispatcher)
         agentRepo = mock()
         settingsRepo = mock()
+        appScope = CoroutineScope(dispatcher)
     }
 
     @After
     fun after() {
+        appScope.cancel()
         Dispatchers.resetMain()
     }
+
+    private fun makeVm(agentType: String) =
+        AgentBindingEditorViewModel(agentType, agentRepo, settingsRepo, appScope)
 
     private fun provider(
         id: String,
@@ -72,7 +80,7 @@ class AgentBindingEditorViewModelTest {
             agentRepo.setBinding("sebastian", "p2", ThinkingEffort.OFF)
         }.thenReturn(Result.success(Unit))
 
-        val vm = AgentBindingEditorViewModel("sebastian", agentRepo, settingsRepo)
+        val vm = makeVm("sebastian")
         vm.load()
         advanceUntilIdle()
 
@@ -99,7 +107,7 @@ class AgentBindingEditorViewModelTest {
             agentRepo.setBinding("sebastian", "p1", ThinkingEffort.HIGH)
         }.thenReturn(Result.success(Unit))
 
-        val vm = AgentBindingEditorViewModel("sebastian", agentRepo, settingsRepo)
+        val vm = makeVm("sebastian")
         vm.load()
         advanceUntilIdle()
 
@@ -124,7 +132,7 @@ class AgentBindingEditorViewModelTest {
             Result.success(listOf(def)),
         )
 
-        val vm = AgentBindingEditorViewModel("foo", agentRepo, settingsRepo)
+        val vm = makeVm("foo")
         vm.load()
         advanceUntilIdle()
 
@@ -145,7 +153,7 @@ class AgentBindingEditorViewModelTest {
             Result.success(listOf(p)),
         )
 
-        val vm = AgentBindingEditorViewModel("foo", agentRepo, settingsRepo)
+        val vm = makeVm("foo")
         // 模拟页面首次进入 + 旋转/重组再次触发
         vm.load()
         vm.load()
@@ -165,7 +173,7 @@ class AgentBindingEditorViewModelTest {
             Result.success(listOf(noThink)),
         )
 
-        val vm = AgentBindingEditorViewModel("foo", agentRepo, settingsRepo)
+        val vm = makeVm("foo")
         vm.load()
         advanceUntilIdle()
         dispatcher.scheduler.advanceTimeBy(400)
@@ -185,7 +193,7 @@ class AgentBindingEditorViewModelTest {
             Result.success(listOf(alwaysOn)),
         )
 
-        val vm = AgentBindingEditorViewModel("foo", agentRepo, settingsRepo)
+        val vm = makeVm("foo")
         vm.load()
         advanceUntilIdle()
         dispatcher.scheduler.advanceTimeBy(400)
@@ -209,7 +217,7 @@ class AgentBindingEditorViewModelTest {
             agentRepo.setBinding("foo", "p", ThinkingEffort.HIGH)
         }.thenReturn(Result.success(Unit))
 
-        val vm = AgentBindingEditorViewModel("foo", agentRepo, settingsRepo)
+        val vm = makeVm("foo")
         vm.load()
         advanceUntilIdle()
 
@@ -218,5 +226,41 @@ class AgentBindingEditorViewModelTest {
         dispatcher.scheduler.advanceTimeBy(350)
         advanceUntilIdle()
         verify(agentRepo).setBinding("foo", "p", ThinkingEffort.HIGH)
+    }
+
+    @Test
+    fun `pending debounced PUT is flushed via applicationScope on cleared`() = runTest(dispatcher) {
+        val p = provider("p1", ThinkingCapability.EFFORT)
+        wheneverBlocking { agentRepo.getBinding("sebastian") }.thenReturn(
+            Result.success(AgentBindingDto("sebastian", "p1", null)),
+        )
+        wheneverBlocking { settingsRepo.getProviders() }.thenReturn(
+            Result.success(listOf(p)),
+        )
+        wheneverBlocking {
+            agentRepo.setBinding("sebastian", "p1", ThinkingEffort.HIGH)
+        }.thenReturn(Result.success(Unit))
+
+        val vm = makeVm("sebastian")
+        vm.load()
+        advanceUntilIdle()
+
+        // 把 VM 放进 ViewModelStore，store.clear() 会取消 viewModelScope 并回调 onCleared，
+        // 与真实 Activity/Fragment 销毁路径一致
+        val store = androidx.lifecycle.ViewModelStore()
+        store.put("vm", vm)
+
+        vm.setEffort(ThinkingEffort.HIGH)
+        // debounce 未到期：尚未触发 PUT
+        dispatcher.scheduler.advanceTimeBy(100)
+        verify(agentRepo, never()).setBinding("sebastian", "p1", ThinkingEffort.HIGH)
+
+        // 模拟用户离开页面
+        store.clear()
+        advanceUntilIdle()
+
+        // viewModelScope 已被 store.clear 取消，delay 未到期的 putJob 不会 setBinding；
+        // 依赖 applicationScope 补发
+        verify(agentRepo).setBinding("sebastian", "p1", ThinkingEffort.HIGH)
     }
 }

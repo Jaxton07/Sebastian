@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.ThinkingEffort
+import com.sebastian.android.data.model.displayLabel
 import com.sebastian.android.ui.common.ToastCenter
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.AgentBindingsViewModel
@@ -129,16 +130,7 @@ private fun AgentRow(
             append(bound.name)
             if (agent.thinkingEffort != ThinkingEffort.OFF) {
                 append(" · ")
-                append(
-                    when (agent.thinkingEffort) {
-                        ThinkingEffort.ON -> "on"
-                        ThinkingEffort.LOW -> "low"
-                        ThinkingEffort.MEDIUM -> "medium"
-                        ThinkingEffort.HIGH -> "high"
-                        ThinkingEffort.MAX -> "max"
-                        ThinkingEffort.OFF -> ""
-                    }
-                )
+                append(agent.thinkingEffort.displayLabel())
             }
         }
     } else {

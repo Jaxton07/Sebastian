@@ -8,10 +8,12 @@ import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.model.toThinkingEffort
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
+import com.sebastian.android.di.ApplicationScope
 import com.sebastian.android.ui.settings.components.effortStepsFor
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -45,6 +47,7 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     @Assisted private val agentType: String,
     private val agentRepository: AgentRepository,
     private val settingsRepository: SettingsRepository,
+    @ApplicationScope private val applicationScope: CoroutineScope,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -61,6 +64,10 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     private var putJob: Job? = null
     private var loadJob: Job? = null
     private var snapshot: EditorUiState? = null
+
+    // 仅在 debounce 已排队但 setBinding 调用尚未返回时为 true。
+    // onCleared 用它判断是否需要在 viewModelScope 已取消后补发末次写入。
+    private var putPending: Boolean = false
 
     fun load() {
         // 幂等：旋转/重组 重复触发时，正在进行的 load 不再重复拉；避免覆盖用户刚改的选择
@@ -116,6 +123,7 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     private fun schedulePut() {
         putJob?.cancel()
         snapshot = _uiState.value
+        putPending = true
         putJob = viewModelScope.launch {
             delay(300)
             val s = _uiState.value
@@ -125,11 +133,25 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
                 s.selectedProvider?.id,
                 s.thinkingEffort,
             )
+            putPending = false
             _uiState.update { it.copy(isSaving = false) }
             r.onFailure {
                 val snap = snapshot
                 if (snap != null) _uiState.value = snap.copy(errorMessage = null, isSaving = false)
                 _events.tryEmit(EditorEvent.Snackbar("Failed to save. Retry?"))
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // ViewModel.clear() 先取消 viewModelScope 再调用 onCleared，所以此时 putJob 已死。
+        // 用 putPending 判断 debounce 窗口内的末次写入是否还没真正发出去，
+        // 切到进程存活期的 applicationScope 补发。
+        if (putPending) {
+            val s = _uiState.value
+            applicationScope.launch {
+                agentRepository.setBinding(agentType, s.selectedProvider?.id, s.thinkingEffort)
             }
         }
     }
