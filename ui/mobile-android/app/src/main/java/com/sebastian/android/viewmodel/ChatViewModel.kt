@@ -15,8 +15,11 @@ import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -57,12 +60,26 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private val _toastEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
+
     private val pendingDeltas = ConcurrentHashMap<String, StringBuilder>()
 
     private var sseJob: Job? = null
     private var sendTurnJob: Job? = null
     private var currentAssistantMessageId: String? = null
     private var pendingTurnSessionId: String? = null
+
+    private var pendingTimeoutJob: Job? = null
+    private var pendingTimeoutElapsedMs: Long = 0L
+    private var pendingTimeoutStartAtMs: Long = 0L
+
+    // Overrideable in tests to use virtual time.
+    internal var clock: () -> Long = { System.currentTimeMillis() }
+
+    companion object {
+        private const val PENDING_TIMEOUT_MS = 15_000L
+    }
 
     init {
         observeNetwork()
@@ -153,6 +170,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun handleEvent(event: StreamEvent) {
+        cancelPendingTimeout()
         when (event) {
             is StreamEvent.TurnReceived -> {
                 pendingTurnSessionId = event.sessionId
@@ -306,6 +324,7 @@ class ChatViewModel @Inject constructor(
                 scrollFollowState = ScrollFollowState.FOLLOWING,
             )
         }
+        startPendingTimeout()
         sendTurnJob = viewModelScope.launch(dispatcher) {
             chatRepository.sendTurn(currentSessionId, text)
                 .onSuccess { returnedSessionId ->
@@ -396,6 +415,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun cancelTurn() {
+        cancelPendingTimeout()
         val sessionId = _uiState.value.activeSessionId
         if (sessionId == null) {
             // Still in PENDING before REST returned — cancel the local job,
@@ -483,6 +503,7 @@ class ChatViewModel @Inject constructor(
      * 存在 ChatScreen 的 local remember state，ViewModel 不感知）造成视觉错位。
      */
     fun onAppStart() {
+        resumePendingTimeoutIfNeeded()
         val state = _uiState.value
         val sessionId = state.activeSessionId ?: return
         if (state.isOffline) return
@@ -495,6 +516,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun onAppStop() {
+        pausePendingTimeout()
         sseJob?.cancel()
         sseJob = null
     }
@@ -524,6 +546,43 @@ class ChatViewModel @Inject constructor(
     }
 
     fun clearError() = _uiState.update { it.copy(error = null) }
+
+    // ── Pending timeout helpers ──────────────────────────────────────────────
+
+    private fun startPendingTimeout() {
+        pendingTimeoutElapsedMs = 0L
+        launchPendingTimeoutSegment(PENDING_TIMEOUT_MS)
+    }
+
+    private fun launchPendingTimeoutSegment(remaining: Long) {
+        pendingTimeoutJob?.cancel()
+        pendingTimeoutStartAtMs = clock()
+        pendingTimeoutJob = viewModelScope.launch(dispatcher) {
+            delay(remaining)
+            _toastEvents.emit("响应较慢，可点停止后重试")
+        }
+    }
+
+    private fun pausePendingTimeout() {
+        if (pendingTimeoutJob?.isActive == true) {
+            pendingTimeoutElapsedMs += clock() - pendingTimeoutStartAtMs
+            pendingTimeoutJob?.cancel()
+            pendingTimeoutJob = null
+        }
+    }
+
+    private fun resumePendingTimeoutIfNeeded() {
+        if (_uiState.value.composerState != ComposerState.PENDING) return
+        val remaining = (PENDING_TIMEOUT_MS - pendingTimeoutElapsedMs).coerceAtLeast(0L)
+        if (remaining == 0L) return
+        launchPendingTimeoutSegment(remaining)
+    }
+
+    private fun cancelPendingTimeout() {
+        pendingTimeoutJob?.cancel()
+        pendingTimeoutJob = null
+        pendingTimeoutElapsedMs = 0L
+    }
 
     // ── Private helpers ──────────────────────────────────────────────────────
 

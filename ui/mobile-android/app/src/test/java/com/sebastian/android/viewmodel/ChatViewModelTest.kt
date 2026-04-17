@@ -13,6 +13,7 @@ import com.sebastian.android.data.repository.SettingsRepository
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -71,6 +72,7 @@ class ChatViewModelTest {
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
         }
         viewModel = ChatViewModel(chatRepository, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
     }
 
@@ -268,6 +270,7 @@ class ChatViewModelTest {
             override suspend fun getPendingApprovals() = Result.success(emptyList<ApprovalSnapshot>())
         }
         viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
 
         vmTest {
@@ -623,5 +626,81 @@ class ChatViewModelTest {
             // User bubble is preserved
             assertTrue(afterCancel.messages.any { it.role == MessageRole.USER })
         }
+    }
+
+    // ── PENDING 15s 前台累计超时 ──────────────────────────────────────────────
+
+    @Test
+    fun `pending timeout emits toast after 15s foreground`() = vmTest {
+        activateSession()
+        val toasts = mutableListOf<String>()
+        val collectJob = launch {
+            viewModel.toastEvents.collect { toasts.add(it) }
+        }
+
+        viewModel.sendMessage("hi")
+        dispatcher.scheduler.advanceTimeBy(50) // PENDING set
+
+        // 14s — no toast yet
+        dispatcher.scheduler.advanceTimeBy(14_000)
+        assertTrue("No toast before 15s", toasts.isEmpty())
+
+        // 1.1s more — total 15.1s > 15s
+        dispatcher.scheduler.advanceTimeBy(1_100)
+        assertEquals("Toast must fire after 15s", 1, toasts.size)
+        assertTrue(toasts[0].contains("响应较慢"))
+
+        collectJob.cancel()
+    }
+
+    @Test
+    fun `pending timeout is cancelled when SSE event arrives`() = vmTest {
+        activateSession()
+        val toasts = mutableListOf<String>()
+        val collectJob = launch {
+            viewModel.toastEvents.collect { toasts.add(it) }
+        }
+
+        viewModel.sendMessage("hi")
+        dispatcher.scheduler.advanceTimeBy(500) // REST finishes
+
+        // SSE event arrives — must cancel the timeout
+        sseFlow.emit(StreamEvent.TurnReceived("s1"))
+        dispatcher.scheduler.advanceTimeBy(20_000) // well past 15s
+
+        assertTrue("No toast when SSE event cancels timeout", toasts.isEmpty())
+
+        collectJob.cancel()
+    }
+
+    @Test
+    fun `pending timeout pauses on app stop and resumes on app start`() = vmTest {
+        activateSession()
+        val toasts = mutableListOf<String>()
+        val collectJob = launch {
+            viewModel.toastEvents.collect { toasts.add(it) }
+        }
+
+        viewModel.sendMessage("hi")
+        dispatcher.scheduler.advanceTimeBy(50)
+
+        // 10s foreground, then background
+        dispatcher.scheduler.advanceTimeBy(10_000)
+        viewModel.onAppStop()
+        assertTrue("No toast at 10s", toasts.isEmpty())
+
+        // 30s in background — must NOT fire (timer paused)
+        dispatcher.scheduler.advanceTimeBy(30_000)
+        assertTrue("No toast while backgrounded", toasts.isEmpty())
+
+        // Return to foreground — timer resumes with 5s remaining
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(4_900)
+        assertTrue("No toast before remaining 5s", toasts.isEmpty())
+
+        dispatcher.scheduler.advanceTimeBy(200) // crosses 15s
+        assertEquals("Toast fires after total 15s foreground", 1, toasts.size)
+
+        collectJob.cancel()
     }
 }

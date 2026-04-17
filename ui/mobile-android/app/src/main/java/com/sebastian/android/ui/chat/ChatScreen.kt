@@ -113,6 +113,13 @@ fun ChatScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val toastContext = LocalContext.current
+    LaunchedEffect(chatViewModel) {
+        chatViewModel.toastEvents.collect { message ->
+            ToastCenter.show(toastContext, message, key = "pending_timeout", throttleMs = 10_000L)
+        }
+    }
+
     SlidingThreePaneLayout(
         activePane = activePane,
         onPaneChange = { activePane = it },
