@@ -551,7 +551,10 @@ object SebastianIcons {
         }.build()
     }
 
-    /** Upward-arrow only (no outer circle). Use inside a CircleShape Surface for SendButton. */
+    /**
+     * ChatGPT 风格的向上箭头：细线条描边 + 圆头，居中对称。
+     * 两条路径：V 形箭头头部 + 竖直箭杆，均以 x=512 为轴。
+     */
     val SendAction: ImageVector by lazy {
         ImageVector.Builder(
             name = "SendAction",
@@ -560,27 +563,35 @@ object SebastianIcons {
             viewportWidth = 1024f,
             viewportHeight = 1024f,
         ).apply {
-            path(fill = SolidColor(Color.Black)) {
-                moveTo(480.73f, 292.91f)
-                lineTo(316.16f, 457.47f)
-                curveToRelative(-18.15f, 18.15f, -4.72f, 49.12f, 21.31f, 49.12f)
-                curveToRelative(7.94f, 0f, 15.88f, -3.03f, 21.93f, -9.08f)
-                lineToRelative(87.47f, -87.47f)
-                lineToRelative(0f, 336.17f)
-                curveToRelative(0f, 25.68f, 20.82f, 46.51f, 46.51f, 46.51f)
-                curveToRelative(25.68f, 0f, 46.55f, -20.82f, 46.55f, -46.51f)
-                verticalLineToRelative(-331.52f)
-                lineToRelative(82.77f, 82.77f)
-                curveToRelative(18.15f, 18.15f, 47.68f, 18.15f, 65.83f, 0f)
-                curveToRelative(18.15f, -18.22f, 18.15f, -47.61f, 0f, -65.79f)
-                lineTo(546.56f, 292.91f)
-                curveToRelative(-18.15f, -18.15f, -47.68f, -18.15f, -65.83f, 0f)
-                close()
+            // V 形箭头头部（左臂 → 顶点 → 右臂）
+            path(
+                fill = SolidColor(Color.Transparent),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 110f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(296f, 490f)
+                lineTo(512f, 230f)
+                lineTo(728f, 490f)
+            }
+            // 竖直箭杆（顶点向下）
+            path(
+                fill = SolidColor(Color.Transparent),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 110f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(512f, 230f)
+                lineTo(512f, 800f)
             }
         }.build()
     }
 
-    /** Rounded square only (no outer circle). Use inside a CircleShape Surface for SendButton stop state. */
+    /**
+     * 居中对称的圆角方块。用于 SendButton 停止态。
+     * viewport 1024×1024，中心 (512, 512)，边长 604，圆角 r=140。
+     */
     val StopAction: ImageVector by lazy {
         ImageVector.Builder(
             name = "StopAction",
@@ -590,14 +601,16 @@ object SebastianIcons {
             viewportHeight = 1024f,
         ).apply {
             path(fill = SolidColor(Color.Black)) {
-                moveTo(725.33f, 688f)
-                curveToRelative(0f, 20.62f, -16.71f, 37.33f, -37.33f, 37.33f)
-                horizontalLineTo(336f)
-                curveToRelative(-20.62f, 0f, -37.33f, -16.71f, -37.33f, -37.33f)
-                verticalLineTo(336f)
-                curveToRelative(0f, -20.62f, 16.71f, -37.33f, 37.33f, -37.33f)
-                horizontalLineToRelative(352f)
-                curveToRelative(20.62f, 0f, 37.33f, 16.71f, 37.33f, 37.33f)
+                // 方块范围 210~814（边长 604），圆角 r=140
+                moveTo(350f, 210f)
+                lineTo(674f, 210f)
+                curveTo(750f, 210f, 814f, 274f, 814f, 350f)
+                lineTo(814f, 674f)
+                curveTo(814f, 750f, 750f, 814f, 674f, 814f)
+                lineTo(350f, 814f)
+                curveTo(274f, 814f, 210f, 750f, 210f, 674f)
+                lineTo(210f, 350f)
+                curveTo(210f, 274f, 274f, 210f, 350f, 210f)
                 close()
             }
         }.build()

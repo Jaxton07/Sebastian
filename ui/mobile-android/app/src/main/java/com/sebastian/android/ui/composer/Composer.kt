@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -68,7 +69,10 @@ fun Composer(
                 value = text,
                 onValueChange = { text = it },
                 placeholder = {
-                    androidx.compose.material3.Text("发消息给 Sebastian")
+                    androidx.compose.material3.Text(
+                        text = "Message Sebastian…",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                    )
                 },
                 maxLines = 6,
                 colors = TextFieldDefaults.colors(

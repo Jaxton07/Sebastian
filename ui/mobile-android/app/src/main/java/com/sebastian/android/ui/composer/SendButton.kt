@@ -26,8 +26,8 @@ import com.sebastian.android.viewmodel.ComposerState
  * |-------------|--------------------------|-------|
  * | IDLE_EMPTY  | Neutral 玻璃圆（禁用）      | 否    |
  * | IDLE_READY  | Primary 玻璃圆 + 发送图标   | 是    |
- * | PENDING     | Primary 玻璃圆 + 停止图标   | 是    |
- * | STREAMING   | Primary 玻璃圆 + 停止图标   | 是    |
+ * | PENDING     | Neutral 玻璃圆 + 停止图标   | 是    |
+ * | STREAMING   | Neutral 玻璃圆 + 停止图标   | 是    |
  * | CANCELLING  | Neutral 玻璃圆 + 进度环     | 否    |
  *
  * [onLongPress] Phase 3 预留：全双工语音入口，默认 null。
@@ -43,10 +43,8 @@ fun SendButton(
     val isEnabled = state == ComposerState.IDLE_READY ||
         state == ComposerState.STREAMING ||
         state == ComposerState.PENDING
-    val tint = if (state == ComposerState.IDLE_READY ||
-        state == ComposerState.STREAMING ||
-        state == ComposerState.PENDING
-    )
+    // 只有"可发送"态用 Primary 高亮，停止/禁用态均用 Neutral 玻璃圆
+    val tint = if (state == ComposerState.IDLE_READY)
         GlassButtonTint.Primary
     else
         GlassButtonTint.Neutral
@@ -77,14 +75,14 @@ fun SendButton(
                     imageVector = SebastianIcons.SendAction,
                     contentDescription = "发送",
                     tint = if (targetState == ComposerState.IDLE_READY)
-                        MaterialTheme.colorScheme.onPrimary
+                        MaterialTheme.colorScheme.surface  // 深色按钮背景上用亮色图标
                     else
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                 )
                 ComposerState.PENDING, ComposerState.STREAMING -> Icon(
                     imageVector = SebastianIcons.StopAction,
                     contentDescription = "停止",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                 )
                 ComposerState.CANCELLING -> CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),

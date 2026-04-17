@@ -1,6 +1,8 @@
 // com/sebastian/android/ui/common/glass/GlassButton.kt
 package com.sebastian.android.ui.common.glass
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,11 +12,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.sebastian.android.ui.common.AnimationTokens
 
 /**
  * 圆形玻璃按钮的色调。
@@ -49,15 +53,19 @@ fun GlassCircleButton(
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    val backgroundColor = when (tint) {
+    val backgroundTargetColor = when (tint) {
         GlassButtonTint.Neutral -> MaterialTheme.colorScheme.onSurface.copy(
-            alpha = if (enabled) 0.10f else 0.05f,
+            alpha = if (enabled) 0.20f else 0.08f,
         )
-        GlassButtonTint.Primary -> MaterialTheme.colorScheme.primary.copy(
-            alpha = if (enabled) 0.85f else 0.4f,
+        GlassButtonTint.Primary -> MaterialTheme.colorScheme.onSurface.copy(
+            alpha = if (enabled) 0.88f else 0.40f,
         )
     }
-    val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val backgroundColor by animateColorAsState(
+        targetValue = backgroundTargetColor,
+        animationSpec = tween(durationMillis = AnimationTokens.STATE_TRANSITION_DURATION_MS),
+        label = "glass_button_bg",
+    )
 
     Box(
         contentAlignment = Alignment.Center,
@@ -65,7 +73,6 @@ fun GlassCircleButton(
             .size(size)
             .clip(CircleShape)
             .background(backgroundColor)
-            .border(width = 0.5.dp, color = borderColor, shape = CircleShape)
             .combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
