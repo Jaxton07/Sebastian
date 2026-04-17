@@ -347,6 +347,8 @@ private fun DrawScope.drawDashedArcHalo(
 // BreathingHalo · PENDING · 彩虹渐变旋转光环 + 呼吸 alpha
 // ═══════════════════════════════════════════════════════════════
 
+private const val BREATHING_CONTAINER_DP = 24
+
 /**
  * PENDING state halo: rotating rainbow gradient ring + alpha breathing.
  * - Three-color sweep (blue → purple → cyan → blue), rotates 360° in 2.4s
@@ -383,7 +385,7 @@ fun BreathingHalo(
         label = "alpha",
     )
 
-    Canvas(modifier = modifier.size(24.dp)) {
+    Canvas(modifier = modifier.size(BREATHING_CONTAINER_DP.dp)) {
         val brush = Brush.sweepGradient(
             listOf(primary, purple, cyan, primary),
         )

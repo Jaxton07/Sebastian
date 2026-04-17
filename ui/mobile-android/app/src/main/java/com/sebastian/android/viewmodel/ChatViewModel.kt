@@ -536,6 +536,9 @@ class ChatViewModel @Inject constructor(
                         }
                         startSseCollection(replayFromStart = false)
                     }
+                    .onFailure {
+                        startSseCollection(replayFromStart = false)
+                    }
             }
             return
         }
