@@ -62,7 +62,7 @@ class ChatViewModelTest {
         networkMonitor = mock()
         whenever(networkMonitor.isOnline).thenReturn(onlineFlow)
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
-        whenever(chatRepository.sessionStream(any(), any(), any())).thenReturn(sseFlow)
+        whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
         runBlocking {
             whenever(chatRepository.sendTurn(any(), any())).thenReturn(Result.success("s1"))
@@ -702,6 +702,71 @@ class ChatViewModelTest {
         assertEquals("Toast fires after total 15s foreground", 1, toasts.size)
 
         collectJob.cancel()
+    }
+
+    // ── onAppStart PENDING 分支 ────────────────────────────────────────────────
+
+    @Test
+    fun `onAppStart in PENDING with completed assistant message resets to IDLE_EMPTY`() = vmTest {
+        activateSession()
+        viewModel.sendMessage("hi")
+        dispatcher.scheduler.advanceTimeBy(500)
+        // Now in PENDING
+
+        // Mock getMessages to return a completed assistant turn
+        whenever(chatRepository.getMessages("s1")).thenReturn(
+            Result.success(listOf(
+                Message(
+                    id = "m1",
+                    sessionId = "s1",
+                    role = MessageRole.USER,
+                    text = "hi",
+                ),
+                Message(
+                    id = "m2",
+                    sessionId = "s1",
+                    role = MessageRole.ASSISTANT,
+                    blocks = listOf(ContentBlock.TextBlock(blockId = "b0", text = "done", done = true)),
+                ),
+            ))
+        )
+
+        viewModel.onAppStop()
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(300)
+
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertEquals(ComposerState.IDLE_EMPTY, state.composerState)
+            assertEquals(AgentAnimState.IDLE, state.agentAnimState)
+        }
+    }
+
+    @Test
+    fun `onAppStart in PENDING with only user message stays PENDING`() = vmTest {
+        activateSession()
+        viewModel.sendMessage("hi")
+        dispatcher.scheduler.advanceTimeBy(500)
+
+        whenever(chatRepository.getMessages("s1")).thenReturn(
+            Result.success(listOf(
+                Message(
+                    id = "m1",
+                    sessionId = "s1",
+                    role = MessageRole.USER,
+                    text = "hi",
+                ),
+            ))
+        )
+
+        viewModel.onAppStop()
+        viewModel.onAppStart()
+        dispatcher.scheduler.advanceTimeBy(300)
+
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertEquals(ComposerState.PENDING, state.composerState)
+        }
     }
 
     @Test

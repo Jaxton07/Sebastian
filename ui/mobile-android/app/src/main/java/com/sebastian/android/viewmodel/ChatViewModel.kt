@@ -510,10 +510,38 @@ class ChatViewModel @Inject constructor(
     fun onAppStart() {
         resumePendingTimeoutIfNeeded()
         val state = _uiState.value
-        val sessionId = state.activeSessionId ?: return
         if (state.isOffline) return
+
+        if (state.composerState == ComposerState.PENDING) {
+            val sessionId = state.activeSessionId ?: run {
+                // No session yet (REST hasn't returned) — restart SSE if needed
+                startSseCollection(replayFromStart = false)
+                return
+            }
+            viewModelScope.launch(dispatcher) {
+                chatRepository.getMessages(sessionId)
+                    .onSuccess { msgs ->
+                        val last = msgs.lastOrNull()
+                        val turnDone = last?.role == MessageRole.ASSISTANT &&
+                            last.blocks.lastOrNull()?.isDone == true
+                        if (turnDone) {
+                            cancelPendingTimeout()
+                            _uiState.update {
+                                it.copy(
+                                    messages = msgs,
+                                    composerState = ComposerState.IDLE_EMPTY,
+                                    agentAnimState = AgentAnimState.IDLE,
+                                )
+                            }
+                        }
+                        startSseCollection(replayFromStart = false)
+                    }
+            }
+            return
+        }
+
+        val sessionId = state.activeSessionId ?: return
         if (state.composerState == ComposerState.STREAMING ||
-            state.composerState == ComposerState.PENDING ||
             state.composerState == ComposerState.CANCELLING ||
             state.composerState == ComposerState.IDLE_READY
         ) return
