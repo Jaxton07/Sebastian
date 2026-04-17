@@ -66,3 +66,16 @@ async def test_run_streaming_consumes_pending_cancel_on_registration(tmp_path: P
 
     # Pending intent must be consumed.
     assert "s1" not in agent._pending_cancel_intents
+
+
+@pytest.mark.asyncio
+async def test_pending_cancel_ttl_expiry(agent) -> None:
+    await agent.cancel_session("s1", intent="cancel")
+    assert "s1" in agent._pending_cancel_intents
+
+    # Trigger TTL manually (the handle is a real asyncio TimerHandle; invoking
+    # its callback directly avoids sleeping 60 real seconds in tests).
+    agent._expire_pending_cancel("s1")
+
+    assert "s1" not in agent._pending_cancel_intents
+    assert "s1" not in agent._pending_cancel_timers
