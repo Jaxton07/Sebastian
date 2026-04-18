@@ -16,3 +16,6 @@
 # OkHttp
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# Google Tink / error-prone annotations (R8 release build)
+-dontwarn com.google.errorprone.annotations.**
