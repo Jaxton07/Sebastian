@@ -352,3 +352,198 @@ async def test_resolver_supersedes_when_new_has_much_higher_confidence_same_sour
 
     assert decision.decision == MemoryDecisionType.SUPERSEDE
     assert decision.old_memory_ids == ["mem-tz-old"]
+
+
+# ---------------------------------------------------------------------------
+# Branch coverage: every decision path in resolver.resolve_candidate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_single_cardinality_no_existing_returns_add() -> None:
+    """SINGLE slot with no existing active record → ADD (step 5 empty branch)."""
+    store = FakeProfileStore([])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.PREFERENCE,
+        source=MemorySource.EXPLICIT,
+        slot_id="user.preference.response_style",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        confidence=0.9,
+        content="concise",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is not None
+    assert decision.slot_id == "user.preference.response_style"
+
+
+@pytest.mark.asyncio
+async def test_append_only_policy_returns_add() -> None:
+    """APPEND_ONLY policy (non-SINGLE cardinality) → ADD (step 4 branch)."""
+    # Use candidate-level APPEND_ONLY without registering a slot so that the
+    # slot registry does not override the policy.  slot_id=None means step 3
+    # leaves effective_policy as the candidate's APPEND_ONLY.
+    store = FakeProfileStore([])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.ENTITY,
+        source=MemorySource.OBSERVED,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=ResolutionPolicy.APPEND_ONLY,
+        confidence=0.8,
+        content="some entity",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is not None
+
+
+@pytest.mark.asyncio
+async def test_inferred_no_slot_medium_confidence_returns_add() -> None:
+    """INFERRED source, no slot, confidence=0.5 (> 0.3 threshold) → fallback ADD."""
+    store = FakeProfileStore([])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.ENTITY,
+        source=MemorySource.INFERRED,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.5,
+        content="possibly a person named Alice",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is not None
+
+
+@pytest.mark.asyncio
+async def test_relation_kind_without_slot_returns_add() -> None:
+    """kind=RELATION with slot_id=None → fallback ADD (step 6 branch)."""
+    store = FakeProfileStore([])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.RELATION,
+        source=MemorySource.OBSERVED,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.9,
+        content="Alice knows Bob",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is not None
+    assert decision.slot_id is None
+
+
+@pytest.mark.asyncio
+async def test_explicit_overrides_inferred_existing_returns_supersede() -> None:
+    """EXPLICIT candidate with existing INFERRED record → SUPERSEDE."""
+    existing = _make_record(
+        "mem-style-old",
+        slot_id="user.preference.response_style",
+        kind=MemoryKind.PREFERENCE.value,
+        source=MemorySource.INFERRED.value,
+        confidence=0.6,
+        content="detailed",
+    )
+    store = FakeProfileStore([existing])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.PREFERENCE,
+        source=MemorySource.EXPLICIT,
+        slot_id="user.preference.response_style",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        confidence=0.9,
+        content="concise",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.SUPERSEDE
+    assert decision.old_memory_ids == [existing.id]
+    assert decision.new_memory is not None
+
+
+@pytest.mark.asyncio
+async def test_inferred_lower_confidence_vs_explicit_existing_returns_discard() -> None:
+    """INFERRED + lower confidence vs EXPLICIT existing → DISCARD (all existing stronger)."""
+    existing = _make_record(
+        "mem-style-old",
+        slot_id="user.preference.response_style",
+        kind=MemoryKind.PREFERENCE.value,
+        source=MemorySource.EXPLICIT.value,
+        confidence=0.9,
+        content="concise",
+    )
+    store = FakeProfileStore([existing])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.PREFERENCE,
+        source=MemorySource.INFERRED,
+        slot_id="user.preference.response_style",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        confidence=0.5,
+        content="detailed",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.DISCARD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is None
+    assert "weaker" in decision.reason
