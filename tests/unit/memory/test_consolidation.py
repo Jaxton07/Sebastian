@@ -38,6 +38,19 @@ class FakeLLMProvider(LLMProvider):
         yield ProviderCallEnd(stop_reason="end_turn")
 
 
+class CapturingLLMProvider(LLMProvider):
+    """Fake LLM provider that records every stream() call's kwargs for assertion."""
+
+    def __init__(self, response_json: str) -> None:
+        self._response = response_json
+        self.calls: list[dict[str, Any]] = []
+
+    async def stream(self, **kwargs: Any) -> AsyncGenerator[LLMStreamEvent, None]:  # type: ignore[override]
+        self.calls.append(dict(kwargs))
+        yield TextDelta(block_id="b0", delta=self._response)
+        yield ProviderCallEnd(stop_reason="end_turn")
+
+
 class FakeRegistry:
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
@@ -401,6 +414,57 @@ class TestMemoryConsolidatorConsolidate:
         assert result.proposed_actions == []
 
     @pytest.mark.asyncio
+    async def test_consolidator_prompt_contains_schema_instruction(self) -> None:
+        """Consolidator must call LLM with a system prompt referencing the JSON schema
+        and a user message whose content is valid JSON carrying the expected input fields.
+        """
+        raw = _make_valid_consolidation_result_json()
+        provider = CapturingLLMProvider(raw)
+        registry = FakeRegistry(provider)
+        consolidator = MemoryConsolidator(registry)  # type: ignore[arg-type]
+
+        inp = ConsolidatorInput(
+            session_messages=[{"role": "user", "content": "I prefer dark mode"}],
+            candidate_artifacts=[],
+            active_memories_for_subject=[{"id": "m1", "content": "old preference"}],
+            recent_summaries=[{"content": "summary one", "subject_id": "user:u1"}],
+            slot_definitions=[{"slot_id": "user.preference.theme", "description": "UI theme"}],
+            entity_registry_snapshot=[{"entity_id": "e1", "name": "Alice"}],
+        )
+        result = await consolidator.consolidate(inp)
+        assert isinstance(result, ConsolidationResult)
+
+        # Exactly one LLM call was made
+        assert len(provider.calls) == 1
+        call = provider.calls[0]
+
+        # system prompt must mention the output schema and instruct JSON-only output
+        system: str = call["system"]
+        assert "ConsolidationResult" in system, (
+            f"system prompt does not mention 'ConsolidationResult': {system!r}"
+        )
+        assert "json" in system.lower(), f"system prompt does not mention JSON format: {system!r}"
+
+        # messages[0] content must be valid JSON carrying the expected ConsolidatorInput fields
+        messages: list[dict[str, Any]] = call["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        user_content = messages[0]["content"]
+        parsed = json.loads(user_content)  # must not raise
+        assert "session_messages" in parsed, (
+            f"user message JSON missing 'session_messages': {list(parsed.keys())}"
+        )
+        assert "slot_definitions" in parsed, (
+            f"user message JSON missing 'slot_definitions': {list(parsed.keys())}"
+        )
+        assert "active_memories_for_subject" in parsed, (
+            f"user message JSON missing 'active_memories_for_subject': {list(parsed.keys())}"
+        )
+        assert "entity_registry_snapshot" in parsed, (
+            f"user message JSON missing 'entity_registry_snapshot': {list(parsed.keys())}"
+        )
+
+    @pytest.mark.asyncio
     async def test_worker_writes_nothing_when_memory_disabled(self) -> None:
         """When memory_settings_fn returns False, the worker must not write anything."""
         from sqlalchemy import select, text
@@ -440,15 +504,11 @@ class TestMemoryConsolidatorConsolidate:
                 async def consolidate(
                     self, consolidator_input: ConsolidatorInput
                 ) -> ConsolidationResult:
-                    raise AssertionError(
-                        "consolidator must not run when memory is disabled"
-                    )
+                    raise AssertionError("consolidator must not run when memory is disabled")
 
             class _FailingExtractor:
                 async def extract(self, extractor_input):  # type: ignore[no-untyped-def]
-                    raise AssertionError(
-                        "extractor must not run when memory is disabled"
-                    )
+                    raise AssertionError("extractor must not run when memory is disabled")
 
             worker = SessionConsolidationWorker(
                 db_factory=factory,
@@ -463,9 +523,7 @@ class TestMemoryConsolidatorConsolidate:
             async with factory() as s:
                 profiles = list((await s.scalars(select(ProfileMemoryRecord))).all())
                 episodes = list((await s.scalars(select(EpisodeMemoryRecord))).all())
-                markers = list(
-                    (await s.scalars(select(SessionConsolidationRecord))).all()
-                )
+                markers = list((await s.scalars(select(SessionConsolidationRecord))).all())
                 assert profiles == []
                 assert episodes == []
                 assert markers == []

@@ -32,6 +32,19 @@ class FakeLLMProvider(LLMProvider):
         yield ProviderCallEnd(stop_reason="end_turn")
 
 
+class CapturingLLMProvider(LLMProvider):
+    """Fake LLM provider that records every stream() call's kwargs for assertion."""
+
+    def __init__(self, response_json: str) -> None:
+        self._response = response_json
+        self.calls: list[dict[str, Any]] = []
+
+    async def stream(self, **kwargs: Any) -> AsyncGenerator[LLMStreamEvent, None]:  # type: ignore[override]
+        self.calls.append(dict(kwargs))
+        yield TextDelta(block_id="b0", delta=self._response)
+        yield ProviderCallEnd(stop_reason="end_turn")
+
+
 class FakeRegistry:
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
@@ -328,3 +341,48 @@ class TestMemoryExtractorExtract:
         assert len(result) == 2
         assert result[1].content == "Another memory"
         assert result[1].kind == MemoryKind.FACT
+
+    @pytest.mark.asyncio
+    async def test_extractor_prompt_contains_schema_instruction(self) -> None:
+        """Extractor must call LLM with a system prompt referencing the JSON schema
+        and a user message whose content is valid JSON carrying the expected input fields.
+        """
+        raw = _make_valid_extractor_output_json()
+        provider = CapturingLLMProvider(raw)
+        registry = FakeRegistry(provider)
+        extractor = MemoryExtractor(registry)  # type: ignore[arg-type]
+
+        inp = ExtractorInput(
+            subject_context={"user_id": "u1", "name": "Alice"},
+            conversation_window=[{"role": "user", "content": "I prefer dark mode"}],
+            known_slots=[{"slot_id": "user.preference.theme", "description": "UI theme"}],
+        )
+        result = await extractor.extract(inp)
+        assert isinstance(result, list)
+
+        # Exactly one LLM call was made
+        assert len(provider.calls) == 1
+        call = provider.calls[0]
+
+        # system prompt must mention the output schema and instruct JSON-only output
+        system: str = call["system"]
+        assert "CandidateArtifact" in system, (
+            f"system prompt does not mention 'CandidateArtifact': {system!r}"
+        )
+        assert "json" in system.lower(), f"system prompt does not mention JSON format: {system!r}"
+
+        # messages[0] content must be valid JSON carrying the expected ExtractorInput fields
+        messages: list[dict[str, Any]] = call["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        user_content = messages[0]["content"]
+        parsed = json.loads(user_content)  # must not raise
+        assert "subject_context" in parsed, (
+            f"user message JSON missing 'subject_context': {list(parsed.keys())}"
+        )
+        assert "conversation_window" in parsed, (
+            f"user message JSON missing 'conversation_window': {list(parsed.keys())}"
+        )
+        assert "known_slots" in parsed, (
+            f"user message JSON missing 'known_slots': {list(parsed.keys())}"
+        )
