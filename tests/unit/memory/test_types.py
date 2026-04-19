@@ -19,7 +19,6 @@ from sebastian.memory.types import (
     SlotDefinition,
 )
 
-
 # ---------------------------------------------------------------------------
 # Enum coverage
 # ---------------------------------------------------------------------------
@@ -87,7 +86,7 @@ def test_candidate_artifact_accepts_required_fields() -> None:
         content="用户偏好简洁中文回复",
         structured_payload={"language": "zh-CN", "style": "concise"},
         subject_hint="owner",
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id="user.preference.response_style",
         cardinality="single",
         resolution_policy="supersede",
@@ -110,7 +109,7 @@ def test_candidate_artifact_rejects_invalid_confidence() -> None:
             content="bad",
             structured_payload={},
             subject_hint=None,
-            scope="user",
+            scope=MemoryScope.USER,
             slot_id=None,
             cardinality=None,
             resolution_policy=None,
@@ -130,7 +129,7 @@ def test_candidate_artifact_confidence_boundary_zero() -> None:
         content="some fact",
         structured_payload={},
         subject_hint=None,
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id=None,
         cardinality=None,
         resolution_policy=None,
@@ -151,7 +150,7 @@ def test_candidate_artifact_confidence_boundary_one() -> None:
         content="certain fact",
         structured_payload={},
         subject_hint=None,
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id=None,
         cardinality=None,
         resolution_policy=None,
@@ -173,7 +172,7 @@ def test_candidate_artifact_rejects_negative_confidence() -> None:
             content="bad",
             structured_payload={},
             subject_hint=None,
-            scope="user",
+            scope=MemoryScope.USER,
             slot_id=None,
             cardinality=None,
             resolution_policy=None,
@@ -194,7 +193,7 @@ def test_candidate_artifact_with_valid_from_until() -> None:
         content="meeting with Alice",
         structured_payload={"participant": "Alice"},
         subject_hint="owner",
-        scope="session",
+        scope=MemoryScope.SESSION,
         slot_id=None,
         cardinality=Cardinality.MULTI,
         resolution_policy=ResolutionPolicy.APPEND_ONLY,
@@ -210,6 +209,27 @@ def test_candidate_artifact_with_valid_from_until() -> None:
     assert artifact.policy_tags == ["work"]
 
 
+def test_candidate_artifact_rejects_invalid_scope() -> None:
+    with pytest.raises(ValidationError):
+        CandidateArtifact(
+            kind=MemoryKind.FACT,
+            content="some fact",
+            structured_payload={},
+            subject_hint=None,
+            scope="totally_invalid",
+            slot_id=None,
+            cardinality=None,
+            resolution_policy=None,
+            confidence=0.5,
+            source=MemorySource.INFERRED,
+            evidence=[],
+            valid_from=None,
+            valid_until=None,
+            policy_tags=[],
+            needs_review=False,
+        )
+
+
 # ---------------------------------------------------------------------------
 # SlotDefinition
 # ---------------------------------------------------------------------------
@@ -218,7 +238,7 @@ def test_candidate_artifact_with_valid_from_until() -> None:
 def test_slot_definition_construction() -> None:
     slot = SlotDefinition(
         slot_id="user.preference.language",
-        scope="user",
+        scope=MemoryScope.USER,
         subject_kind="owner",
         cardinality=Cardinality.SINGLE,
         resolution_policy=ResolutionPolicy.SUPERSEDE,
@@ -233,7 +253,7 @@ def test_slot_definition_construction() -> None:
 def test_slot_definition_multi_kind_constraints() -> None:
     slot = SlotDefinition(
         slot_id="user.general.facts",
-        scope="user",
+        scope=MemoryScope.USER,
         subject_kind="owner",
         cardinality=Cardinality.MULTI,
         resolution_policy=ResolutionPolicy.APPEND_ONLY,
@@ -253,7 +273,7 @@ def _make_memory_artifact(**overrides: object) -> MemoryArtifact:
     defaults: dict[str, object] = {
         "id": "mem_abc123",
         "kind": MemoryKind.FACT,
-        "scope": "user",
+        "scope": MemoryScope.USER,
         "subject_id": "owner",
         "slot_id": None,
         "cardinality": None,
@@ -328,7 +348,7 @@ def _make_candidate() -> CandidateArtifact:
         content="prefers dark mode",
         structured_payload={},
         subject_hint="owner",
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id="user.preference.ui_theme",
         cardinality=Cardinality.SINGLE,
         resolution_policy=ResolutionPolicy.SUPERSEDE,
@@ -351,7 +371,7 @@ def test_resolve_decision_add() -> None:
         new_memory=new_mem,
         candidate=_make_candidate(),
         subject_id="owner",
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id="user.preference.ui_theme",
     )
     assert decision.decision is MemoryDecisionType.ADD
@@ -366,7 +386,7 @@ def test_resolve_decision_discard_no_new_memory() -> None:
         new_memory=None,
         candidate=_make_candidate(),
         subject_id="owner",
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id=None,
     )
     assert decision.decision is MemoryDecisionType.DISCARD
@@ -382,7 +402,7 @@ def test_resolve_decision_supersede() -> None:
         new_memory=new_mem,
         candidate=_make_candidate(),
         subject_id="owner",
-        scope="user",
+        scope=MemoryScope.USER,
         slot_id="user.preference.ui_theme",
     )
     assert decision.decision is MemoryDecisionType.SUPERSEDE

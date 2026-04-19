@@ -60,7 +60,7 @@ class ResolutionPolicy(StrEnum):
 
 class SlotDefinition(BaseModel):
     slot_id: str
-    scope: str
+    scope: MemoryScope
     subject_kind: str
     cardinality: Cardinality
     resolution_policy: ResolutionPolicy
@@ -73,7 +73,7 @@ class CandidateArtifact(BaseModel):
     content: str
     structured_payload: dict[str, Any]
     subject_hint: str | None
-    scope: str
+    scope: MemoryScope
     slot_id: str | None
     cardinality: Cardinality | None
     resolution_policy: ResolutionPolicy | None
@@ -89,7 +89,7 @@ class CandidateArtifact(BaseModel):
 class MemoryArtifact(BaseModel):
     id: str
     kind: MemoryKind
-    scope: str
+    scope: MemoryScope
     subject_id: str
     slot_id: str | None
     cardinality: Cardinality | None
@@ -118,5 +118,5 @@ class ResolveDecision(BaseModel):
     new_memory: MemoryArtifact | None
     candidate: CandidateArtifact
     subject_id: str
-    scope: str
+    scope: MemoryScope
     slot_id: str | None
