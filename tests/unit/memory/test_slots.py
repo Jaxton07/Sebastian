@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from sebastian.memory.slots import SlotRegistry
+from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY, SlotRegistry
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -10,6 +10,7 @@ from sebastian.memory.types import (
     MemoryScope,
     MemorySource,
     ResolutionPolicy,
+    SlotDefinition,
 )
 
 
@@ -61,6 +62,7 @@ class TestBuiltinSlots:
         ]
         for slot_id in expected:
             assert registry.get(slot_id) is not None, f"Missing slot: {slot_id}"
+        assert len(registry._slots) == 6  # no accidental extra slots
 
 
 class TestRegistryLookup:
@@ -70,12 +72,10 @@ class TestRegistryLookup:
 
     def test_require_unknown_raises_key_error(self) -> None:
         registry = SlotRegistry()
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match="unknown.slot.id"):
             registry.require("unknown.slot.id")
 
     def test_custom_slots_only_when_explicit(self) -> None:
-        from sebastian.memory.types import SlotDefinition
-
         custom_slot = SlotDefinition(
             slot_id="custom.test.slot",
             scope=MemoryScope.USER,
@@ -151,3 +151,14 @@ class TestValidateCandidate:
         candidate = _make_candidate(MemoryKind.SUMMARY, slot_id=None)
         errors = registry.validate_candidate(candidate)
         assert errors == []
+
+    def test_validate_candidate_rejects_mismatched_kind(self) -> None:
+        """FACT candidate in a PREFERENCE-only slot should be invalid."""
+        registry = DEFAULT_SLOT_REGISTRY
+        candidate = _make_candidate(
+            kind=MemoryKind.FACT,
+            slot_id="user.preference.response_style",  # kind_constraints=[PREFERENCE]
+        )
+        errors = registry.validate_candidate(candidate)
+        assert len(errors) == 1
+        assert "user.preference.response_style" in errors[0]

@@ -126,6 +126,14 @@ class SlotRegistry:
             errors.append(
                 f"slot_id '{candidate.slot_id}' is not registered in this SlotRegistry."
             )
+        else:
+            slot = self._slots[candidate.slot_id]
+            if candidate.kind not in slot.kind_constraints:
+                errors.append(
+                    f"Candidate kind '{candidate.kind}' is not allowed"
+                    f" for slot '{candidate.slot_id}'"
+                    f" (allowed: {[k.value for k in slot.kind_constraints]})."
+                )
         return errors
 
 
