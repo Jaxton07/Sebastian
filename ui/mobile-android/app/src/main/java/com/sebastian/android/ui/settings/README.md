@@ -58,6 +58,13 @@ Agent LLM 绑定主列表页，由 `AgentBindingsViewModel` 驱动（仅 `load()
 
 外观设置，含深色/浅色模式切换等开关，由 `SettingsViewModel` 驱动。
 
+### Memory 设置
+
+Settings 中展示 Memory 区块，包含默认开启的 Switch，标签为 `Memory enabled`。
+
+- 用户切换时调用 `PUT /api/v1/memory/settings`，请求体为 `{"enabled": boolean}`。
+- 关闭文案：`关闭后不会读取、写入或沉淀记忆；已有记忆不会删除。`
+
 ### `DebugLoggingPage`
 
 高级调试页，含日志级别开关，由 `SettingsViewModel` 驱动。

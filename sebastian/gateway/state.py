@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -17,6 +19,11 @@ if TYPE_CHECKING:
     from sebastian.store.session_store import SessionStore
     from sebastian.store.todo_store import TodoStore
 
+
+class MemoryRuntimeSettings(BaseModel):
+    enabled: bool
+
+
 sebastian: Sebastian
 sse_manager: SSEManager
 event_bus: EventBus
@@ -26,6 +33,7 @@ todo_store: TodoStore
 index_store: IndexStore
 db_factory: async_sessionmaker[AsyncSession]
 llm_registry: LLMProviderRegistry
+memory_settings: MemoryRuntimeSettings
 agent_instances: dict[str, BaseAgent] = {}
 agent_registry: dict[str, AgentConfig] = {}
 

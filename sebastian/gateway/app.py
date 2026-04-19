@@ -69,6 +69,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sse=settings.sebastian_log_sse,
     )
     await init_db()
+    from sebastian.gateway.state import MemoryRuntimeSettings
+
+    state.memory_settings = MemoryRuntimeSettings(enabled=settings.sebastian_memory_enabled)
     db_factory = get_session_factory()
     session_store = SessionStore(settings.sessions_dir)
     todo_store = TodoStore(settings.sessions_dir)
@@ -226,6 +229,7 @@ def create_app() -> FastAPI:
         approvals,
         debug,
         llm_providers,
+        memory_settings,
         sessions,
         stream,
         turns,
@@ -249,6 +253,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/api/v1")
     app.include_router(llm_providers.router, prefix="/api/v1")
     app.include_router(debug.router, prefix="/api/v1")
+    app.include_router(memory_settings.router, prefix="/api/v1")
     return app
 
 
