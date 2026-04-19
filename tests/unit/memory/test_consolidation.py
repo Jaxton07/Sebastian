@@ -413,7 +413,9 @@ class TestMemoryConsolidatorConsolidate:
                 async def consolidate(
                     self, consolidator_input: ConsolidatorInput
                 ) -> ConsolidationResult:
-                    return ConsolidationResult()
+                    raise AssertionError(
+                        "consolidator must not run when memory is disabled"
+                    )
 
             worker = SessionConsolidationWorker(
                 db_factory=factory,

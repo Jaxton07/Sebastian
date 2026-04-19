@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import sebastian.gateway.state as state_module
 from sebastian.store import models  # noqa: F401 – registers ORM models
 from sebastian.store.database import Base
+
+if TYPE_CHECKING:
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.slots import SlotRegistry
+    from sebastian.memory.types import CandidateArtifact, ResolveDecision
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -174,14 +180,20 @@ async def test_memory_search_no_db_returns_error(no_db_state) -> None:
 @pytest.mark.asyncio
 async def test_memory_save_discard_writes_decision_log(
     enabled_memory_state, monkeypatch
-):
+) -> None:
     from sqlalchemy import select
 
     from sebastian.capabilities.tools.memory_save import memory_save
     from sebastian.memory.types import MemoryDecisionType, ResolveDecision
     from sebastian.store.models import MemoryDecisionLogRecord
 
-    async def fake_resolve(candidate, *, subject_id, profile_store, slot_registry):
+    async def fake_resolve(
+        candidate: CandidateArtifact,
+        *,
+        subject_id: str,
+        profile_store: ProfileMemoryStore,
+        slot_registry: SlotRegistry,
+    ) -> ResolveDecision:
         return ResolveDecision(
             decision=MemoryDecisionType.DISCARD,
             reason="test",
