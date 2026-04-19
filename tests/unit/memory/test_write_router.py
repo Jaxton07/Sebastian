@@ -299,9 +299,13 @@ async def test_persist_decision_relation_add_writes_relation_candidate(
     db_session,
 ) -> None:
     profile_store, episode_store, entity_registry = _stores(db_session)
+    valid_from = datetime(2026, 1, 1, tzinfo=UTC)
+    valid_until = datetime(2026, 2, 1, tzinfo=UTC)
     artifact = _artifact(
         MemoryKind.RELATION,
         content="owner owns 小橘",
+        valid_from=valid_from,
+        valid_until=valid_until,
         structured_payload={
             "predicate": "owns",
             "source_entity_id": "owner",
@@ -335,3 +339,46 @@ async def test_persist_decision_relation_add_writes_relation_candidate(
     assert row.target_entity_id == "entity-xiaoju"
     assert row.content == "owner owns 小橘"
     assert row.status == MemoryStatus.ACTIVE.value
+    assert row.valid_from == valid_from.replace(tzinfo=None)
+    assert row.valid_until == valid_until.replace(tzinfo=None)
+
+
+async def test_persist_decision_time_bound_relation_preserves_validity_window(
+    db_session,
+) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    valid_from = datetime(2026, 3, 1, tzinfo=UTC)
+    valid_until = datetime(2026, 4, 1, tzinfo=UTC)
+    artifact = _artifact(
+        MemoryKind.RELATION,
+        content="project phase active during March",
+        valid_from=valid_from,
+        valid_until=valid_until,
+        structured_payload={
+            "predicate": "active_phase",
+            "source_entity_id": "project-sebastian",
+            "target_entity_id": "phase-memory",
+        },
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.RELATION),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    row = (await db_session.scalars(select(RelationCandidateRecord))).one()
+    assert row.valid_from == valid_from.replace(tzinfo=None)
+    assert row.valid_until == valid_until.replace(tzinfo=None)

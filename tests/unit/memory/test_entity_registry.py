@@ -21,6 +21,8 @@ def _make_relation(
     content: str = "妻子喜欢做饭",
     created_at: datetime | None = None,
     predicate: str = "likes",
+    valid_from: datetime | None = None,
+    valid_until: datetime | None = None,
 ) -> RelationCandidateRecord:
     ts = created_at or datetime.now(UTC)
     return RelationCandidateRecord(
@@ -33,6 +35,8 @@ def _make_relation(
         structured_payload={},
         confidence=0.9,
         status=status,
+        valid_from=valid_from,
+        valid_until=valid_until,
         provenance={},
         created_at=ts,
         updated_at=ts,
@@ -297,3 +301,59 @@ async def test_list_relations_orders_by_created_at_desc(db_session) -> None:
     results = await registry.list_relations(subject_id="owner", limit=5)
 
     assert [r.id for r in results] == [newest.id, middle.id, oldest.id]
+
+
+async def test_list_relations_filters_expired_relations(db_session) -> None:
+    now = datetime.now(UTC)
+    active = _make_relation(subject_id="owner", content="当前关系")
+    expired = _make_relation(
+        subject_id="owner",
+        content="过期关系",
+        valid_until=now - timedelta(minutes=5),
+    )
+    db_session.add_all([active, expired])
+    await db_session.flush()
+
+    registry = EntityRegistry(db_session)
+    results = await registry.list_relations(subject_id="owner")
+
+    assert [r.id for r in results] == [active.id]
+
+
+async def test_list_relations_filters_future_relations(db_session) -> None:
+    now = datetime.now(UTC)
+    active = _make_relation(subject_id="owner", content="当前关系")
+    future = _make_relation(
+        subject_id="owner",
+        content="未来关系",
+        valid_from=now + timedelta(days=1),
+    )
+    db_session.add_all([active, future])
+    await db_session.flush()
+
+    registry = EntityRegistry(db_session)
+    results = await registry.list_relations(subject_id="owner")
+
+    assert [r.id for r in results] == [active.id]
+
+
+async def test_list_relations_filters_before_limit(db_session) -> None:
+    base = datetime.now(UTC)
+    active_old = _make_relation(
+        subject_id="owner",
+        content="较旧但有效",
+        created_at=base - timedelta(hours=2),
+    )
+    expired_new = _make_relation(
+        subject_id="owner",
+        content="较新但过期",
+        created_at=base,
+        valid_until=base - timedelta(minutes=5),
+    )
+    db_session.add_all([active_old, expired_new])
+    await db_session.flush()
+
+    registry = EntityRegistry(db_session)
+    results = await registry.list_relations(subject_id="owner", limit=1)
+
+    assert [r.id for r in results] == [active_old.id]

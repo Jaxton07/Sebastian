@@ -249,6 +249,6 @@ async def test_decision_logger_append_supersede(db_session) -> None:
     assert record.rule_version == "v1"
     assert record.old_memory_ids == ["mem-001", "mem-002"]
     assert record.new_memory_id == "mem-new-1"
-    assert record.conflicts == []
+    assert record.conflicts == ["mem-001", "mem-002"]
     assert isinstance(record.candidate, dict)
     assert record.candidate["content"] == "用户偏好简洁中文回复"

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from sebastian.memory.segmentation import add_entity_terms
 from sebastian.memory.types import MemoryStatus
@@ -87,16 +87,21 @@ class EntityRegistry:
         subject_id: str,
         limit: int = 3,
     ) -> list[RelationCandidateRecord]:
-        """Return active relation candidates for a subject, newest first.
-
-        Note: lifecycle filter (``valid_until``) deferred to Task F3 backfill;
-        for now we only filter on ``status == ACTIVE``.
-        """
+        """Return currently valid active relation candidates for a subject, newest first."""
+        now = datetime.now(UTC)
         statement = (
             select(RelationCandidateRecord)
             .where(
                 RelationCandidateRecord.subject_id == subject_id,
                 RelationCandidateRecord.status == MemoryStatus.ACTIVE.value,
+                or_(
+                    RelationCandidateRecord.valid_from.is_(None),
+                    RelationCandidateRecord.valid_from <= now,
+                ),
+                or_(
+                    RelationCandidateRecord.valid_until.is_(None),
+                    RelationCandidateRecord.valid_until > now,
+                ),
             )
             .order_by(RelationCandidateRecord.created_at.desc())
             .limit(limit)

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 
-def _jieba():
+def _jieba() -> Any:
     """Lazily import jieba, raising a clear error if not installed."""
     try:
-        import jieba
+        import jieba  # type: ignore[import-untyped]
+
         return jieba
     except ImportError:
         raise RuntimeError(

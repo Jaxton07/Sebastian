@@ -37,7 +37,7 @@ class MemoryDecisionLogger:
             scope=decision.scope.value,
             slot_id=decision.slot_id,
             candidate=decision.candidate.model_dump(mode="json"),
-            conflicts=[],
+            conflicts=list(decision.old_memory_ids),
             reason=decision.reason,
             old_memory_ids=list(decision.old_memory_ids),
             new_memory_id=decision.new_memory.id if decision.new_memory is not None else None,

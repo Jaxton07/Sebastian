@@ -45,7 +45,7 @@ class MemoryRetrievalPlanner:
         msg = context.user_message.lower().strip()
         if any(msg == p or msg.startswith(p + " ") for p in SMALL_TALK_PATTERNS):
             return RetrievalPlan(
-                profile_lane=False,
+                profile_lane=True,
                 context_lane=False,
                 episode_lane=False,
                 relation_lane=False,
@@ -67,6 +67,7 @@ class MemorySectionAssembler:
         episode_records: list[Any],
         relation_records: list[Any],
         plan: RetrievalPlan,
+        context: RetrievalContext | None = None,
         min_confidence: float = MIN_CONFIDENCE,
     ) -> str:
         """Build memory context string with 4 sections for system prompt injection.
@@ -81,11 +82,29 @@ class MemorySectionAssembler:
         relations (important relationships) → episodes (historical evidence).
         """
         now = datetime.now(UTC)
+        effective_context = context or RetrievalContext(
+            subject_id="",
+            session_id="",
+            agent_type="",
+            user_message="",
+        )
 
         def _keep(record: Any) -> bool:
             policy_tags = getattr(record, "policy_tags", None) or []
-            if DO_NOT_AUTO_INJECT_TAG in policy_tags:
+            if (
+                effective_context.access_purpose == "context_injection"
+                and DO_NOT_AUTO_INJECT_TAG in policy_tags
+            ):
                 return False
+            for tag in policy_tags:
+                if tag.startswith("access:"):
+                    _, allowed_purpose = tag.split(":", 1)
+                    if allowed_purpose != effective_context.access_purpose:
+                        return False
+                if tag.startswith("agent:"):
+                    _, allowed_agent = tag.split(":", 1)
+                    if allowed_agent != effective_context.agent_type:
+                        return False
             confidence = getattr(record, "confidence", 1.0)
             if confidence is not None and confidence < min_confidence:
                 return False
@@ -196,4 +215,5 @@ async def retrieve_memory_section(
         episode_records=episode_records,
         relation_records=relation_records,
         plan=plan,
+        context=context,
     )

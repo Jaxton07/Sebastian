@@ -67,6 +67,8 @@ async def persist_decision(
                 structured_payload=payload,
                 confidence=artifact.confidence,
                 status=artifact.status.value,
+                valid_from=artifact.valid_from,
+                valid_until=artifact.valid_until,
                 provenance=artifact.provenance,
                 created_at=artifact.recorded_at,
                 updated_at=artifact.recorded_at,

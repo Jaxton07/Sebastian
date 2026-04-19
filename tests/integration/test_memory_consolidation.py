@@ -539,4 +539,5 @@ async def test_worker_executes_proposed_expire_action(db_factory):
         expire_logs = [log for log in log_result.all() if log.decision == "EXPIRE"]
         assert len(expire_logs) == 1
         assert expire_logs[0].old_memory_ids == ["m-old"]
+        assert expire_logs[0].conflicts == ["m-old"]
         assert expire_logs[0].reason == "stale data"

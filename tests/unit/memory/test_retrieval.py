@@ -125,10 +125,10 @@ class TestMemoryRetrievalPlanner:
         assert plan.episode_limit > 0
         assert plan.relation_limit > 0
 
-    def test_planner_skips_all_lanes_for_small_talk(self) -> None:
+    def test_planner_keeps_profile_lane_for_small_talk(self) -> None:
         planner = MemoryRetrievalPlanner()
         plan = planner.plan(_ctx("hi"))
-        assert plan.profile_lane is False
+        assert plan.profile_lane is True
         assert plan.context_lane is False
         assert plan.episode_lane is False
         assert plan.relation_lane is False
@@ -327,6 +327,85 @@ class TestMemorySectionAssembler:
         )
         assert "keep" in result
         assert "drop" not in result
+
+    def test_assembler_keeps_do_not_auto_inject_for_tool_search(self) -> None:
+        records = [
+            FakeProfileRecord(
+                kind="pref",
+                content="search-only-visible",
+                policy_tags=["do_not_auto_inject"],
+            )
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("tool query").model_copy(update={"access_purpose": "tool_search"}),
+        )
+        assert "search-only-visible" in result
+
+    def test_assembler_filters_access_policy_tags_by_purpose(self) -> None:
+        records = [
+            FakeProfileRecord(
+                kind="pref",
+                content="tool-only",
+                policy_tags=["access:tool_search"],
+            ),
+            FakeProfileRecord(kind="pref", content="general"),
+        ]
+        assembler = MemorySectionAssembler()
+        injection_result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("inject"),
+        )
+        tool_result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("search").model_copy(update={"access_purpose": "tool_search"}),
+        )
+
+        assert "tool-only" not in injection_result
+        assert "general" in injection_result
+        assert "tool-only" in tool_result
+        assert "general" in tool_result
+
+    def test_assembler_filters_agent_policy_tags_by_reader_agent(self) -> None:
+        records = [
+            FakeProfileRecord(kind="pref", content="forge-only", policy_tags=["agent:forge"]),
+            FakeProfileRecord(kind="pref", content="general"),
+        ]
+        assembler = MemorySectionAssembler()
+        sebas_result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("inject"),
+        )
+        forge_result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("inject").model_copy(update={"agent_type": "forge"}),
+        )
+
+        assert "forge-only" not in sebas_result
+        assert "general" in sebas_result
+        assert "forge-only" in forge_result
+        assert "general" in forge_result
 
     def test_assembler_renders_all_four_sections(self) -> None:
         assembler = MemorySectionAssembler()
