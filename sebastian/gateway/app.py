@@ -105,11 +105,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MemoryConsolidator,
         SessionConsolidationWorker,
     )
+    from sebastian.memory.extraction import MemoryExtractor
 
     consolidator = MemoryConsolidator(llm_registry)
+    extractor = MemoryExtractor(llm_registry)
     consolidation_worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=consolidator,
+        extractor=extractor,
         session_store=session_store,
         memory_settings_fn=lambda: state.memory_settings.enabled,
     )

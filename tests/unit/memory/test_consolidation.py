@@ -417,9 +417,16 @@ class TestMemoryConsolidatorConsolidate:
                         "consolidator must not run when memory is disabled"
                     )
 
+            class _FailingExtractor:
+                async def extract(self, extractor_input):  # type: ignore[no-untyped-def]
+                    raise AssertionError(
+                        "extractor must not run when memory is disabled"
+                    )
+
             worker = SessionConsolidationWorker(
                 db_factory=factory,
                 consolidator=_FailingConsolidator(),  # type: ignore[arg-type]
+                extractor=_FailingExtractor(),  # type: ignore[arg-type]
                 session_store=_FakeSessionStore(),
                 memory_settings_fn=lambda: False,
             )

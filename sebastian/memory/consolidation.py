@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.memory.errors import InvalidCandidateError
+from sebastian.memory.extraction import ExtractorInput, MemoryExtractor
 from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
 from sebastian.memory.subject import resolve_subject
 from sebastian.memory.types import (
@@ -148,11 +149,13 @@ class SessionConsolidationWorker:
         *,
         db_factory: async_sessionmaker[AsyncSession],
         consolidator: MemoryConsolidator,
+        extractor: MemoryExtractor,
         session_store: Any,
         memory_settings_fn: Callable[[], bool],
     ) -> None:
         self._db_factory = db_factory
         self._consolidator = consolidator
+        self._extractor = extractor
         self._session_store = session_store
         self._memory_settings_fn = memory_settings_fn
 
@@ -207,9 +210,22 @@ class SessionConsolidationWorker:
             )
             entity_rows = await entity_registry.snapshot(limit=64)
 
+            # 4a. Run the extractor first so the consolidator sees explicit
+            #     candidate artifacts instead of having to re-extract from raw
+            #     messages. Extractor returns [] on LLM failure, never raises.
+            extractor_input = ExtractorInput(
+                subject_context={
+                    "subject_id": context_subject_id,
+                    "agent_type": agent_type,
+                },
+                conversation_window=messages,
+                known_slots=[s.model_dump() for s in DEFAULT_SLOT_REGISTRY.list_all()],
+            )
+            candidate_artifacts = await self._extractor.extract(extractor_input)
+
             consolidator_input = ConsolidatorInput(
                 session_messages=messages,
-                candidate_artifacts=[],
+                candidate_artifacts=candidate_artifacts,
                 active_memories_for_subject=[
                     {
                         "id": r.id,

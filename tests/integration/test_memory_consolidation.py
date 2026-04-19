@@ -40,6 +40,23 @@ class FakeSessionStore:
         ]
 
 
+class FakeExtractor:
+    """In-memory stand-in for :class:`MemoryExtractor`.
+
+    Returns ``artifacts`` verbatim and records whether ``extract`` was called.
+    """
+
+    def __init__(self, artifacts: list[CandidateArtifact] | None = None) -> None:
+        self.artifacts = artifacts or []
+        self.called = False
+        self.last_input = None
+
+    async def extract(self, input):  # type: ignore[no-untyped-def]
+        self.called = True
+        self.last_input = input
+        return list(self.artifacts)
+
+
 class FakeConsolidator:
     """Returns a preset ConsolidationResult without calling any LLM."""
 
@@ -106,6 +123,7 @@ def worker(db_factory):
     return SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=FakeConsolidator(),
+        extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: True,
     )
@@ -187,6 +205,7 @@ async def test_consolidate_logs_summary_decision(db_factory):
     worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=FakeSummaryOnlyConsolidator(),
+        extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: True,
     )
@@ -232,6 +251,7 @@ async def test_summary_subject_id_resolved_from_scope_not_llm(db_factory):
     worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=FakeMaliciousSubjectConsolidator(),
+        extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: True,
     )
@@ -363,6 +383,7 @@ async def test_consolidator_input_includes_full_context(db_factory):
     worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=captor,
+        extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: True,
     )
@@ -396,6 +417,7 @@ async def test_consolidate_session_disabled_writes_nothing(db_factory):
     disabled_worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=FakeConsolidator(),
+        extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: False,
     )
@@ -411,3 +433,41 @@ async def test_consolidate_session_disabled_writes_nothing(db_factory):
 
         ep_result = await session.scalars(select(EpisodeMemoryRecord))
         assert list(ep_result.all()) == []
+
+
+@pytest.mark.asyncio
+async def test_worker_runs_extractor_before_consolidator(db_factory):
+    """Extractor output must be handed to the consolidator as candidate_artifacts."""
+    fake_artifact = CandidateArtifact(
+        kind=MemoryKind.FACT,
+        content="test",
+        structured_payload={},
+        subject_hint="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.9,
+        source=MemorySource.OBSERVED,
+        evidence=[],
+        valid_from=None,
+        valid_until=None,
+        policy_tags=[],
+        needs_review=False,
+    )
+    extractor = FakeExtractor(artifacts=[fake_artifact])
+    captor = CapturingConsolidator()
+    worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=captor,
+        extractor=extractor,
+        session_store=FakeSessionStore(),
+        memory_settings_fn=lambda: True,
+    )
+
+    await worker.consolidate_session("sess-extr", "sebastian")
+
+    assert extractor.called
+    assert captor.last_input is not None
+    assert len(captor.last_input.candidate_artifacts) == 1
+    assert captor.last_input.candidate_artifacts[0].content == "test"
