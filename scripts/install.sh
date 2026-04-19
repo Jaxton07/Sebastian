@@ -33,9 +33,13 @@ fi
 color_grn "✓ Python $PY_VERSION"
 
 # 3. venv
-if [[ ! -d .venv ]]; then
-  color_ylw "→ 创建虚拟环境 .venv"
+if [[ ! -f .venv/bin/activate ]]; then
+  color_ylw "→ 创建/修复虚拟环境 .venv"
   python3 -m venv .venv
+fi
+if [[ ! -f .venv/bin/activate ]]; then
+  color_red "❌ 虚拟环境创建失败：缺少 .venv/bin/activate"
+  exit 1
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
