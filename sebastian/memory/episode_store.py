@@ -14,6 +14,17 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 
+def _build_match_query(terms: list[str]) -> str:
+    """Wrap each term as a double-quoted phrase for FTS5 MATCH.
+
+    Prevents operators (AND/OR/NOT/*/quote/paren) inside the user query from
+    being interpreted as FTS5 syntax. Empty term list yields an empty-string
+    phrase, which FTS5 treats as no-match.
+    """
+    safe = [f'"{t.replace(chr(34), chr(34) * 2)}"' for t in terms if t]
+    return " ".join(safe) if safe else '""'
+
+
 async def ensure_episode_fts(conn: AsyncConnection) -> None:
     await conn.execute(
         text(
@@ -61,12 +72,13 @@ class EpisodeMemoryStore:
 
         match_counts: Counter[str] = Counter()
         for term in terms:
+            phrase = _build_match_query([term])
             result = await self._session.execute(
                 text(
                     "SELECT memory_id FROM episode_memories_fts "
                     "WHERE content_segmented MATCH :query"
                 ),
-                {"query": term},
+                {"query": phrase},
             )
             match_counts.update(row.memory_id for row in result)
 

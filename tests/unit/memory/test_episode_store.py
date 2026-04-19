@@ -205,6 +205,27 @@ async def test_search_summaries_respects_subject_filter(db_session) -> None:
     assert [r.id for r in results] == ["owner-sum"]
 
 
+async def test_search_escapes_fts_operators(db_session) -> None:
+    """Query strings containing FTS operators like OR / AND / quotes must not crash
+    and must only match literal content."""
+    store = EpisodeMemoryStore(db_session)
+    await store.add_episode(
+        _make_artifact(id="ep-or", content="We use OR in SQL queries")
+    )
+
+    # Querying with a literal "OR" — must not raise, must return the one record
+    results = await store.search(subject_id="owner", query="OR", limit=5)
+    assert [r.id for r in results] == ["ep-or"]
+
+
+async def test_search_handles_quote_in_term(db_session) -> None:
+    """Terms containing a double quote must be escaped (quote-doubling) and not crash."""
+    store = EpisodeMemoryStore(db_session)
+    # Crafted term with an embedded quote
+    results = await store.search(subject_id="owner", query='a"b', limit=5)
+    assert results == []  # nothing to match, but it must not crash
+
+
 async def test_search_summaries_respects_limit(db_session) -> None:
     store = EpisodeMemoryStore(db_session)
     base = datetime.now(UTC)
