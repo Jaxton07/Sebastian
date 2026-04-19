@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from sebastian.memory.provider_bindings import MEMORY_EXTRACTOR_BINDING
 from sebastian.memory.types import CandidateArtifact
@@ -28,8 +28,9 @@ class ExtractorOutput(BaseModel):
 class MemoryExtractor:
     """LLM-backed extractor that converts a conversation window into candidate memory artifacts.
 
-    On any parse or schema failure the extractor retries up to *max_retries* times,
-    then returns an empty list — it never raises.
+    On any failure (provider network/timeout error OR JSON parse/schema failure)
+    the extractor retries up to *max_retries* times with exponential backoff
+    (0.5s, 1s, 2s, ...), then returns an empty list — it never raises.
     """
 
     def __init__(self, llm_registry: LLMProviderRegistry, *, max_retries: int = 1) -> None:
@@ -39,7 +40,7 @@ class MemoryExtractor:
     async def extract(self, input: ExtractorInput) -> list[CandidateArtifact]:
         """Call LLM to extract candidate memory artifacts.
 
-        Returns [] on schema failure after retry.
+        Returns [] on any failure after retries.
         """
         resolved = await self._registry.get_provider(MEMORY_EXTRACTOR_BINDING)
         system = (
@@ -51,27 +52,29 @@ class MemoryExtractor:
         )
         user_content = input.model_dump_json()
         messages = [{"role": "user", "content": user_content}]
+        empty: list[CandidateArtifact] = []
 
         for attempt in range(self._max_retries + 1):
-            raw = await self._call_llm(resolved, system, messages)
             try:
+                raw = await self._call_llm(resolved, system, messages)
                 output = ExtractorOutput.model_validate_json(raw)
                 return output.artifacts
-            except (ValidationError, json.JSONDecodeError, ValueError) as e:
+            except Exception as exc:  # noqa: BLE001 — provider exception types vary
                 if attempt < self._max_retries:
                     logger.warning(
-                        "Extractor output invalid (attempt %d), retrying: %s",
+                        "Extractor attempt %d failed: %s",
                         attempt + 1,
-                        e,
+                        exc,
                     )
+                    await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 logger.warning(
-                    "Extractor failed after %d retries, returning empty: %s",
+                    "Extractor exhausted %d retries, returning empty: %s",
                     self._max_retries + 1,
-                    e,
+                    exc,
                 )
-                return []
-        return []  # unreachable; satisfies type checker
+                return empty
+        return empty  # unreachable; satisfies type checker
 
     async def _call_llm(
         self,

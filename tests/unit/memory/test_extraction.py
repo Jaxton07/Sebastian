@@ -288,6 +288,31 @@ class TestMemoryExtractorExtract:
         assert result == []
 
     @pytest.mark.asyncio
+    async def test_extractor_returns_empty_when_stream_raises(self) -> None:
+        """Provider raising arbitrary exception during stream → empty list, no crash."""
+
+        class _RaisingProvider(LLMProvider):
+            async def stream(  # type: ignore[override]
+                self, **kwargs: Any
+            ) -> AsyncGenerator[LLMStreamEvent, None]:
+                raise ConnectionError("simulated network failure")
+                yield  # pragma: no cover — makes this an async generator
+
+        class _RaisingRegistry:
+            async def get_provider(self, binding: str) -> ResolvedProvider:
+                return ResolvedProvider(
+                    provider=_RaisingProvider(),
+                    model="test-model",
+                    thinking_effort=None,
+                    capability=None,
+                )
+
+        extractor = MemoryExtractor(_RaisingRegistry(), max_retries=0)  # type: ignore[arg-type]
+        inp = ExtractorInput(subject_context={}, conversation_window=[], known_slots=[])
+        result = await extractor.extract(inp)
+        assert result == []
+
+    @pytest.mark.asyncio
     async def test_multiple_artifacts_returned(self) -> None:
         artifacts = [_make_valid_artifact_dict(), _make_valid_artifact_dict()]
         artifacts[1]["content"] = "Another memory"

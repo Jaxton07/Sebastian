@@ -374,6 +374,33 @@ class TestMemoryConsolidatorConsolidate:
         assert result.summaries == []
 
     @pytest.mark.asyncio
+    async def test_consolidator_returns_empty_when_stream_raises(self) -> None:
+        """Provider raising arbitrary exception during stream → empty result, no crash."""
+
+        class _RaisingProvider(LLMProvider):
+            async def stream(  # type: ignore[override]
+                self, **kwargs: Any
+            ) -> AsyncGenerator[LLMStreamEvent, None]:
+                raise TimeoutError("simulated network timeout")
+                yield  # pragma: no cover — makes this an async generator
+
+        class _RaisingRegistry:
+            async def get_provider(self, binding: str) -> ResolvedProvider:
+                return ResolvedProvider(
+                    provider=_RaisingProvider(),
+                    model="test-model",
+                    thinking_effort=None,
+                    capability=None,
+                )
+
+        consolidator = MemoryConsolidator(_RaisingRegistry(), max_retries=0)  # type: ignore[arg-type]
+        result = await consolidator.consolidate(self._make_input())
+        assert isinstance(result, ConsolidationResult)
+        assert result.summaries == []
+        assert result.proposed_artifacts == []
+        assert result.proposed_actions == []
+
+    @pytest.mark.asyncio
     async def test_worker_writes_nothing_when_memory_disabled(self) -> None:
         """When memory_settings_fn returns False, the worker must not write anything."""
         from sqlalchemy import select, text

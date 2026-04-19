@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -64,8 +64,9 @@ class ConsolidationResult(BaseModel):
 class MemoryConsolidator:
     """LLM-backed consolidator that produces summaries and proposed memory actions.
 
-    On any parse or schema failure the consolidator retries up to *max_retries* times,
-    then returns an empty ConsolidationResult — it never raises.
+    On any failure (provider network/timeout error OR JSON parse/schema failure)
+    the consolidator retries up to *max_retries* times with exponential backoff
+    (0.5s, 1s, 2s, ...), then returns an empty ConsolidationResult — it never raises.
     """
 
     def __init__(self, llm_registry: LLMProviderRegistry, *, max_retries: int = 1) -> None:
@@ -75,7 +76,7 @@ class MemoryConsolidator:
     async def consolidate(self, consolidator_input: ConsolidatorInput) -> ConsolidationResult:
         """Call LLM to consolidate session memory.
 
-        Returns empty ConsolidationResult on schema failure.
+        Returns empty ConsolidationResult on any failure after retries.
         """
         resolved = await self._registry.get_provider(MEMORY_CONSOLIDATOR_BINDING)
         system = (
@@ -89,21 +90,22 @@ class MemoryConsolidator:
         empty = ConsolidationResult()
 
         for attempt in range(self._max_retries + 1):
-            raw = await self._call_llm(resolved, system, messages)
             try:
+                raw = await self._call_llm(resolved, system, messages)
                 return ConsolidationResult.model_validate_json(raw)
-            except (ValidationError, ValueError) as e:
+            except Exception as exc:  # noqa: BLE001 — provider exception types vary
                 if attempt < self._max_retries:
                     logger.warning(
-                        "Consolidator output invalid (attempt %d), retrying: %s",
+                        "Consolidator attempt %d failed: %s",
                         attempt + 1,
-                        e,
+                        exc,
                     )
+                    await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 logger.warning(
-                    "Consolidator failed after %d retries, returning empty: %s",
+                    "Consolidator exhausted %d retries, returning empty: %s",
                     self._max_retries + 1,
-                    e,
+                    exc,
                 )
                 return empty
         return empty  # unreachable; satisfies type checker
