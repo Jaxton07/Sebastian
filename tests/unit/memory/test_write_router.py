@@ -1,0 +1,337 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from sebastian.memory.entity_registry import EntityRegistry
+from sebastian.memory.episode_store import EpisodeMemoryStore, ensure_episode_fts
+from sebastian.memory.profile_store import ProfileMemoryStore
+from sebastian.memory.types import (
+    CandidateArtifact,
+    MemoryArtifact,
+    MemoryDecisionType,
+    MemoryKind,
+    MemoryScope,
+    MemorySource,
+    MemoryStatus,
+    ResolveDecision,
+)
+from sebastian.memory.write_router import persist_decision
+from sebastian.store import models  # noqa: F401 — ensure all tables are registered
+from sebastian.store.database import Base
+from sebastian.store.models import (
+    EntityRecord,
+    EpisodeMemoryRecord,
+    ProfileMemoryRecord,
+    RelationCandidateRecord,
+)
+
+
+@pytest.fixture
+async def db_session():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await ensure_episode_fts(conn)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+    await engine.dispose()
+
+
+def _artifact(kind: MemoryKind, **overrides: Any) -> MemoryArtifact:
+    now = datetime.now(UTC)
+    defaults: dict[str, Any] = dict(
+        id=str(uuid4()),
+        kind=kind,
+        scope=MemoryScope.USER,
+        subject_id="owner",
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        content="c",
+        structured_payload={},
+        source=MemorySource.EXPLICIT,
+        confidence=0.9,
+        status=MemoryStatus.ACTIVE,
+        valid_from=None,
+        valid_until=None,
+        recorded_at=now,
+        last_accessed_at=None,
+        access_count=0,
+        provenance={},
+        links=[],
+        embedding_ref=None,
+        dedupe_key=None,
+        policy_tags=[],
+    )
+    defaults.update(overrides)
+    return MemoryArtifact(**defaults)
+
+
+def _candidate(kind: MemoryKind) -> CandidateArtifact:
+    return CandidateArtifact(
+        kind=kind,
+        content="c",
+        structured_payload={},
+        subject_hint="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.9,
+        source=MemorySource.EXPLICIT,
+        evidence=[],
+        valid_from=None,
+        valid_until=None,
+        policy_tags=[],
+        needs_review=False,
+    )
+
+
+def _stores(session) -> tuple[ProfileMemoryStore, EpisodeMemoryStore, EntityRegistry]:
+    return (
+        ProfileMemoryStore(session),
+        EpisodeMemoryStore(session),
+        EntityRegistry(session),
+    )
+
+
+async def test_persist_decision_discard_writes_nothing(db_session) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.DISCARD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=None,
+        candidate=_candidate(MemoryKind.FACT),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    for model in (
+        ProfileMemoryRecord,
+        EpisodeMemoryRecord,
+        EntityRecord,
+        RelationCandidateRecord,
+    ):
+        rows = (await db_session.scalars(select(model))).all()
+        assert rows == []
+
+
+async def test_persist_decision_fact_add_writes_profile(db_session) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(MemoryKind.FACT, content="I like tea")
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.FACT),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows = (await db_session.scalars(select(ProfileMemoryRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].content == "I like tea"
+    assert rows[0].status == MemoryStatus.ACTIVE.value
+    assert rows[0].kind == "fact"
+
+
+async def test_persist_decision_fact_supersede_marks_old_and_inserts_new(
+    db_session,
+) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+
+    # Insert an initial active record via profile_store.
+    old_artifact = _artifact(MemoryKind.FACT, content="old fact", slot_id="pet_name")
+    await profile_store.add(old_artifact)
+
+    new_artifact = _artifact(MemoryKind.FACT, content="new fact", slot_id="pet_name")
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.SUPERSEDE,
+        reason="r",
+        old_memory_ids=[old_artifact.id],
+        new_memory=new_artifact,
+        candidate=_candidate(MemoryKind.FACT),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="pet_name",
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows_by_id = {
+        row.id: row
+        for row in (await db_session.scalars(select(ProfileMemoryRecord))).all()
+    }
+    assert rows_by_id[old_artifact.id].status == MemoryStatus.SUPERSEDED.value
+    assert rows_by_id[new_artifact.id].status == MemoryStatus.ACTIVE.value
+    assert rows_by_id[new_artifact.id].content == "new fact"
+
+
+async def test_persist_decision_episode_add_writes_episode(db_session) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(MemoryKind.EPISODE, content="we went hiking")
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.EPISODE),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows = (await db_session.scalars(select(EpisodeMemoryRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].kind == "episode"
+    assert rows[0].content == "we went hiking"
+
+
+async def test_persist_decision_summary_add_writes_summary(db_session) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(MemoryKind.SUMMARY, content="session recap")
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.SUMMARY),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows = (await db_session.scalars(select(EpisodeMemoryRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].kind == "summary"
+    assert rows[0].content == "session recap"
+
+
+async def test_persist_decision_entity_add_writes_entity(db_session) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(
+        MemoryKind.ENTITY,
+        content="小橘",
+        structured_payload={
+            "canonical_name": "小橘",
+            "entity_type": "pet",
+            "aliases": ["橘猫"],
+            "metadata": {"color": "orange"},
+        },
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.ENTITY),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows = (await db_session.scalars(select(EntityRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].canonical_name == "小橘"
+    assert rows[0].entity_type == "pet"
+    assert "橘猫" in rows[0].aliases
+    assert rows[0].entity_metadata == {"color": "orange"}
+
+
+async def test_persist_decision_relation_add_writes_relation_candidate(
+    db_session,
+) -> None:
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(
+        MemoryKind.RELATION,
+        content="owner owns 小橘",
+        structured_payload={
+            "predicate": "owns",
+            "source_entity_id": "owner",
+            "target_entity_id": "entity-xiaoju",
+        },
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.RELATION),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows = (await db_session.scalars(select(RelationCandidateRecord))).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.predicate == "owns"
+    assert row.source_entity_id == "owner"
+    assert row.target_entity_id == "entity-xiaoju"
+    assert row.content == "owner owns 小橘"
+    assert row.status == MemoryStatus.ACTIVE.value

@@ -192,14 +192,17 @@ class SessionConsolidationWorker:
         #    already committed for the same (session_id, agent_type) pair.
         async with self._db_factory() as session:
             from sebastian.memory.decision_log import MemoryDecisionLogger
+            from sebastian.memory.entity_registry import EntityRegistry
             from sebastian.memory.episode_store import EpisodeMemoryStore
             from sebastian.memory.profile_store import ProfileMemoryStore
             from sebastian.memory.resolver import resolve_candidate
             from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+            from sebastian.memory.write_router import persist_decision
             from sebastian.store.models import SessionConsolidationRecord
 
             episode_store = EpisodeMemoryStore(session)
             profile_store = ProfileMemoryStore(session)
+            entity_registry = EntityRegistry(session)
             decision_logger = MemoryDecisionLogger(session)
 
             for summary in result.summaries:
@@ -227,7 +230,13 @@ class SessionConsolidationWorker:
                     slot_registry=DEFAULT_SLOT_REGISTRY,
                 )
                 if summary_decision.new_memory is not None:
-                    await episode_store.add_summary(summary_decision.new_memory)
+                    await persist_decision(
+                        summary_decision,
+                        session=session,
+                        profile_store=profile_store,
+                        episode_store=episode_store,
+                        entity_registry=entity_registry,
+                    )
                 await decision_logger.append(
                     summary_decision,
                     worker=self._WORKER_ID,
@@ -271,12 +280,13 @@ class SessionConsolidationWorker:
                     decision.decision != MemoryDecisionType.DISCARD
                     and decision.new_memory is not None
                 ):
-                    if decision.decision == MemoryDecisionType.ADD:
-                        await profile_store.add(decision.new_memory)
-                    elif decision.decision == MemoryDecisionType.SUPERSEDE:
-                        await profile_store.supersede(
-                            decision.old_memory_ids, decision.new_memory
-                        )
+                    await persist_decision(
+                        decision,
+                        session=session,
+                        profile_store=profile_store,
+                        episode_store=episode_store,
+                        entity_registry=entity_registry,
+                    )
                 await decision_logger.append(
                     decision,
                     worker=self._WORKER_ID,

@@ -4,6 +4,7 @@ import sebastian.gateway.state as state
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.memory.decision_log import MemoryDecisionLogger
+from sebastian.memory.entity_registry import EntityRegistry
 from sebastian.memory.episode_store import EpisodeMemoryStore
 from sebastian.memory.errors import InvalidCandidateError
 from sebastian.memory.profile_store import ProfileMemoryStore
@@ -17,6 +18,7 @@ from sebastian.memory.types import (
     MemoryScope,
     MemorySource,
 )
+from sebastian.memory.write_router import persist_decision
 from sebastian.permissions.types import PermissionTier
 
 
@@ -79,6 +81,7 @@ async def memory_save(
     async with state.db_factory() as session:
         profile_store = ProfileMemoryStore(session)
         episode_store = EpisodeMemoryStore(session)
+        entity_registry = EntityRegistry(session)
         decision_logger = MemoryDecisionLogger(session)
 
         decision = await resolve_candidate(
@@ -98,17 +101,16 @@ async def memory_save(
             await session.commit()
             return ToolResult(ok=False, error="记忆被丢弃：置信度不足或槽位不匹配")
 
-        new_memory = decision.new_memory
-        if new_memory is None:
+        if decision.new_memory is None:
             return ToolResult(ok=False, error="内部错误：未生成记忆对象")
 
-        if decision.decision == MemoryDecisionType.ADD:
-            if new_memory.kind.value in ("episode", "summary"):
-                await episode_store.add_episode(new_memory)
-            else:
-                await profile_store.add(new_memory)
-        elif decision.decision == MemoryDecisionType.SUPERSEDE:
-            await profile_store.supersede(decision.old_memory_ids, new_memory)
+        await persist_decision(
+            decision,
+            session=session,
+            profile_store=profile_store,
+            episode_store=episode_store,
+            entity_registry=entity_registry,
+        )
 
         await decision_logger.append(
             decision,
