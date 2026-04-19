@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.memory.decision_log import MemoryDecisionLogger
 from sebastian.memory.types import (
-    Cardinality,
     CandidateArtifact,
+    Cardinality,
     MemoryDecisionType,
     MemoryKind,
     MemoryScope,
     MemorySource,
-    ResolveDecision,
     ResolutionPolicy,
+    ResolveDecision,
 )
-from sebastian.store.database import Base
 from sebastian.store import models  # noqa: F401
+from sebastian.store.database import Base
 
 
 @pytest.fixture
