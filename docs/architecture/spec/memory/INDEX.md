@@ -1,0 +1,66 @@
+---
+version: "1.0"
+last_updated: 2026-04-19
+status: planned
+---
+
+# Memory（记忆）系统 Spec 索引
+
+> 上级索引：[../INDEX.md](../INDEX.md)
+> 架构图入口：[../../diagrams/memory/index.html](../../diagrams/memory/index.html)
+
+Sebastian 记忆系统采用“**三层逻辑模型 + 两套首期主存储 + 关系层预留**”的设计：
+
+- `ProfileMemory`（画像记忆）：用户画像、偏好、长期事实、当前状态
+- `EpisodicMemory`（情景/经历记忆）：事件、经历、任务过程、会话回忆、阶段摘要
+- `RelationalMemory`（关系记忆）：实体、关系、时间区间、多实体语义连接
+
+首版只依赖 **数据库 + LLM（大语言模型）**，不引入向量数据库或 embedding（向量嵌入）作为前置依赖。
+
+---
+
+## 阅读顺序
+
+| 顺序 | Spec | 重点 |
+|------|------|------|
+| 1 | [overview.md](overview.md) | 总体目标、逻辑/物理架构、与现有系统集成、分阶段落地 |
+| 2 | [artifact-model.md](artifact-model.md) | MemoryArtifact（记忆产物）、Slot Registry（语义槽位注册表）、生命周期、冲突决策 |
+| 3 | [storage.md](storage.md) | Profile（画像）/ Episode（经历）/ Entity（实体）/ Relation（关系）/ Decision Log（决策日志）存储边界 |
+| 4 | [write-pipeline.md](write-pipeline.md) | Capture → Extract → Normalize → Resolve → Persist 统一写入链路 |
+| 5 | [retrieval.md](retrieval.md) | Intent（意图）→ Retrieval Plan（检索计划）→ Assemble（装配），四条 retrieval lane（检索通道） |
+| 6 | [consolidation.md](consolidation.md) | Session（会话）/ Cross-Session（跨会话）/ Maintenance（维护）三类后台沉淀与审计 |
+| 7 | [implementation.md](implementation.md) | DB（数据库）+ LLM 技术取舍、provider binding（模型绑定）、Extractor（提取器）/ Consolidator（沉淀器）schema（结构化协议） |
+
+---
+
+## 常用术语
+
+| 术语 | 中文 | 说明 |
+|------|------|------|
+| Memory | 记忆 | Sebastian 长期可复用的信息体系 |
+| Artifact | 记忆产物 | 从输入中提炼出的标准化记忆对象 |
+| CandidateArtifact | 候选记忆产物 | LLM 提取出的候选对象，尚未最终写库 |
+| Slot | 语义槽位 | 用于判断事实是否冲突的稳定归属，如 `user.preference.response_style` |
+| Scope | 作用域 | 记忆归属范围，如 user、session、project、agent |
+| Subject | 主体 | 记忆属于谁，如 owner、某个 project、某个 agent |
+| Provenance | 来源证据 | 记忆从哪里来、证据是什么 |
+| Policy Tags | 策略标签 | 控制敏感性、权限、是否自动注入等策略 |
+| Retrieval | 检索 | 回答前从记忆中取相关内容 |
+| Lane | 检索通道 | Profile / Context / Episode / Relation 四类并行检索路径 |
+| Assembler | 上下文装配器 | 把检索结果过滤、分区并注入 prompt |
+| Consolidation | 后台沉淀 | 会话结束后或跨会话归纳记忆 |
+| Decision Log | 决策日志 | 记录每次写入、覆盖、合并、丢弃的原因 |
+
+---
+
+## 关键设计约束
+
+- 所有写入路径统一产出 `MemoryArtifact`（记忆产物）或 `CandidateArtifact`（候选记忆产物）
+- 所有冲突判断基于 `slot_id`（语义槽位）+ `cardinality`（单值/多值）+ `resolution_policy`（冲突解决策略），不基于纯文本相似度
+- 所有自动注入都必须区分 `current truth` 与 `historical evidence`
+- 所有重要写入、覆盖、合并、过期、丢弃决策都必须进入 `memory_decision_log`（记忆决策日志）
+- LLM（大语言模型）只负责语义提炼和归纳，不直接控制数据库状态迁移
+
+---
+
+*← 返回 [Spec 根索引](../INDEX.md)*

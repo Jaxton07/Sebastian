@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Memory 后台沉淀</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f1117;color:#e1e4e8;margin:0;padding:24px}
+  h1{color:#f0f6ff;font-size:1.6rem;margin-bottom:4px}.subtitle{color:#8b949e;font-size:.9rem;margin-bottom:32px}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;margin-bottom:32px}
+  .desc{color:#8b949e;font-size:.85rem;margin-bottom:16px;line-height:1.5}.mermaid{background:#161b22}
+</style>
+</head>
+<body>
+<h1>Memory（记忆）后台沉淀与模型职责</h1>
+<p class="subtitle">对应 Spec: docs/architecture/spec/memory/consolidation.md + implementation.md</p>
+<div class="card">
+  <p class="desc">Extractor（提取器）高频提取候选；Consolidator（沉淀器）低频归纳。两者都必须经过 Normalize / Resolve，不能绕过决策层直接写库。</p>
+  <div class="mermaid">
+graph LR
+    subgraph MODELS["LLM（大语言模型）职责分层"]
+        ME["memory_extractor（记忆提取器）\n高频 / 快 / 稳\n单轮候选提取"]
+        MC["memory_consolidator（记忆沉淀器）\n低频 / 异步\nsummary + cross-session 归纳"]
+    end
+
+    subgraph SESSION["ConsolidatorInput（沉淀器输入）"]
+        S1["session_messages（会话消息）"]
+        S2["candidate_artifacts（候选产物）"]
+        S3["active_memories_for_subject（当前有效记忆）"]
+        S4["recent_summaries（近期摘要）"]
+    end
+
+    subgraph RESULT["ConsolidationResult（沉淀结果）"]
+        R2["summaries[]（摘要）"]
+        R3["proposed_artifacts[]（建议产物）"]
+        R4["proposed_actions[]（建议动作）"]
+    end
+
+    subgraph BG["后台任务"]
+        B1["Session Consolidation（会话沉淀）"]
+        B2["Cross-Session Consolidation（跨会话沉淀）"]
+        B3["Memory Maintenance（记忆维护）"]
+    end
+
+    SESSION --> MC --> RESULT
+    RESULT --> N2["Normalize / Resolve（规范化 / 冲突解析）"]
+    N2 --> STO["Profile / Episode / Relation Store"]
+    N2 --> LOG["memory_decision_log（记忆决策日志）"]
+    ME --> N2
+    B1 --> MC
+    B2 --> MC
+    B3 --> N2
+
+    style MODELS fill:#1a1a2a,stroke:#3d3d7a
+    style SESSION fill:#1a2a2a,stroke:#3a7a7a
+    style RESULT fill:#2a1a2a,stroke:#7a3d7a
+    style BG fill:#2a2a1a,stroke:#7a7a3d
+    style LOG fill:#2a1a1a,stroke:#aa5555
+  </div>
+</div>
+<script>
+mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#2d3748',primaryTextColor:'#e2e8f0',primaryBorderColor:'#4a5568',lineColor:'#68d391',secondaryColor:'#1a202c',tertiaryColor:'#2d3748',background:'#161b22',mainBkg:'#161b22',nodeBorder:'#4a5568',clusterBkg:'#1a202c',titleColor:'#90cdf4',edgeLabelBackground:'#2d3748'},flowchart:{curve:'basis',useMaxWidth:true}});
+</script>
+</body>
+</html>

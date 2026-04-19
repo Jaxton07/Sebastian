@@ -38,10 +38,15 @@
     <div class="card-desc">从 Android App 到 LLM Provider 的完整组件图，包含 Agent Loop 详细流程、三层 Agent 委派链路、记忆层架构、Task/Session 状态机、LLMStreamEvent 类型体系。</div>
     <span class="tag v">v1.0</span> <span class="tag stable">已完成</span>
   </a>
-  <a class="card" href="memory-v0.3.html">
+  <a class="card" href="memory/index.html">
     <div class="card-title">记忆系统架构</div>
-    <div class="card-desc">v0.3：被动注入改为 Profile + Context 双层（Profile 按 access_count 始终注入，Context 层 FTS5 MATCH 当前用户消息，合并去重最多 8 条）；ConsolidationWorker LLM 上下文加入近期 NULL 记忆实现语义去重；FTS5 tokenizer 方案 TBD。</div>
-    <span class="tag v">v0.3</span> <span class="tag draft">设计中</span>
+    <div class="card-desc">v1.0：新版 Memory（记忆）系统分层架构图，包含总体架构、写入与冲突决策、读取与注入、后台沉淀与模型职责。对应 docs/architecture/spec/memory/。</div>
+    <span class="tag v">v1.0</span> <span class="tag draft">设计中</span>
+  </a>
+  <a class="card" href="memory-v0.3.html" style="opacity:0.5">
+    <div class="card-title">记忆系统架构 <span style="font-size:0.75rem;color:#8b949e">（旧版）</span></div>
+    <div class="card-desc">v0.3：基于 SemanticMemory 单体方案的历史设计，已被新版 docs/architecture/spec/memory/ 分层设计取代。</div>
+    <span class="tag v">v0.3</span> <span class="tag draft">已归档</span>
   </a>
   <a class="card" href="memory-v0.2.html" style="opacity:0.5">
     <div class="card-title">记忆系统架构 <span style="font-size:0.75rem;color:#8b949e">（旧版）</span></div>

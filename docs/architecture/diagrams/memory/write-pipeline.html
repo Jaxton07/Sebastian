@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Memory 写入与冲突决策</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f1117;color:#e1e4e8;margin:0;padding:24px}
+  h1{color:#f0f6ff;font-size:1.6rem;margin-bottom:4px}.subtitle{color:#8b949e;font-size:.9rem;margin-bottom:32px}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;margin-bottom:32px}
+  .desc{color:#8b949e;font-size:.85rem;margin-bottom:16px;line-height:1.5}.mermaid{background:#161b22}
+</style>
+</head>
+<body>
+<h1>Memory（记忆）写入与冲突决策</h1>
+<p class="subtitle">对应 Spec: docs/architecture/spec/memory/write-pipeline.md + artifact-model.md</p>
+<div class="card">
+  <p class="desc">LLM 只负责语义提炼；最终 ADD / SUPERSEDE / MERGE / EXPIRE / DISCARD 由 Resolve（冲突解析）统一决定。</p>
+  <div class="mermaid">
+flowchart LR
+    MSG["输入片段\n用户消息 / tool 结果 / 显式保存"] --> EI["ExtractorInput（提取器输入）\nsubject_context\nconversation_window\nknown_slots"]
+    EI --> EX["Memory Extractor（记忆提取器）\n输出 CandidateArtifact[]"]
+
+    subgraph CAND["CandidateArtifact（候选记忆产物）"]
+        C1["kind（类型） / content（内容）"]
+        C2["subject_hint（主体提示） / scope（作用域） / slot_id（语义槽位）"]
+        C3["cardinality（单值/多值） / resolution_policy（冲突策略）"]
+        C4["confidence（置信度） / source（来源） / evidence（证据）"]
+        C5["valid_from / valid_until（有效期） / policy_tags（策略标签）"]
+    end
+
+    EX --> CAND
+    CAND --> N1["Normalize（规范化）\nsubject_hint -> subject_id\nslot 校验\npayload 标准化"]
+    N1 --> R2["Resolve（冲突解析）\n查 active memories\n查 Slot Registry（槽位注册表）\n应用 lifecycle（生命周期）规则"]
+
+    subgraph DEC["ResolveDecision（解析决策）"]
+        D1["ADD（新增）"]
+        D2["SUPERSEDE（取代旧记录）"]
+        D3["MERGE（合并）"]
+        D4["EXPIRE（过期）"]
+        D5["DISCARD（丢弃）"]
+    end
+
+    R2 --> DEC
+    DEC --> W1["写入对应 Store（存储）"]
+    DEC --> L1["写入 memory_decision_log（记忆决策日志）"]
+
+    style CAND fill:#1a2a2a,stroke:#3a7a7a
+    style DEC fill:#2a1a2a,stroke:#7a3d7a
+    style W1 fill:#1a2a1a,stroke:#3d7a3d
+    style L1 fill:#2a1a1a,stroke:#aa5555
+  </div>
+</div>
+<script>
+mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#2d3748',primaryTextColor:'#e2e8f0',primaryBorderColor:'#4a5568',lineColor:'#68d391',secondaryColor:'#1a202c',tertiaryColor:'#2d3748',background:'#161b22',mainBkg:'#161b22',nodeBorder:'#4a5568',clusterBkg:'#1a202c',titleColor:'#90cdf4',edgeLabelBackground:'#2d3748'},flowchart:{curve:'basis',useMaxWidth:true}});
+</script>
+</body>
+</html>
