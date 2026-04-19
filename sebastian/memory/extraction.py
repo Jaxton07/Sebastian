@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExtractorInput(BaseModel):
+    task: Literal["extract_memory_artifacts"] = "extract_memory_artifacts"
     subject_context: dict[str, Any]
     conversation_window: list[dict[str, Any]]
     known_slots: list[dict[str, Any]]

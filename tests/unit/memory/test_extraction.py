@@ -132,6 +132,34 @@ class TestExtractorInputSerialisation:
         assert restored.subject_context == inp.subject_context
         assert restored.conversation_window == inp.conversation_window
 
+    def test_task_field_defaults_to_extract_memory_artifacts(self) -> None:
+        inp = ExtractorInput(
+            subject_context={},
+            conversation_window=[],
+            known_slots=[],
+        )
+        assert inp.task == "extract_memory_artifacts"
+
+    def test_invalid_task_value_raises_validation_error(self) -> None:
+        with pytest.raises(ValidationError):
+            ExtractorInput(
+                task="wrong_task",  # type: ignore[call-arg]
+                subject_context={},
+                conversation_window=[],
+                known_slots=[],
+            )
+
+    def test_serialised_json_contains_task_field(self) -> None:
+        # Build ExtractorInput and check its serialised form includes the task field
+        inp = ExtractorInput(
+            subject_context={"user_id": "u1"},
+            conversation_window=[{"role": "user", "content": "test"}],
+            known_slots=[],
+        )
+        data = json.loads(inp.model_dump_json())
+        assert "task" in data, f"Serialised ExtractorInput missing 'task': {list(data.keys())}"
+        assert data["task"] == "extract_memory_artifacts"
+
 
 # ---------------------------------------------------------------------------
 # ExtractorOutput parsing
