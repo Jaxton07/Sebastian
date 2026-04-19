@@ -56,11 +56,11 @@ def test_memory_status_values() -> None:
 
 
 def test_memory_decision_type_values() -> None:
-    assert MemoryDecisionType.ADD == "add"
-    assert MemoryDecisionType.SUPERSEDE == "supersede"
-    assert MemoryDecisionType.MERGE == "merge"
-    assert MemoryDecisionType.EXPIRE == "expire"
-    assert MemoryDecisionType.DISCARD == "discard"
+    assert MemoryDecisionType.ADD == "ADD"
+    assert MemoryDecisionType.SUPERSEDE == "SUPERSEDE"
+    assert MemoryDecisionType.MERGE == "MERGE"
+    assert MemoryDecisionType.EXPIRE == "EXPIRE"
+    assert MemoryDecisionType.DISCARD == "DISCARD"
 
 
 def test_cardinality_values() -> None:
@@ -407,3 +407,12 @@ def test_resolve_decision_supersede() -> None:
     )
     assert decision.decision is MemoryDecisionType.SUPERSEDE
     assert len(decision.old_memory_ids) == 2
+
+
+def test_memory_decision_type_values_are_uppercase():
+    from sebastian.memory.types import MemoryDecisionType
+    assert MemoryDecisionType.ADD.value == "ADD"
+    assert MemoryDecisionType.SUPERSEDE.value == "SUPERSEDE"
+    assert MemoryDecisionType.MERGE.value == "MERGE"
+    assert MemoryDecisionType.EXPIRE.value == "EXPIRE"
+    assert MemoryDecisionType.DISCARD.value == "DISCARD"

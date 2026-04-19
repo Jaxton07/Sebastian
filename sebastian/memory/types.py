@@ -39,11 +39,11 @@ class MemoryStatus(StrEnum):
 
 
 class MemoryDecisionType(StrEnum):
-    ADD = "add"
-    SUPERSEDE = "supersede"
-    MERGE = "merge"
-    EXPIRE = "expire"
-    DISCARD = "discard"
+    ADD = "ADD"
+    SUPERSEDE = "SUPERSEDE"
+    MERGE = "MERGE"
+    EXPIRE = "EXPIRE"
+    DISCARD = "DISCARD"
 
 
 class Cardinality(StrEnum):

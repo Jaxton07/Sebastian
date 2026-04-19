@@ -25,7 +25,7 @@ class MemoryDecisionLogger:
     ) -> MemoryDecisionLogRecord:
         record = MemoryDecisionLogRecord(
             id=str(uuid4()),
-            decision=decision.decision.value.upper(),
+            decision=decision.decision.value,
             subject_id=decision.subject_id,
             scope=decision.scope.value,
             slot_id=decision.slot_id,
