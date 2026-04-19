@@ -198,3 +198,19 @@ async def test_search_active_filters_by_subject_and_scope_with_limit(db_session)
     assert [record.id for record in records] == ["owner-new", "owner-old"]
     assert all(record.subject_id == "owner" for record in records)
     assert all(record.status == MemoryStatus.ACTIVE.value for record in records)
+
+
+async def test_search_active_filters_expired_records(db_session) -> None:
+    store = ProfileMemoryStore(db_session)
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            _make_record(id="m-expired", valid_until=now - timedelta(days=1)),
+            _make_record(id="m-active", valid_until=None),
+        ]
+    )
+    await db_session.flush()
+
+    rows = await store.search_active(subject_id="owner")
+    ids = {r.id for r in rows}
+    assert ids == {"m-active"}

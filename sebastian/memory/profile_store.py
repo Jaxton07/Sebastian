@@ -69,9 +69,14 @@ class ProfileMemoryStore:
         scope: str | None = None,
         limit: int = 8,
     ) -> list[ProfileMemoryRecord]:
+        now = datetime.now(UTC)
         statement = select(ProfileMemoryRecord).where(
             ProfileMemoryRecord.subject_id == subject_id,
             ProfileMemoryRecord.status == MemoryStatus.ACTIVE.value,
+            or_(
+                ProfileMemoryRecord.valid_until.is_(None),
+                ProfileMemoryRecord.valid_until > now,
+            ),
         )
         if scope is not None:
             statement = statement.where(ProfileMemoryRecord.scope == scope)
