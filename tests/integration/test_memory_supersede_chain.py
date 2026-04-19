@@ -12,13 +12,14 @@ stores. The scenario:
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 import sqlalchemy
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import sebastian.gateway.state as state_module
 from sebastian.capabilities.tools.memory_save import memory_save
@@ -38,7 +39,10 @@ from sebastian.store.models import MemoryDecisionLogRecord, ProfileMemoryRecord
 _SLOT_ID = "user.current_project_focus"
 
 
-async def _create_in_memory_factory() -> async_sessionmaker:
+@pytest.fixture
+async def db_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Async generator fixture that creates an in-memory SQLite engine, yields
+    the sessionmaker, and disposes the engine on teardown."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -49,19 +53,22 @@ async def _create_in_memory_factory() -> async_sessionmaker:
                 "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
             )
         )
-    return async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield async_sessionmaker(engine, expire_on_commit=False)
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture
-async def enabled_memory_state(monkeypatch):
+async def enabled_memory_state(
+    monkeypatch, db_factory: async_sessionmaker[AsyncSession]
+) -> async_sessionmaker[AsyncSession]:
     """Patch ``gateway.state`` with memory enabled and a real in-memory DB."""
     fake_settings = MagicMock()
     fake_settings.enabled = True
     monkeypatch.setattr(state_module, "memory_settings", fake_settings, raising=False)
-
-    factory = await _create_in_memory_factory()
-    monkeypatch.setattr(state_module, "db_factory", factory, raising=False)
-    return factory
+    monkeypatch.setattr(state_module, "db_factory", db_factory, raising=False)
+    return db_factory
 
 
 @pytest.mark.asyncio
@@ -115,35 +122,32 @@ async def test_supersede_chain_from_memory_save_to_search(enabled_memory_state) 
     async with factory() as session:
         rows = (
             await session.scalars(
-                select(ProfileMemoryRecord).where(
-                    ProfileMemoryRecord.slot_id == _SLOT_ID
-                )
+                select(ProfileMemoryRecord).where(ProfileMemoryRecord.slot_id == _SLOT_ID)
             )
         ).all()
         assert len(rows) == 2, f"expected old+new rows, got {[r.content for r in rows]}"
 
-        by_status = {r.status: r for r in rows}
-        assert MemoryStatus.SUPERSEDED.value in by_status
-        assert MemoryStatus.ACTIVE.value in by_status
-
-        old_row = by_status[MemoryStatus.SUPERSEDED.value]
-        new_row = by_status[MemoryStatus.ACTIVE.value]
-        assert old_row.id == old_id
-        assert old_row.content == old_content
-        assert new_row.content == new_content
+        actives = [r for r in rows if r.status == MemoryStatus.ACTIVE.value]
+        supersededs = [r for r in rows if r.status == MemoryStatus.SUPERSEDED.value]
+        assert len(actives) == 1
+        assert len(supersededs) == 1
+        active_row = actives[0]
+        superseded_row = supersededs[0]
+        assert superseded_row.id == old_id
+        assert superseded_row.content == old_content
+        assert active_row.content == new_content
 
         logs = (
             await session.scalars(
                 select(MemoryDecisionLogRecord).where(
-                    MemoryDecisionLogRecord.decision
-                    == MemoryDecisionType.SUPERSEDE.value
+                    MemoryDecisionLogRecord.decision == MemoryDecisionType.SUPERSEDE.value
                 )
             )
         ).all()
         assert len(logs) == 1, f"expected 1 SUPERSEDE log, got {len(logs)}"
         log = logs[0]
         assert log.old_memory_ids == [old_id]
-        assert log.new_memory_id == new_row.id
+        assert log.new_memory_id == active_row.id
         assert log.slot_id == _SLOT_ID
 
     # --- Step 4: memory_search must return the new row only ----------------

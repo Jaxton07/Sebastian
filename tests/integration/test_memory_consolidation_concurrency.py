@@ -3,10 +3,16 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from sebastian.memory.consolidation import SessionConsolidationWorker
 from sebastian.store.models import (
@@ -36,7 +42,7 @@ from tests.integration.test_memory_consolidation import (
 
 
 @pytest.fixture
-async def engine():
+async def engine() -> AsyncIterator[AsyncEngine]:
     fd, path = tempfile.mkstemp(suffix=".db", prefix="sebastian-memory-concurrency-")
     os.close(fd)
     eng = create_async_engine(f"sqlite+aiosqlite:///{path}")
@@ -59,7 +65,7 @@ async def engine():
 
 
 @pytest.fixture
-def db_factory(engine):
+def db_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
