@@ -20,3 +20,17 @@ async def test_memory_tables_created() -> None:
     assert "relation_candidates" in tables
     assert "memory_decision_log" in tables
     await engine.dispose()
+
+
+def test_relation_candidate_has_lifecycle_fields() -> None:
+    """RelationCandidateRecord must carry valid_from/valid_until/updated_at for F3+."""
+    from sebastian.store.models import RelationCandidateRecord
+
+    cols = RelationCandidateRecord.__table__.c
+    assert "valid_from" in cols
+    assert "valid_until" in cols
+    assert "updated_at" in cols
+    assert "status" in cols  # already present; regression guard
+    # Nullability
+    assert cols["valid_from"].nullable is True
+    assert cols["valid_until"].nullable is True

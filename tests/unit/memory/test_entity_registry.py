@@ -22,6 +22,7 @@ def _make_relation(
     created_at: datetime | None = None,
     predicate: str = "likes",
 ) -> RelationCandidateRecord:
+    ts = created_at or datetime.now(UTC)
     return RelationCandidateRecord(
         id=str(uuid4()),
         subject_id=subject_id,
@@ -33,7 +34,8 @@ def _make_relation(
         confidence=0.9,
         status=status,
         provenance={},
-        created_at=created_at or datetime.now(UTC),
+        created_at=ts,
+        updated_at=ts,
     )
 
 

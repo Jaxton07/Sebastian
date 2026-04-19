@@ -188,8 +188,11 @@ class RelationCandidateRecord(Base):
     structured_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     confidence: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String, index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     provenance: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class MemoryDecisionLogRecord(Base):

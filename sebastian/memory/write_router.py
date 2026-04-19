@@ -69,6 +69,7 @@ async def persist_decision(
                 status=artifact.status.value,
                 provenance=artifact.provenance,
                 created_at=artifact.recorded_at,
+                updated_at=artifact.recorded_at,
             )
         )
         await session.flush()
