@@ -56,7 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.core.task_manager import TaskManager
     from sebastian.gateway.sse import SSEManager
     from sebastian.log import setup_logging
-    from sebastian.memory.startup import init_memory_storage
+    from sebastian.memory.entity_registry import EntityRegistry
+    from sebastian.memory.startup import init_memory_storage, seed_builtin_slots
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import bus
@@ -77,6 +78,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     state.memory_settings = MemoryRuntimeSettings(enabled=settings.sebastian_memory_enabled)
     db_factory = get_session_factory()
+
+    async with db_factory() as _seed_session:
+        await seed_builtin_slots(_seed_session)
+        try:
+            await EntityRegistry(_seed_session).sync_jieba_terms()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("jieba sync failed at startup: %s", exc)
+
     session_store = SessionStore(settings.sessions_dir)
     todo_store = TodoStore(settings.sessions_dir)
     index_store = IndexStore(settings.sessions_dir, session_store=session_store)
