@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from sebastian.memory.types import (
     MemorySource,
     MemoryStatus,
 )
+from sebastian.protocol.events.types import Event, EventType
 
 if TYPE_CHECKING:
     from sebastian.llm.registry import LLMProviderRegistry, ResolvedProvider
@@ -272,3 +274,54 @@ def _summary_to_artifact(summary: MemorySummary) -> MemoryArtifact:
         dedupe_key=None,
         policy_tags=[],
     )
+
+
+class MemoryConsolidationScheduler:
+    """Subscribes to SESSION_COMPLETED and schedules consolidation tasks.
+
+    The handler checks the memory feature flag *before* creating the asyncio task
+    so that disabled-memory paths never enter the event loop queue.
+    """
+
+    def __init__(
+        self,
+        *,
+        event_bus: Any,
+        worker: SessionConsolidationWorker,
+        memory_settings_fn: Callable[[], bool],
+    ) -> None:
+        self._worker = worker
+        self._memory_settings_fn = memory_settings_fn
+        self._pending_tasks: set[asyncio.Task[None]] = set()
+        event_bus.subscribe(self._handle, EventType.SESSION_COMPLETED)
+
+    async def _handle(self, event: Event) -> None:
+        if not self._memory_settings_fn():
+            return
+        session_id = event.data.get("session_id", "")
+        agent_type = event.data.get("agent_type", "")
+        if not session_id or not agent_type:
+            return
+        task: asyncio.Task[None] = asyncio.create_task(
+            self._worker.consolidate_session(session_id, agent_type),
+            name=f"consolidation_{session_id}",
+        )
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        task.add_done_callback(self._log_exception)
+
+    @staticmethod
+    def _log_exception(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Consolidation task failed: %s", exc, exc_info=exc)
+
+    async def aclose(self) -> None:
+        """Cancel all pending consolidation tasks on shutdown."""
+        for task in list(self._pending_tasks):
+            task.cancel()
+        if self._pending_tasks:
+            await asyncio.gather(*list(self._pending_tasks), return_exceptions=True)
+        self._pending_tasks.clear()

@@ -100,6 +100,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await connect_all(mcp_clients, registry)
 
     event_bus = bus
+    from sebastian.memory.consolidation import (
+        MemoryConsolidationScheduler,
+        MemoryConsolidator,
+        SessionConsolidationWorker,
+    )
+
+    consolidator = MemoryConsolidator(llm_registry)
+    consolidation_worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=consolidator,
+        session_store=session_store,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+    consolidation_scheduler = MemoryConsolidationScheduler(
+        event_bus=event_bus,
+        worker=consolidation_worker,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+    state.consolidation_scheduler = consolidation_scheduler
+
     conversation = ConversationManager(event_bus, db_factory=db_factory)
     task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
@@ -222,6 +242,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     watchdog_task.cancel()
     await completion_notifier.aclose()
+    if state.consolidation_scheduler is not None:
+        await state.consolidation_scheduler.aclose()
     logger.info("Sebastian gateway shutdown")
 
 
