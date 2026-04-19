@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
@@ -22,7 +24,9 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     if not hasattr(state, "db_factory") or state.db_factory is None:
         return ToolResult(ok=False, error="记忆存储不可用")
 
-    from sebastian.memory.retrieval import RetrievalContext, retrieve_memory_section
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.retrieval import MemoryRetrievalPlanner, RetrievalContext
 
     ctx = get_tool_context()
     session_id = ctx.session_id if ctx else "unknown"
@@ -40,10 +44,59 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         access_purpose="tool_search",
     )
 
+    planner = MemoryRetrievalPlanner()
+    plan = planner.plan(retrieval_ctx)
+
     async with state.db_factory() as session:
-        result = await retrieve_memory_section(retrieval_ctx, db_session=session)
+        profile_store = ProfileMemoryStore(session)
+        episode_store = EpisodeMemoryStore(session)
 
-    if not result:
-        return ToolResult(ok=True, output="未找到相关记忆", empty_hint="记忆库中暂无匹配内容")
+        profile_records = (
+            await profile_store.search_active(
+                subject_id=subject_id,
+                limit=plan.profile_limit,
+            )
+            if plan.profile_lane
+            else []
+        )
+        episode_records = (
+            await episode_store.search(
+                subject_id=subject_id,
+                query=query,
+                limit=plan.episode_limit,
+            )
+            if plan.episode_lane
+            else []
+        )
 
-    return ToolResult(ok=True, output=result)
+    items: list[dict[str, Any]] = []
+    for record in profile_records:
+        items.append(
+            {
+                "kind": record.kind,
+                "content": record.content,
+                "source": record.source,
+                "confidence": record.confidence if record.confidence is not None else 1.0,
+                "is_current": True,
+            }
+        )
+    for record in episode_records:
+        items.append(
+            {
+                "kind": record.kind,
+                "content": record.content,
+                "source": record.source,
+                "confidence": record.confidence if record.confidence is not None else 1.0,
+                "is_current": False,
+            }
+        )
+
+    items = items[:limit]
+
+    if not items:
+        return ToolResult(
+            ok=True,
+            output={"items": []},
+            empty_hint="记忆库中暂无匹配内容",
+        )
+    return ToolResult(ok=True, output={"items": items})

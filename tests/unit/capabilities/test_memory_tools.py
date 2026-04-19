@@ -128,32 +128,161 @@ async def test_memory_save_no_db_returns_error(no_db_state) -> None:
 
 
 @pytest.mark.asyncio
-async def test_memory_search_returns_ok_with_output(enabled_memory_state) -> None:
-    """After saving a preference, searching for it should return ok=True with output."""
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.capabilities.tools.memory_search import memory_search
+async def test_memory_search_returns_structured_items(enabled_memory_state) -> None:
+    """Profile + episode records should be returned as structured citation items."""
+    from datetime import UTC, datetime
 
-    # Save something first so there is content to retrieve
-    await memory_save(
-        content="以后回答简洁中文",
-        slot_id="user.preference.response_style",
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
     )
 
-    result = await memory_search(query="简洁中文")
+    now = datetime.now(UTC)
+    profile_artifact = MemoryArtifact(
+        id="profile-1",
+        kind=MemoryKind.PREFERENCE,
+        scope=MemoryScope.USER,
+        subject_id="owner",
+        slot_id="user.preference.response_style",
+        cardinality=None,
+        resolution_policy=None,
+        content="以后回答简洁中文",
+        structured_payload={},
+        source=MemorySource.EXPLICIT,
+        confidence=1.0,
+        status=MemoryStatus.ACTIVE,
+        valid_from=None,
+        valid_until=None,
+        recorded_at=now,
+        last_accessed_at=None,
+        access_count=0,
+        provenance={},
+        links=[],
+        embedding_ref=None,
+        dedupe_key=None,
+        policy_tags=[],
+    )
+    episode_artifact = MemoryArtifact(
+        id="episode-1",
+        kind=MemoryKind.EPISODE,
+        scope=MemoryScope.USER,
+        subject_id="owner",
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        content="上次讨论了 Python 异步编程",
+        structured_payload={},
+        source=MemorySource.OBSERVED,
+        confidence=0.8,
+        status=MemoryStatus.ACTIVE,
+        valid_from=None,
+        valid_until=None,
+        recorded_at=now,
+        last_accessed_at=None,
+        access_count=0,
+        provenance={"session_id": "s1"},
+        links=[],
+        embedding_ref=None,
+        dedupe_key=None,
+        policy_tags=[],
+    )
+
+    async with enabled_memory_state() as session:
+        await ProfileMemoryStore(session).add(profile_artifact)
+        await EpisodeMemoryStore(session).add_episode(episode_artifact)
+        await session.commit()
+
+    # Query contains episode-lane keyword "上次" so both lanes activate.
+    result = await memory_search(query="上次讨论")
 
     assert result.ok is True
-    # output is either a non-empty string or a dict/non-None value
-    assert result.output is not None
+    assert isinstance(result.output, dict)
+    items = result.output["items"]
+    assert isinstance(items, list)
+    assert len(items) == 2
+
+    required_keys = {"kind", "content", "source", "confidence", "is_current"}
+    for item in items:
+        assert required_keys <= set(item.keys())
+
+    profile_item = next(i for i in items if i["kind"] == MemoryKind.PREFERENCE.value)
+    episode_item = next(i for i in items if i["kind"] == MemoryKind.EPISODE.value)
+    assert profile_item["is_current"] is True
+    assert profile_item["source"] == MemorySource.EXPLICIT.value
+    assert episode_item["is_current"] is False
+    assert episode_item["source"] == MemorySource.OBSERVED.value
 
 
 @pytest.mark.asyncio
-async def test_memory_search_empty_db_returns_ok(enabled_memory_state) -> None:
-    """Searching an empty DB should return ok=True with an empty-hint."""
+async def test_memory_search_empty_returns_empty_items(enabled_memory_state) -> None:
+    """Searching an empty DB should return ok=True with empty items and hint."""
     from sebastian.capabilities.tools.memory_search import memory_search
 
     result = await memory_search(query="something")
 
     assert result.ok is True
+    assert result.output == {"items": []}
+    assert result.empty_hint is not None
+
+
+@pytest.mark.asyncio
+async def test_memory_search_respects_limit(enabled_memory_state) -> None:
+    """Limit parameter should cap the number of returned items."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        store = ProfileMemoryStore(session)
+        for idx in range(5):
+            await store.add(
+                MemoryArtifact(
+                    id=f"profile-{idx}",
+                    kind=MemoryKind.PREFERENCE,
+                    scope=MemoryScope.USER,
+                    subject_id="owner",
+                    slot_id=f"user.preference.slot_{idx}",
+                    cardinality=None,
+                    resolution_policy=None,
+                    content=f"偏好 {idx}",
+                    structured_payload={},
+                    source=MemorySource.EXPLICIT,
+                    confidence=1.0,
+                    status=MemoryStatus.ACTIVE,
+                    valid_from=None,
+                    valid_until=None,
+                    recorded_at=now,
+                    last_accessed_at=None,
+                    access_count=0,
+                    provenance={},
+                    links=[],
+                    embedding_ref=None,
+                    dedupe_key=None,
+                    policy_tags=[],
+                )
+            )
+        await session.commit()
+
+    result = await memory_search(query="偏好", limit=2)
+
+    assert result.ok is True
+    assert isinstance(result.output, dict)
+    assert len(result.output["items"]) == 2
 
 
 @pytest.mark.asyncio
