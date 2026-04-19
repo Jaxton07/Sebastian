@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.memory.errors import InvalidCandidateError
 from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
+from sebastian.memory.subject import resolve_subject
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryDecisionType,
@@ -235,6 +236,11 @@ class SessionConsolidationWorker:
                 )
 
             for candidate in result.proposed_artifacts:
+                candidate_subject_id = await resolve_subject(
+                    candidate.scope,
+                    session_id=session_id,
+                    agent_type=agent_type,
+                )
                 try:
                     DEFAULT_SLOT_REGISTRY.validate_candidate(candidate)
                 except InvalidCandidateError as e:
@@ -244,7 +250,7 @@ class SessionConsolidationWorker:
                         old_memory_ids=[],
                         new_memory=None,
                         candidate=candidate,
-                        subject_id="owner",
+                        subject_id=candidate_subject_id,
                         scope=candidate.scope,
                         slot_id=candidate.slot_id,
                     )
@@ -257,7 +263,7 @@ class SessionConsolidationWorker:
                     continue
                 decision = await resolve_candidate(
                     candidate,
-                    subject_id="owner",
+                    subject_id=candidate_subject_id,
                     profile_store=profile_store,
                     slot_registry=DEFAULT_SLOT_REGISTRY,
                 )

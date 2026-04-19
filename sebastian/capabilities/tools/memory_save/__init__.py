@@ -9,6 +9,7 @@ from sebastian.memory.errors import InvalidCandidateError
 from sebastian.memory.profile_store import ProfileMemoryStore
 from sebastian.memory.resolver import resolve_candidate
 from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+from sebastian.memory.subject import resolve_subject
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryDecisionType,
@@ -41,8 +42,12 @@ async def memory_save(
     if not hasattr(state, "db_factory") or state.db_factory is None:
         return ToolResult(ok=False, error="记忆存储不可用")
 
-    # Phase B: owner is the fixed subject
-    subject_id = "owner"
+    memory_scope = MemoryScope(scope)
+    subject_id = await resolve_subject(
+        memory_scope,
+        session_id=getattr(state, "current_session_id", "") or "",
+        agent_type=getattr(state, "current_agent_type", "default") or "default",
+    )
 
     # Determine kind from slot; fall back to FACT for no-slot saves
     slot = DEFAULT_SLOT_REGISTRY.get(slot_id) if slot_id else None
@@ -53,7 +58,7 @@ async def memory_save(
         content=content,
         structured_payload={},
         subject_hint=subject_id,
-        scope=MemoryScope(scope),
+        scope=memory_scope,
         slot_id=slot_id,
         cardinality=slot.cardinality if slot else None,
         resolution_policy=slot.resolution_policy if slot else None,

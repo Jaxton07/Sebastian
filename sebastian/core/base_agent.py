@@ -251,9 +251,16 @@ class BaseAgent(ABC):
             return ""
         try:
             from sebastian.memory.retrieval import RetrievalContext, retrieve_memory_section
+            from sebastian.memory.subject import resolve_subject
+            from sebastian.memory.types import MemoryScope
 
+            subject_id = await resolve_subject(
+                MemoryScope.USER,
+                session_id=session_id,
+                agent_type=agent_context,
+            )
             ctx = RetrievalContext(
-                subject_id="owner",
+                subject_id=subject_id,
                 session_id=session_id,
                 agent_type=agent_context,
                 user_message=user_message,

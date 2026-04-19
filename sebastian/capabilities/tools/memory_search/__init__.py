@@ -3,6 +3,8 @@ from __future__ import annotations
 from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
+from sebastian.memory.subject import resolve_subject
+from sebastian.memory.types import MemoryScope
 from sebastian.permissions.types import PermissionTier
 
 
@@ -25,7 +27,11 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     ctx = get_tool_context()
     session_id = ctx.session_id if ctx else "unknown"
 
-    subject_id = "owner"
+    subject_id = await resolve_subject(
+        MemoryScope.USER,
+        session_id=session_id,
+        agent_type="memory_search_tool",
+    )
     retrieval_ctx = RetrievalContext(
         subject_id=subject_id,
         session_id=session_id,
