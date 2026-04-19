@@ -7,6 +7,7 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from sebastian.memory.trace import trace
 from sebastian.memory.types import ResolveDecision
 from sebastian.store.models import MemoryDecisionLogRecord
 
@@ -49,4 +50,16 @@ class MemoryDecisionLogger:
         )
         self._session.add(record)
         await self._session.flush()
+        trace(
+            "decision_log.append",
+            id=record.id,
+            decision=decision.decision,
+            worker=worker,
+            model=model,
+            subject_id=decision.subject_id,
+            scope=decision.scope,
+            slot_id=decision.slot_id,
+            new_memory_id=record.new_memory_id,
+            old_count=len(decision.old_memory_ids),
+        )
         return record

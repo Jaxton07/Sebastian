@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -27,6 +28,9 @@ from sebastian.store.database import Base
 class FakeProfileRecord:
     kind: str
     content: str
+    id: str = "profile-1"
+    slot_id: str | None = "slot-1"
+    status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
@@ -35,6 +39,10 @@ class FakeProfileRecord:
 @dataclass
 class FakeContextRecord:
     content: str
+    id: str = "context-1"
+    kind: str = "fact"
+    slot_id: str | None = "slot-context"
+    status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
@@ -43,6 +51,10 @@ class FakeContextRecord:
 @dataclass
 class FakeEpisodeRecord:
     content: str
+    id: str = "episode-1"
+    kind: str = "episode"
+    slot_id: str | None = None
+    status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
@@ -53,6 +65,10 @@ class FakeRelationRecord:
     source_entity_id: str
     predicate: str
     target_entity_id: str | None = None
+    id: str = "relation-1"
+    kind: str = "relation"
+    slot_id: str | None = None
+    status: str = "active"
     content: str = ""
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
@@ -509,6 +525,56 @@ class TestMemorySectionAssembler:
         )
         assert "user prefers dark mode" in result
 
+    def test_assembler_logs_filter_counts_and_injected_items(self, caplog) -> None:
+        caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
+        records = [
+            FakeProfileRecord(kind="pref", content="keep", id="keep-1"),
+            FakeProfileRecord(
+                kind="pref",
+                content="do-not-log-full",
+                id="drop-auto",
+                policy_tags=["do_not_auto_inject"],
+            ),
+            FakeProfileRecord(
+                kind="pref",
+                content="tool-only",
+                id="drop-access",
+                policy_tags=["access:tool_search"],
+            ),
+            FakeProfileRecord(
+                kind="pref",
+                content="forge-only",
+                id="drop-agent",
+                policy_tags=["agent:forge"],
+            ),
+            FakeProfileRecord(kind="pref", content="low", id="drop-conf", confidence=0.1),
+            FakeProfileRecord(
+                kind="pref",
+                content="expired",
+                id="drop-expired",
+                valid_until=datetime.now(UTC) - timedelta(days=1),
+            ),
+        ]
+
+        result = MemorySectionAssembler().assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx("inject"),
+        )
+
+        assert "keep" in result
+        assert "MEMORY_TRACE retrieval.filter" in caplog.text
+        assert "do_not_auto_inject=1" in caplog.text
+        assert "access_policy=1" in caplog.text
+        assert "agent_policy=1" in caplog.text
+        assert "confidence=1" in caplog.text
+        assert "valid_until=1" in caplog.text
+        assert "MEMORY_TRACE retrieval.assemble" in caplog.text
+        assert "keep-1" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # retrieve_memory_section — integration with context lane
@@ -526,8 +592,9 @@ async def db_session():
     await engine.dispose()
 
 
-async def test_retrieve_memory_section_calls_context_lane(db_session) -> None:
+async def test_retrieve_memory_section_calls_context_lane(db_session, caplog) -> None:
     """When planner activates context_lane, search_recent_context must be invoked."""
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     context = RetrievalContext(
         subject_id="owner",
         session_id="sess-1",
@@ -543,6 +610,10 @@ async def test_retrieve_memory_section_calls_context_lane(db_session) -> None:
         kwargs = spy.await_args.kwargs
         assert kwargs["subject_id"] == "owner"
         assert kwargs["limit"] == 3
+    assert "MEMORY_TRACE retrieval.plan" in caplog.text
+    assert "context_lane=True" in caplog.text
+    assert "MEMORY_TRACE retrieval.fetch" in caplog.text
+    assert "lane=context" in caplog.text
 
 
 async def test_retrieve_memory_section_skips_context_lane_when_inactive(db_session) -> None:

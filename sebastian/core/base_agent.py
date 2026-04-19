@@ -252,6 +252,7 @@ class BaseAgent(ABC):
         try:
             from sebastian.memory.retrieval import RetrievalContext, retrieve_memory_section
             from sebastian.memory.subject import resolve_subject
+            from sebastian.memory.trace import trace
             from sebastian.memory.types import MemoryScope
 
             subject_id = await resolve_subject(
@@ -266,7 +267,15 @@ class BaseAgent(ABC):
                 user_message=user_message,
             )
             async with self._db_factory() as session:
-                return await retrieve_memory_section(ctx, db_session=session)
+                section = await retrieve_memory_section(ctx, db_session=session)
+            trace(
+                "memory_section.injected",
+                session_id=session_id,
+                agent_type=agent_context,
+                subject_id=subject_id,
+                section_chars=len(section),
+            )
+            return section
         except Exception:
             logger.warning(
                 "Memory section retrieval failed, continuing without memory context",

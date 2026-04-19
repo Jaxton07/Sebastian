@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -77,13 +78,14 @@ def no_db_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_memory_save_returns_ok(enabled_memory_state) -> None:
+async def test_memory_save_returns_ok(enabled_memory_state, caplog) -> None:
     from sqlalchemy import select
 
     from sebastian.capabilities.tools.memory_save import memory_save
     from sebastian.memory.types import MemoryStatus
     from sebastian.store.models import ProfileMemoryRecord
 
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     result = await memory_save(
         content="以后回答简洁中文",
         slot_id="user.preference.response_style",
@@ -102,17 +104,21 @@ async def test_memory_save_returns_ok(enabled_memory_state) -> None:
     assert row.content == "以后回答简洁中文"
     assert row.slot_id == "user.preference.response_style"
     assert row.status == MemoryStatus.ACTIVE.value
+    assert "MEMORY_TRACE tool.memory_save.start" in caplog.text
+    assert "MEMORY_TRACE tool.memory_save.done" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_memory_save_without_slot_id_rejected(enabled_memory_state) -> None:
+async def test_memory_save_without_slot_id_rejected(enabled_memory_state, caplog) -> None:
     """Saving without a slot_id yields FACT kind, which requires a slot → validation rejects."""
     from sebastian.capabilities.tools.memory_save import memory_save
 
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     result = await memory_save(content="用户喜欢深色主题")
 
     assert result.ok is False
     assert "slot" in (result.error or "").lower()
+    assert "MEMORY_TRACE tool.memory_save.reject" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -141,7 +147,7 @@ async def test_memory_save_no_db_returns_error(no_db_state) -> None:
 
 
 @pytest.mark.asyncio
-async def test_memory_search_returns_structured_items(enabled_memory_state) -> None:
+async def test_memory_search_returns_structured_items(enabled_memory_state, caplog) -> None:
     """Profile + episode records should be returned as structured citation items."""
     from datetime import UTC, datetime
 
@@ -156,6 +162,7 @@ async def test_memory_search_returns_structured_items(enabled_memory_state) -> N
         MemoryStatus,
     )
 
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     now = datetime.now(UTC)
     profile_artifact = MemoryArtifact(
         id="profile-1",
@@ -230,18 +237,24 @@ async def test_memory_search_returns_structured_items(enabled_memory_state) -> N
     assert profile_item["source"] == MemorySource.EXPLICIT.value
     assert episode_item["is_current"] is False
     assert episode_item["source"] == MemorySource.OBSERVED.value
+    assert "MEMORY_TRACE tool.memory_search.start" in caplog.text
+    assert "MEMORY_TRACE tool.memory_search.done" in caplog.text
+    assert "result_count=2" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_memory_search_empty_returns_empty_items(enabled_memory_state) -> None:
+async def test_memory_search_empty_returns_empty_items(enabled_memory_state, caplog) -> None:
     """Searching an empty DB should return ok=True with empty items and hint."""
     from sebastian.capabilities.tools.memory_search import memory_search
 
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     result = await memory_search(query="something")
 
     assert result.ok is True
     assert result.output == {"items": []}
     assert result.empty_hint is not None
+    assert "MEMORY_TRACE tool.memory_search.done" in caplog.text
+    assert "result_count=0" in caplog.text
 
 
 @pytest.mark.asyncio

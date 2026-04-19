@@ -15,6 +15,7 @@ from sebastian.memory.errors import InvalidCandidateError
 from sebastian.memory.extraction import ExtractorInput, MemoryExtractor
 from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
 from sebastian.memory.subject import resolve_subject
+from sebastian.memory.trace import record_ref, trace
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryDecisionType,
@@ -175,7 +176,14 @@ class SessionConsolidationWorker:
         """
         # 1. Check feature flag
         if not self._memory_settings_fn():
+            trace(
+                "consolidation.skip",
+                reason="memory_disabled",
+                session_id=session_id,
+                agent_type=agent_type,
+            )
             return
+        trace("consolidation.start", session_id=session_id, agent_type=agent_type)
 
         # 2. Fetch session messages
         messages: list[dict[str, Any]] = await self._session_store.get_messages(
@@ -214,6 +222,16 @@ class SessionConsolidationWorker:
                 subject_id=context_subject_id, limit=8
             )
             entity_rows = await entity_registry.snapshot(limit=64)
+            trace(
+                "consolidation.context",
+                session_id=session_id,
+                agent_type=agent_type,
+                subject_id=context_subject_id,
+                message_count=len(messages),
+                active_memory_count=len(active_rows),
+                recent_summary_count=len(recent_summary_rows),
+                entity_count=len(entity_rows),
+            )
 
             # 4a. Run the extractor first so the consolidator sees explicit
             #     candidate artifacts instead of having to re-extract from raw
@@ -227,6 +245,13 @@ class SessionConsolidationWorker:
                 known_slots=[s.model_dump() for s in DEFAULT_SLOT_REGISTRY.list_all()],
             )
             candidate_artifacts = await self._extractor.extract(extractor_input)
+            trace(
+                "consolidation.extractor_result",
+                session_id=session_id,
+                agent_type=agent_type,
+                candidate_count=len(candidate_artifacts),
+                items=[record_ref(c) for c in candidate_artifacts],
+            )
 
             consolidator_input = ConsolidatorInput(
                 session_messages=messages,
@@ -258,6 +283,21 @@ class SessionConsolidationWorker:
             result: ConsolidationResult = await self._consolidator.consolidate(consolidator_input)
             resolved_provider = getattr(self._consolidator, "last_resolved", None)
             model_name = resolved_provider.model if resolved_provider is not None else None
+            trace(
+                "consolidation.consolidator_result",
+                session_id=session_id,
+                agent_type=agent_type,
+                summary_count=len(result.summaries),
+                proposed_artifact_count=len(result.proposed_artifacts),
+                proposed_action_count=len(result.proposed_actions),
+                model=model_name,
+            )
+            persisted_counts: dict[str, int] = {
+                "summary": 0,
+                "artifact": 0,
+                "discard": 0,
+                "expire": 0,
+            }
 
             for summary in result.summaries:
                 summary_subject_id = await resolve_subject(
@@ -296,6 +336,7 @@ class SessionConsolidationWorker:
                         episode_store=episode_store,
                         entity_registry=entity_registry,
                     )
+                    persisted_counts["summary"] += 1
                 await decision_logger.append(
                     summary_decision,
                     worker=self._WORKER_ID,
@@ -328,6 +369,7 @@ class SessionConsolidationWorker:
                         model=model_name,
                         rule_version=self._RULE_VERSION,
                     )
+                    persisted_counts["discard"] += 1
                     continue
                 decision = await resolve_candidate(
                     candidate,
@@ -346,6 +388,9 @@ class SessionConsolidationWorker:
                         episode_store=episode_store,
                         entity_registry=entity_registry,
                     )
+                    persisted_counts["artifact"] += 1
+                else:
+                    persisted_counts["discard"] += 1
                 await decision_logger.append(
                     decision,
                     worker=self._WORKER_ID,
@@ -393,6 +438,14 @@ class SessionConsolidationWorker:
                     model=model_name,
                     rule_version=self._RULE_VERSION,
                 )
+                persisted_counts["expire"] += 1
+
+            trace(
+                "consolidation.persisted",
+                session_id=session_id,
+                agent_type=agent_type,
+                **persisted_counts,
+            )
 
             marker = SessionConsolidationRecord(
                 session_id=session_id,
@@ -405,7 +458,14 @@ class SessionConsolidationWorker:
                 await session.commit()
             except IntegrityError:
                 await session.rollback()
+                trace(
+                    "consolidation.skip",
+                    reason="already_consolidated",
+                    session_id=session_id,
+                    agent_type=agent_type,
+                )
                 return  # already consolidated by a concurrent task
+            trace("consolidation.done", session_id=session_id, agent_type=agent_type)
 
 
 class MemoryConsolidationScheduler:
@@ -429,11 +489,18 @@ class MemoryConsolidationScheduler:
 
     async def _handle(self, event: Event) -> None:
         if not self._memory_settings_fn():
+            trace(
+                "consolidation.schedule_skip",
+                reason="memory_disabled",
+                session_id=event.data.get("session_id", ""),
+                agent_type=event.data.get("agent_type", ""),
+            )
             return
         session_id = event.data.get("session_id", "")
         agent_type = event.data.get("agent_type", "")
         if not session_id or not agent_type:
             return
+        trace("consolidation.schedule", session_id=session_id, agent_type=agent_type)
         task: asyncio.Task[None] = asyncio.create_task(
             self._worker.consolidate_session(session_id, agent_type),
             name=f"consolidation_{session_id}",

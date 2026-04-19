@@ -11,6 +11,7 @@ from sebastian.memory.profile_store import ProfileMemoryStore
 from sebastian.memory.resolver import resolve_candidate
 from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
 from sebastian.memory.subject import resolve_subject
+from sebastian.memory.trace import preview_text, trace
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryDecisionType,
@@ -36,6 +37,12 @@ async def memory_save(
     scope: str = "user",
     policy_tags: list[str] | None = None,
 ) -> ToolResult:
+    trace(
+        "tool.memory_save.start",
+        scope=scope,
+        slot_id=slot_id,
+        content_preview=preview_text(content),
+    )
     # Check memory enabled
     if not state.memory_settings.enabled:
         return ToolResult(ok=False, error="记忆功能已关闭")
@@ -76,6 +83,13 @@ async def memory_save(
     try:
         DEFAULT_SLOT_REGISTRY.validate_candidate(candidate)
     except InvalidCandidateError as e:
+        trace(
+            "tool.memory_save.reject",
+            reason="validation_failed",
+            scope=memory_scope,
+            slot_id=slot_id,
+            error=str(e),
+        )
         return ToolResult(ok=False, error=f"记忆参数校验失败：{e}")
 
     async with state.db_factory() as session:
@@ -99,9 +113,21 @@ async def memory_save(
                 rule_version="phase_b_v1",
             )
             await session.commit()
+            trace(
+                "tool.memory_save.done",
+                decision=decision.decision,
+                slot_id=decision.slot_id,
+                new_memory_id=None,
+            )
             return ToolResult(ok=False, error="记忆被丢弃：置信度不足或槽位不匹配")
 
         if decision.new_memory is None:
+            trace(
+                "tool.memory_save.reject",
+                reason="missing_new_memory",
+                decision=decision.decision,
+                slot_id=decision.slot_id,
+            )
             return ToolResult(ok=False, error="内部错误：未生成记忆对象")
 
         await persist_decision(
@@ -121,4 +147,10 @@ async def memory_save(
 
         await session.commit()
 
+    trace(
+        "tool.memory_save.done",
+        decision=decision.decision,
+        slot_id=decision.slot_id,
+        new_memory_id=decision.new_memory.id if decision.new_memory is not None else None,
+    )
     return ToolResult(ok=True, output={"saved": content, "slot_id": slot_id})

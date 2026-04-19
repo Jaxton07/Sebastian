@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -80,7 +81,8 @@ def _make_memory_artifact(memory_id: str = "mem-new") -> MemoryArtifact:
     )
 
 
-async def test_decision_logger_append_add(db_session) -> None:
+async def test_decision_logger_append_add(db_session, caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     logger = MemoryDecisionLogger(db_session)
 
     decision = ResolveDecision(
@@ -115,6 +117,9 @@ async def test_decision_logger_append_add(db_session) -> None:
     assert record.candidate["structured_payload"] == {"style": "concise"}
     assert record.id is not None
     assert isinstance(record.created_at, datetime)
+    assert "MEMORY_TRACE decision_log.append" in caplog.text
+    assert "decision=ADD" in caplog.text
+    assert "worker=unit-test" in caplog.text
 
 
 async def test_append_captures_session_id_from_provenance(db_session) -> None:

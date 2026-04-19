@@ -12,6 +12,7 @@
 - **Phase A 长期记忆基础设施**：记忆 artifact 类型、slot 注册表、FTS 分词辅助、决策日志写入器。
 - **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询）、`EpisodeMemoryStore`（经历 FTS 检索）、`retrieval.py`（检索 pipeline）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt。
 - **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。
+- **Memory Trace 日志**：`trace.py` 提供 `MEMORY_TRACE` 调试日志辅助，贯穿检索、注入、决策、写入、工具和会话沉淀链路，输出到现有 `main.log`。
 
 语义记忆（向量检索）为后续规划能力，当前未实现。
 
@@ -31,6 +32,7 @@ memory/
 ├── slots.py              # SlotRegistry + 6 个内置 SlotDefinition + DEFAULT_SLOT_REGISTRY
 ├── startup.py            # init_memory_storage()：建 FTS 虚拟表，在 lifespan 中调用
 ├── store.py              # MemoryStore：统一聚合 working + 会话历史兼容层
+├── trace.py              # MEMORY_TRACE 调试日志辅助：trace、preview_text、record_ref
 ├── types.py              # 记忆系统 Pydantic models 与 StrEnum 类型
 ├── working_memory.py     # WorkingMemory：进程内 dict，按 task_id 隔离，任务结束后清除
 ├── provider_bindings.py  # LLM binding 常量：MEMORY_EXTRACTOR_BINDING / MEMORY_CONSOLIDATOR_BINDING
@@ -106,6 +108,7 @@ memory/
 | Profile 画像的写入、查询、supersede | [profile_store.py](profile_store.py) |
 | 经历事件的写入与 FTS 检索 | [episode_store.py](episode_store.py) |
 | 每轮记忆检索 pipeline（planner → fetch → assemble） | [retrieval.py](retrieval.py) |
+| Memory 链路调试日志（MEMORY_TRACE） | [trace.py](trace.py) |
 | 画像冲突检测与决策生成 | [resolver.py](resolver.py) |
 | 实体管理（CRUD） | [entity_registry.py](entity_registry.py) |
 | 语义记忆 / 向量检索（后续阶段，待实现） | 新建 `semantic_memory.py`，并按需要在 `store.py` 中注册 |

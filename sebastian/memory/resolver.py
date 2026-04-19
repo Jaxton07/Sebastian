@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from sebastian.memory.trace import preview_text, trace
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -80,7 +81,7 @@ async def resolve_candidate(
     # 1. Episode / Summary → always ADD
     # ------------------------------------------------------------------
     if candidate.kind in (MemoryKind.EPISODE, MemoryKind.SUMMARY):
-        return ResolveDecision(
+        return _trace_decision(ResolveDecision(
             decision=MemoryDecisionType.ADD,
             reason="episodes and summaries are always appended",
             old_memory_ids=[],
@@ -89,13 +90,13 @@ async def resolve_candidate(
             subject_id=subject_id,
             scope=candidate.scope,
             slot_id=None,
-        )
+        ))
 
     # ------------------------------------------------------------------
     # 2. No slot + low confidence → DISCARD
     # ------------------------------------------------------------------
     if candidate.slot_id is None and candidate.confidence < CONFIDENCE_DISCARD_THRESHOLD:
-        return ResolveDecision(
+        return _trace_decision(ResolveDecision(
             decision=MemoryDecisionType.DISCARD,
             reason=(
                 f"confidence {candidate.confidence:.2f} is below threshold "
@@ -107,7 +108,7 @@ async def resolve_candidate(
             subject_id=subject_id,
             scope=candidate.scope,
             slot_id=None,
-        )
+        ))
 
     # ------------------------------------------------------------------
     # 3. Determine effective cardinality and resolution_policy
@@ -128,7 +129,7 @@ async def resolve_candidate(
         effective_cardinality == Cardinality.MULTI
         or effective_policy == ResolutionPolicy.APPEND_ONLY
     ):
-        return ResolveDecision(
+        return _trace_decision(ResolveDecision(
             decision=MemoryDecisionType.ADD,
             reason="multi-cardinality or append-only policy: new entry added alongside existing",
             old_memory_ids=[],
@@ -137,7 +138,7 @@ async def resolve_candidate(
             subject_id=subject_id,
             scope=candidate.scope,
             slot_id=candidate.slot_id,
-        )
+        ))
 
     # ------------------------------------------------------------------
     # 5. SINGLE cardinality → check existing records
@@ -149,7 +150,7 @@ async def resolve_candidate(
             candidate.slot_id,
         )
         if not existing:
-            return ResolveDecision(
+            return _trace_decision(ResolveDecision(
                 decision=MemoryDecisionType.ADD,
                 reason="single-cardinality slot has no existing active record",
                 old_memory_ids=[],
@@ -158,10 +159,10 @@ async def resolve_candidate(
                 subject_id=subject_id,
                 scope=candidate.scope,
                 slot_id=candidate.slot_id,
-            )
+            ))
 
         if all(_new_is_weaker(candidate, r) for r in existing):
-            return ResolveDecision(
+            return _trace_decision(ResolveDecision(
                 decision=MemoryDecisionType.DISCARD,
                 reason=(
                     f"new candidate (source={candidate.source.value}, "
@@ -175,9 +176,9 @@ async def resolve_candidate(
                 subject_id=subject_id,
                 scope=candidate.scope,
                 slot_id=candidate.slot_id,
-            )
+            ))
 
-        return ResolveDecision(
+        return _trace_decision(ResolveDecision(
             decision=MemoryDecisionType.SUPERSEDE,
             reason=(
                 f"single-cardinality slot '{candidate.slot_id}' already has "
@@ -189,12 +190,12 @@ async def resolve_candidate(
             subject_id=subject_id,
             scope=candidate.scope,
             slot_id=candidate.slot_id,
-        )
+        ))
 
     # ------------------------------------------------------------------
     # 6. Fallback → ADD
     # ------------------------------------------------------------------
-    return ResolveDecision(
+    return _trace_decision(ResolveDecision(
         decision=MemoryDecisionType.ADD,
         reason="fallback: no specific resolution rule matched",
         old_memory_ids=[],
@@ -203,7 +204,24 @@ async def resolve_candidate(
         subject_id=subject_id,
         scope=candidate.scope,
         slot_id=candidate.slot_id,
+    ))
+
+
+def _trace_decision(decision: ResolveDecision) -> ResolveDecision:
+    trace(
+        "resolve.decision",
+        subject_id=decision.subject_id,
+        scope=decision.scope,
+        kind=decision.candidate.kind,
+        slot_id=decision.slot_id,
+        source=decision.candidate.source,
+        confidence=decision.candidate.confidence,
+        decision=decision.decision,
+        old_count=len(decision.old_memory_ids),
+        reason=decision.reason,
+        candidate_preview=preview_text(decision.candidate.content),
     )
+    return decision
 
 
 def _make_artifact(candidate: CandidateArtifact, subject_id: str) -> MemoryArtifact:

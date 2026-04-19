@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -102,7 +103,8 @@ def _stores(session) -> tuple[ProfileMemoryStore, EpisodeMemoryStore, EntityRegi
     )
 
 
-async def test_persist_decision_discard_writes_nothing(db_session) -> None:
+async def test_persist_decision_discard_writes_nothing(db_session, caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     profile_store, episode_store, entity_registry = _stores(db_session)
     decision = ResolveDecision(
         decision=MemoryDecisionType.DISCARD,
@@ -131,9 +133,12 @@ async def test_persist_decision_discard_writes_nothing(db_session) -> None:
     ):
         rows = (await db_session.scalars(select(model))).all()
         assert rows == []
+    assert "MEMORY_TRACE persist.skip" in caplog.text
+    assert "decision=DISCARD" in caplog.text
 
 
-async def test_persist_decision_fact_add_writes_profile(db_session) -> None:
+async def test_persist_decision_fact_add_writes_profile(db_session, caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     profile_store, episode_store, entity_registry = _stores(db_session)
     artifact = _artifact(MemoryKind.FACT, content="I like tea")
     decision = ResolveDecision(
@@ -160,6 +165,9 @@ async def test_persist_decision_fact_add_writes_profile(db_session) -> None:
     assert rows[0].content == "I like tea"
     assert rows[0].status == MemoryStatus.ACTIVE.value
     assert rows[0].kind == "fact"
+    assert "MEMORY_TRACE persist.write" in caplog.text
+    assert "store=profile" in caplog.text
+    assert f"new_memory_id={artifact.id}" in caplog.text
 
 
 async def test_persist_decision_fact_supersede_marks_old_and_inserts_new(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from sebastian.memory.trace import trace
 from sebastian.memory.types import MemoryDecisionType, MemoryKind, ResolveDecision
 
 if TYPE_CHECKING:
@@ -30,6 +31,14 @@ async def persist_decision(
     - FACT / PREFERENCE → ProfileMemoryStore (add or supersede)
     """
     if decision.decision in (MemoryDecisionType.DISCARD, MemoryDecisionType.EXPIRE):
+        trace(
+            "persist.skip",
+            decision=decision.decision,
+            subject_id=decision.subject_id,
+            scope=decision.scope,
+            slot_id=decision.slot_id,
+            old_memory_ids=decision.old_memory_ids,
+        )
         return
     if decision.new_memory is None:
         raise ValueError("non-DISCARD/EXPIRE decision must have new_memory")
@@ -39,9 +48,11 @@ async def persist_decision(
 
     if kind == MemoryKind.EPISODE:
         await episode_store.add_episode(artifact)
+        _trace_write("episode", decision)
         return
     if kind == MemoryKind.SUMMARY:
         await episode_store.add_summary(artifact)
+        _trace_write("episode", decision)
         return
     if kind == MemoryKind.ENTITY:
         payload = artifact.structured_payload or {}
@@ -51,6 +62,7 @@ async def persist_decision(
             aliases=payload.get("aliases", []),
             metadata=payload.get("metadata", {}),
         )
+        _trace_write("entity", decision)
         return
     if kind == MemoryKind.RELATION:
         from sebastian.store.models import RelationCandidateRecord
@@ -75,6 +87,7 @@ async def persist_decision(
             )
         )
         await session.flush()
+        _trace_write("relation", decision)
         return
 
     # FACT / PREFERENCE
@@ -82,3 +95,18 @@ async def persist_decision(
         await profile_store.supersede(decision.old_memory_ids, artifact)
     else:
         await profile_store.add(artifact)
+    _trace_write("profile", decision)
+
+
+def _trace_write(store: str, decision: ResolveDecision) -> None:
+    trace(
+        "persist.write",
+        store=store,
+        decision=decision.decision,
+        subject_id=decision.subject_id,
+        scope=decision.scope,
+        slot_id=decision.slot_id,
+        kind=decision.new_memory.kind if decision.new_memory is not None else None,
+        new_memory_id=decision.new_memory.id if decision.new_memory is not None else None,
+        old_memory_ids=decision.old_memory_ids,
+    )

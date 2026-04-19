@@ -6,6 +6,7 @@ from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.memory.subject import resolve_subject
+from sebastian.memory.trace import preview_text, record_ref, trace
 from sebastian.memory.types import MemoryScope
 from sebastian.permissions.types import PermissionTier
 
@@ -18,6 +19,11 @@ from sebastian.permissions.types import PermissionTier
 async def memory_search(query: str, limit: int = 5) -> ToolResult:
     import sebastian.gateway.state as state
 
+    trace(
+        "tool.memory_search.start",
+        query_preview=preview_text(query),
+        limit=limit,
+    )
     if not state.memory_settings.enabled:
         return ToolResult(ok=False, error="记忆功能已关闭")
 
@@ -92,6 +98,14 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         )
 
     items = items[:limit]
+    trace(
+        "tool.memory_search.done",
+        query_preview=preview_text(query),
+        result_count=len(items),
+        current_count=sum(1 for item in items if item["is_current"]),
+        historical_count=sum(1 for item in items if not item["is_current"]),
+        items=[record_ref(r) for r in [*profile_records, *episode_records]][:limit],
+    )
 
     if not items:
         return ToolResult(

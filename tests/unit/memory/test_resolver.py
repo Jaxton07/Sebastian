@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -95,8 +96,9 @@ class FakeProfileStore:
 
 
 @pytest.mark.asyncio
-async def test_explicit_preference_supersedes_inferred() -> None:
+async def test_explicit_preference_supersedes_inferred(caplog) -> None:
     """Explicit PREFERENCE for a SINGLE slot → SUPERSEDE existing record."""
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
     existing = _make_record("mem-lang-old")
     store = FakeProfileStore([existing])
     registry = SlotRegistry()  # built-ins include user.preference.language (SINGLE/SUPERSEDE)
@@ -118,6 +120,9 @@ async def test_explicit_preference_supersedes_inferred() -> None:
 
     assert decision.decision == MemoryDecisionType.SUPERSEDE
     assert decision.old_memory_ids == ["mem-lang-old"]
+    assert "MEMORY_TRACE resolve.decision" in caplog.text
+    assert "decision=SUPERSEDE" in caplog.text
+    assert "old_count=1" in caplog.text
 
 
 @pytest.mark.asyncio

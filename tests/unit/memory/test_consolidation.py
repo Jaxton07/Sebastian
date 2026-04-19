@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -465,7 +466,7 @@ class TestMemoryConsolidatorConsolidate:
         )
 
     @pytest.mark.asyncio
-    async def test_worker_writes_nothing_when_memory_disabled(self) -> None:
+    async def test_worker_writes_nothing_when_memory_disabled(self, caplog) -> None:
         """When memory_settings_fn returns False, the worker must not write anything."""
         from sqlalchemy import select, text
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -518,6 +519,7 @@ class TestMemoryConsolidatorConsolidate:
                 memory_settings_fn=lambda: False,
             )
 
+            caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
             await worker.consolidate_session("s1", "default")
 
             async with factory() as s:
@@ -527,6 +529,8 @@ class TestMemoryConsolidatorConsolidate:
                 assert profiles == []
                 assert episodes == []
                 assert markers == []
+            assert "MEMORY_TRACE consolidation.skip" in caplog.text
+            assert "reason=memory_disabled" in caplog.text
         finally:
             await engine.dispose()
 

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
+from sebastian.memory.trace import record_ref, trace
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,18 +46,34 @@ class MemoryRetrievalPlanner:
         """Determine which retrieval lanes to activate."""
         msg = context.user_message.lower().strip()
         if any(msg == p or msg.startswith(p + " ") for p in SMALL_TALK_PATTERNS):
-            return RetrievalPlan(
+            plan = RetrievalPlan(
                 profile_lane=True,
                 context_lane=False,
                 episode_lane=False,
                 relation_lane=False,
             )
-        return RetrievalPlan(
-            profile_lane=True,  # always on for non-small-talk (Phase R-D rule)
-            context_lane=any(k in msg for k in CONTEXT_LANE_KEYWORDS),
-            episode_lane=any(k in msg for k in EPISODE_LANE_KEYWORDS),
-            relation_lane=any(k in msg for k in RELATION_LANE_KEYWORDS),
+        else:
+            plan = RetrievalPlan(
+                profile_lane=True,  # always on for non-small-talk (Phase R-D rule)
+                context_lane=any(k in msg for k in CONTEXT_LANE_KEYWORDS),
+                episode_lane=any(k in msg for k in EPISODE_LANE_KEYWORDS),
+                relation_lane=any(k in msg for k in RELATION_LANE_KEYWORDS),
+            )
+        trace(
+            "retrieval.plan",
+            session_id=context.session_id,
+            agent_type=context.agent_type,
+            subject_id=context.subject_id,
+            profile_lane=plan.profile_lane,
+            context_lane=plan.context_lane,
+            episode_lane=plan.episode_lane,
+            relation_lane=plan.relation_lane,
+            profile_limit=plan.profile_limit,
+            context_limit=plan.context_limit,
+            episode_limit=plan.episode_limit,
+            relation_limit=plan.relation_limit,
         )
+        return plan
 
 
 class MemorySectionAssembler:
@@ -89,24 +107,36 @@ class MemorySectionAssembler:
             user_message="",
         )
 
+        filter_counts: dict[str, int] = {
+            "do_not_auto_inject": 0,
+            "access_policy": 0,
+            "agent_policy": 0,
+            "confidence": 0,
+            "valid_until": 0,
+        }
+
         def _keep(record: Any) -> bool:
             policy_tags = getattr(record, "policy_tags", None) or []
             if (
                 effective_context.access_purpose == "context_injection"
                 and DO_NOT_AUTO_INJECT_TAG in policy_tags
             ):
+                filter_counts["do_not_auto_inject"] += 1
                 return False
             for tag in policy_tags:
                 if tag.startswith("access:"):
                     _, allowed_purpose = tag.split(":", 1)
                     if allowed_purpose != effective_context.access_purpose:
+                        filter_counts["access_policy"] += 1
                         return False
                 if tag.startswith("agent:"):
                     _, allowed_agent = tag.split(":", 1)
                     if allowed_agent != effective_context.agent_type:
+                        filter_counts["agent_policy"] += 1
                         return False
             confidence = getattr(record, "confidence", 1.0)
             if confidence is not None and confidence < min_confidence:
+                filter_counts["confidence"] += 1
                 return False
             valid_until = getattr(record, "valid_until", None)
             if valid_until is not None:
@@ -114,6 +144,7 @@ class MemorySectionAssembler:
                 if valid_until.tzinfo is None:
                     valid_until = valid_until.replace(tzinfo=UTC)
                 if valid_until <= now:
+                    filter_counts["valid_until"] += 1
                     return False
             return True
 
@@ -121,6 +152,14 @@ class MemorySectionAssembler:
         contexts = [r for r in context_records if _keep(r)][: plan.context_limit]
         relations = [r for r in relation_records if _keep(r)][: plan.relation_limit]
         episodes = [r for r in episode_records if _keep(r)][: plan.episode_limit]
+
+        trace(
+            "retrieval.filter",
+            session_id=effective_context.session_id,
+            agent_type=effective_context.agent_type,
+            subject_id=effective_context.subject_id,
+            **filter_counts,
+        )
 
         sections: list[str] = []
 
@@ -140,6 +179,20 @@ class MemorySectionAssembler:
             lines = "\n".join(f"- {r.content}" for r in episodes)
             sections.append(f"## Historical evidence (may be outdated)\n{lines}")
 
+        trace(
+            "retrieval.assemble",
+            session_id=effective_context.session_id,
+            agent_type=effective_context.agent_type,
+            subject_id=effective_context.subject_id,
+            profile_count=len(profiles),
+            context_count=len(contexts),
+            relation_count=len(relations),
+            episode_count=len(episodes),
+            items=[
+                record_ref(r)
+                for r in [*profiles, *contexts, *relations, *episodes]
+            ],
+        )
         return "\n\n".join(sections)
 
 
@@ -182,6 +235,14 @@ async def retrieve_memory_section(
             subject_id=context.subject_id,
             limit=plan.profile_limit,
         )
+    trace(
+        "retrieval.fetch",
+        session_id=context.session_id,
+        subject_id=context.subject_id,
+        lane="profile",
+        count=len(profile_records),
+        items=[record_ref(r) for r in profile_records],
+    )
 
     context_records: list[Any] = []
     if plan.context_lane:
@@ -189,6 +250,14 @@ async def retrieve_memory_section(
             subject_id=context.subject_id,
             limit=plan.context_limit,
         )
+    trace(
+        "retrieval.fetch",
+        session_id=context.session_id,
+        subject_id=context.subject_id,
+        lane="context",
+        count=len(context_records),
+        items=[record_ref(r) for r in context_records],
+    )
 
     episode_records: list[Any] = []
     if plan.episode_lane:
@@ -197,6 +266,14 @@ async def retrieve_memory_section(
             subject_id=context.subject_id,
             limit=plan.episode_limit,
         )
+    trace(
+        "retrieval.fetch",
+        session_id=context.session_id,
+        subject_id=context.subject_id,
+        lane="episode",
+        count=len(episode_records),
+        items=[record_ref(r) for r in episode_records],
+    )
 
     relation_records: list[Any] = []
     if plan.relation_lane:
@@ -207,6 +284,14 @@ async def retrieve_memory_section(
             subject_id=context.subject_id,
             limit=plan.relation_limit,
         )
+    trace(
+        "retrieval.fetch",
+        session_id=context.session_id,
+        subject_id=context.subject_id,
+        lane="relation",
+        count=len(relation_records),
+        items=[record_ref(r) for r in relation_records],
+    )
 
     assembler = MemorySectionAssembler()
     return assembler.assemble(
