@@ -304,3 +304,81 @@ async def test_search_recent_context_skips_inactive(db_session) -> None:
     rows = await store.search_recent_context(subject_id="owner")
     ids = {r.id for r in rows}
     assert ids == {"ctx-active"}
+
+
+# ---------------------------------------------------------------------------
+# valid_from future filtering tests (Step 1: these should fail before fix)
+# ---------------------------------------------------------------------------
+
+
+async def test_search_active_excludes_valid_from_future(db_session) -> None:
+    """search_active must not return records whose valid_from is in the future."""
+    store = ProfileMemoryStore(db_session)
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            _make_record(id="vf-now", valid_from=now - timedelta(hours=1)),
+            _make_record(id="vf-none", valid_from=None),
+            _make_record(id="vf-future", valid_from=now + timedelta(days=1)),
+        ]
+    )
+    await db_session.flush()
+
+    rows = await store.search_active(subject_id="owner")
+    ids = {r.id for r in rows}
+    assert "vf-future" not in ids
+    assert {"vf-now", "vf-none"} <= ids
+
+
+async def test_get_active_by_slot_excludes_valid_from_future(db_session) -> None:
+    """get_active_by_slot must not return records whose valid_from is in the future."""
+    store = ProfileMemoryStore(db_session)
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            _make_record(id="slot-past", valid_from=now - timedelta(hours=1)),
+            _make_record(id="slot-none", valid_from=None),
+            _make_record(id="slot-future", valid_from=now + timedelta(days=1)),
+        ]
+    )
+    await db_session.flush()
+
+    rows = await store.get_active_by_slot(
+        subject_id="owner",
+        scope=MemoryScope.USER.value,
+        slot_id="user.preference.response_style",
+    )
+    ids = {r.id for r in rows}
+    assert "slot-future" not in ids
+    assert {"slot-past", "slot-none"} <= ids
+
+
+async def test_search_recent_context_excludes_valid_from_future(db_session) -> None:
+    """search_recent_context must not return records whose valid_from is in the future."""
+    store = ProfileMemoryStore(db_session)
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            _make_record(
+                id="ctx-vf-past",
+                created_at=now - timedelta(hours=1),
+                valid_from=now - timedelta(hours=2),
+            ),
+            _make_record(
+                id="ctx-vf-none",
+                created_at=now - timedelta(hours=2),
+                valid_from=None,
+            ),
+            _make_record(
+                id="ctx-vf-future",
+                created_at=now - timedelta(hours=3),
+                valid_from=now + timedelta(days=1),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    rows = await store.search_recent_context(subject_id="owner")
+    ids = {r.id for r in rows}
+    assert "ctx-vf-future" not in ids
+    assert {"ctx-vf-past", "ctx-vf-none"} <= ids

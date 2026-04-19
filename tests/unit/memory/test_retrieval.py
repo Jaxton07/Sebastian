@@ -30,10 +30,12 @@ class FakeProfileRecord:
     content: str
     id: str = "profile-1"
     slot_id: str | None = "slot-1"
+    subject_id: str | None = None
     status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
+    valid_from: datetime | None = None
 
 
 @dataclass
@@ -42,10 +44,12 @@ class FakeContextRecord:
     id: str = "context-1"
     kind: str = "fact"
     slot_id: str | None = "slot-context"
+    subject_id: str | None = None
     status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
+    valid_from: datetime | None = None
 
 
 @dataclass
@@ -54,10 +58,12 @@ class FakeEpisodeRecord:
     id: str = "episode-1"
     kind: str = "episode"
     slot_id: str | None = None
+    subject_id: str | None = None
     status: str = "active"
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
+    valid_from: datetime | None = None
 
 
 @dataclass
@@ -68,11 +74,13 @@ class FakeRelationRecord:
     id: str = "relation-1"
     kind: str = "relation"
     slot_id: str | None = None
+    subject_id: str | None = None
     status: str = "active"
     content: str = ""
     policy_tags: list[str] = field(default_factory=list)
     confidence: float = 1.0
     valid_until: datetime | None = None
+    valid_from: datetime | None = None
 
 
 def _ctx(msg: str = "你好") -> RetrievalContext:
@@ -574,6 +582,65 @@ class TestMemorySectionAssembler:
         assert "valid_until=1" in caplog.text
         assert "MEMORY_TRACE retrieval.assemble" in caplog.text
         assert "keep-1" in caplog.text
+
+    def test_assembler_filters_valid_from_future(self) -> None:
+        """Records with valid_from in the future must not be injected."""
+        future = datetime.now(UTC) + timedelta(days=1)
+        records = [
+            FakeProfileRecord(kind="pref", content="now-active", valid_from=None),
+            FakeProfileRecord(kind="pref", content="not-yet-active", valid_from=future),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx(),
+        )
+        assert "now-active" in result
+        assert "not-yet-active" not in result
+
+    def test_assembler_filters_non_active_status(self) -> None:
+        """Records with status != 'active' must not be injected."""
+        records = [
+            FakeProfileRecord(kind="pref", content="is-active", status="active"),
+            FakeProfileRecord(kind="pref", content="is-superseded", status="superseded"),
+            FakeProfileRecord(kind="pref", content="is-expired", status="expired"),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx(),
+        )
+        assert "is-active" in result
+        assert "is-superseded" not in result
+        assert "is-expired" not in result
+
+    def test_assembler_filters_wrong_subject_id(self) -> None:
+        """Records with subject_id not matching context.subject_id must not be injected."""
+        records = [
+            FakeProfileRecord(kind="pref", content="correct-subject", subject_id="user-1"),
+            FakeProfileRecord(kind="pref", content="no-subject", subject_id=None),
+            FakeProfileRecord(kind="pref", content="wrong-subject", subject_id="other-user"),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+            context=_ctx(),
+        )
+        assert "correct-subject" in result
+        assert "no-subject" in result
+        assert "wrong-subject" not in result
 
 
 # ---------------------------------------------------------------------------

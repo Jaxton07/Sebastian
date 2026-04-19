@@ -146,6 +146,26 @@ class MemorySectionAssembler:
                 if valid_until <= now:
                     filter_counts["valid_until"] += 1
                     return False
+
+            status = getattr(record, "status", None)
+            if status is not None and status != "active":
+                return False
+
+            record_subject = getattr(record, "subject_id", None)
+            if (
+                record_subject is not None
+                and effective_context.subject_id
+                and record_subject != effective_context.subject_id
+            ):
+                return False
+
+            valid_from = getattr(record, "valid_from", None)
+            if valid_from is not None:
+                if valid_from.tzinfo is None:
+                    valid_from = valid_from.replace(tzinfo=UTC)
+                if valid_from > now:
+                    return False
+
             return True
 
         profiles = [r for r in profile_records if _keep(r)][: plan.profile_limit]

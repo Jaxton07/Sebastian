@@ -39,6 +39,10 @@ class ProfileMemoryStore:
                     ProfileMemoryRecord.valid_until.is_(None),
                     ProfileMemoryRecord.valid_until > now,
                 ),
+                or_(
+                    ProfileMemoryRecord.valid_from.is_(None),
+                    ProfileMemoryRecord.valid_from <= now,
+                ),
             )
         )
         return list(result.all())
@@ -90,6 +94,10 @@ class ProfileMemoryStore:
                 ProfileMemoryRecord.valid_until.is_(None),
                 ProfileMemoryRecord.valid_until > now,
             ),
+            or_(
+                ProfileMemoryRecord.valid_from.is_(None),
+                ProfileMemoryRecord.valid_from <= now,
+            ),
         )
         if scope is not None:
             statement = statement.where(ProfileMemoryRecord.scope == scope)
@@ -116,6 +124,10 @@ class ProfileMemoryStore:
                 or_(
                     ProfileMemoryRecord.valid_until.is_(None),
                     ProfileMemoryRecord.valid_until > now,
+                ),
+                or_(
+                    ProfileMemoryRecord.valid_from.is_(None),
+                    ProfileMemoryRecord.valid_from <= now,
                 ),
                 ProfileMemoryRecord.created_at >= cutoff,
             )
