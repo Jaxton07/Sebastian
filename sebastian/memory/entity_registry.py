@@ -61,10 +61,25 @@ class EntityRegistry:
         return record
 
     async def lookup(self, text: str) -> list[EntityRecord]:
-        """Return entities whose canonical_name or aliases match text."""
-        result = await self._session.scalars(select(EntityRecord))
-        all_records = result.all()
-        return [r for r in all_records if r.canonical_name == text or text in r.aliases]
+        """Return entities whose canonical_name equals text or whose aliases JSON contains text."""
+        import json as _json
+
+        from sqlalchemy import func, or_
+
+        # Encode the needle exactly like SQLAlchemy's default JSON serializer
+        # (ensure_ascii=True, so "橘猫" is stored as "\u6a58\u732b"). This also
+        # safely escapes literal quotes in `text`. SQLAlchemy binds `needle` as
+        # a parameter via func.instr, so this is SQL-injection safe.
+        needle = _json.dumps(text)
+        result = await self._session.scalars(
+            select(EntityRecord).where(
+                or_(
+                    EntityRecord.canonical_name == text,
+                    func.instr(func.json(EntityRecord.aliases), needle) > 0,
+                )
+            )
+        )
+        return list(result.all())
 
     async def list_relations(
         self,

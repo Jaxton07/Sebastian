@@ -110,6 +110,39 @@ async def test_lookup_returns_empty_for_unknown_term(db_session) -> None:
     assert results == []
 
 
+async def test_lookup_matches_by_canonical(db_session) -> None:
+    registry = EntityRegistry(db_session)
+    await registry.upsert_entity("小橘", "pet", aliases=["橘猫", "橘子"])
+    await db_session.commit()
+    results = await registry.lookup("小橘")
+    assert len(results) == 1
+    assert results[0].canonical_name == "小橘"
+
+
+async def test_lookup_matches_by_alias(db_session) -> None:
+    registry = EntityRegistry(db_session)
+    await registry.upsert_entity("小橘", "pet", aliases=["橘猫", "橘子"])
+    await db_session.commit()
+    results = await registry.lookup("橘猫")
+    assert len(results) == 1
+
+
+async def test_lookup_no_match_returns_empty(db_session) -> None:
+    registry = EntityRegistry(db_session)
+    await registry.upsert_entity("小橘", "pet", aliases=["橘猫"])
+    await db_session.commit()
+    assert await registry.lookup("不存在") == []
+
+
+async def test_lookup_handles_quotes_in_text(db_session) -> None:
+    """Ensure the alias-match SQL does not break on literal quote chars."""
+    registry = EntityRegistry(db_session)
+    await registry.upsert_entity("小橘", "pet", aliases=["橘猫"])
+    await db_session.commit()
+    results = await registry.lookup('a"b')  # should match nothing, must not crash
+    assert results == []
+
+
 async def test_sync_jieba_terms_calls_add_entity_terms(db_session) -> None:
     registry = EntityRegistry(db_session)
 
