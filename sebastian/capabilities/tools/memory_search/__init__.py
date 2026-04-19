@@ -83,16 +83,21 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
                 "content": record.content,
                 "source": record.source,
                 "confidence": record.confidence if record.confidence is not None else 1.0,
+                "citation_type": "current_truth",
                 "is_current": True,
             }
         )
     for record in episode_records:
+        citation_type = (
+            "historical_summary" if record.kind == "summary" else "historical_evidence"
+        )
         items.append(
             {
                 "kind": record.kind,
                 "content": record.content,
                 "source": record.source,
                 "confidence": record.confidence if record.confidence is not None else 1.0,
+                "citation_type": citation_type,
                 "is_current": False,
             }
         )

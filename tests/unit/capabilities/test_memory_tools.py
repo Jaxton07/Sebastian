@@ -332,6 +332,165 @@ async def test_memory_search_no_db_returns_error(no_db_state) -> None:
 
 
 @pytest.mark.asyncio
+async def test_memory_search_citation_type_profile(enabled_memory_state) -> None:
+    """Profile record should have citation_type='current_truth' and is_current=True."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        await ProfileMemoryStore(session).add(
+            MemoryArtifact(
+                id="profile-ct-1",
+                kind=MemoryKind.PREFERENCE,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.preference.response_style",
+                cardinality=None,
+                resolution_policy=None,
+                content="简洁中文",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=1.0,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    result = await memory_search(query="偏好")
+    assert result.ok is True
+    items = result.output["items"]
+    profile_item = next(i for i in items if i["kind"] == MemoryKind.PREFERENCE.value)
+    assert profile_item["citation_type"] == "current_truth"
+    assert profile_item["is_current"] is True
+
+
+@pytest.mark.asyncio
+async def test_memory_search_citation_type_summary(enabled_memory_state) -> None:
+    """Summary episode record: citation_type='historical_summary', is_current=False."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        await EpisodeMemoryStore(session).add_episode(
+            MemoryArtifact(
+                id="summary-ct-1",
+                kind=MemoryKind.SUMMARY,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上周讨论了 Python 异步编程的总结",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.9,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={"session_id": "s2"},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    result = await memory_search(query="上次讨论总结")
+    assert result.ok is True
+    items = result.output["items"]
+    summary_item = next(i for i in items if i["kind"] == MemoryKind.SUMMARY.value)
+    assert summary_item["citation_type"] == "historical_summary"
+    assert summary_item["is_current"] is False
+
+
+@pytest.mark.asyncio
+async def test_memory_search_citation_type_episode(enabled_memory_state) -> None:
+    """Episode record should have citation_type='historical_evidence' and is_current=False."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        await EpisodeMemoryStore(session).add_episode(
+            MemoryArtifact(
+                id="episode-ct-1",
+                kind=MemoryKind.EPISODE,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上次讨论了机器学习基础",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.8,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={"session_id": "s3"},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    result = await memory_search(query="上次讨论")
+    assert result.ok is True
+    items = result.output["items"]
+    episode_item = next(i for i in items if i["kind"] == MemoryKind.EPISODE.value)
+    assert episode_item["citation_type"] == "historical_evidence"
+    assert episode_item["is_current"] is False
+
+
+@pytest.mark.asyncio
 async def test_memory_save_discard_writes_decision_log(enabled_memory_state, monkeypatch) -> None:
     from sqlalchemy import select
 
