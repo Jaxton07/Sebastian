@@ -25,6 +25,7 @@ def _initialize_agent_instances(
     event_bus: EventBus,
     index_store: IndexStore,
     llm_registry: LLMProviderRegistry,
+    db_factory: Any = None,
 ) -> dict[str, BaseAgent]:
     """Create a singleton instance for each registered agent type."""
     instances: dict[str, BaseAgent] = {}
@@ -37,6 +38,7 @@ def _initialize_agent_instances(
             llm_registry=llm_registry,
             allowed_tools=cfg.allowed_tools,
             allowed_skills=cfg.allowed_skills,
+            db_factory=db_factory,
         )
         agent.name = cfg.agent_type
         instances[cfg.agent_type] = agent
@@ -141,6 +143,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_bus=state.event_bus,
         index_store=state.index_store,
         llm_registry=llm_registry,
+        db_factory=state.db_factory,
     )
 
     # 孤儿 session 目录提醒（agent 重命名后遗留数据）

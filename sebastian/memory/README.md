@@ -10,8 +10,7 @@
 - **会话历史兼容层**：`EpisodicMemory`，基于 `SessionStore` 读写当前 session 的消息历史，用于兼容现有对话上下文链路；它不是新的 Episode Store。
 - **统一入口**：`MemoryStore`，当前聚合 working + session history compatibility layer。
 - **Phase A 长期记忆基础设施**：记忆 artifact 类型、slot 注册表、FTS 分词辅助、决策日志写入器。
-
-真正的 `ProfileMemoryStore`（画像存储）和 `EpisodeMemoryStore`（经历存储）尚未实现，将在 Phase B 落地。当前已有对应 ORM 记录定义在 `sebastian/store/models.py`，包括 `MemorySlotRecord`、`ProfileMemoryRecord`、`EpisodeMemoryRecord`、`EntityRecord`、`RelationCandidateRecord`、`MemoryDecisionLogRecord`。
+- **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询）、`EpisodeMemoryStore`（经历 FTS 检索）、`retrieval.py`（检索 pipeline）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt。
 
 语义记忆（向量检索）为后续规划能力，当前未实现。
 
@@ -21,9 +20,15 @@
 memory/
 ├── __init__.py           # 空，包入口
 ├── decision_log.py       # MemoryDecisionLogger：把 ResolveDecision 写入 memory_decision_log
+├── entity_registry.py    # EntityRegistry：实体 CRUD（entities 表）
+├── episode_store.py      # EpisodeMemoryStore：经历写入、FTS 检索；ensure_episode_fts 建表
 ├── episodic_memory.py    # EpisodicMemory：会话历史兼容层，底层依赖 SessionStore，不是新 Episode Store
+├── profile_store.py      # ProfileMemoryStore：画像 CRUD、search_active、supersede
+├── resolver.py           # MemoryResolver：冲突检测 + ResolveDecision 生成
+├── retrieval.py          # 检索 pipeline：MemoryRetrievalPlanner → 查 DB → MemorySectionAssembler → str
 ├── segmentation.py       # jieba FTS 分词辅助：索引分词、查询分词、实体词注入
 ├── slots.py              # SlotRegistry + 6 个内置 SlotDefinition + DEFAULT_SLOT_REGISTRY
+├── startup.py            # init_memory_storage()：建 FTS 虚拟表，在 lifespan 中调用
 ├── store.py              # MemoryStore：统一聚合 working + 会话历史兼容层
 ├── types.py              # 记忆系统 Pydantic models 与 StrEnum 类型
 └── working_memory.py     # WorkingMemory：进程内 dict，按 task_id 隔离，任务结束后清除
@@ -38,7 +43,7 @@ memory/
 | [segmentation.py](segmentation.py) | 提供基于 `jieba.cut_for_search()` 的 FTS5 中文分词辅助：`segment_for_fts()`、`terms_for_query()`、`add_entity_terms()` |
 | [decision_log.py](decision_log.py) | 提供 `MemoryDecisionLogger.append()`，把 `ResolveDecision` 写入 `MemoryDecisionLogRecord` |
 
-> Phase B 占位：`ProfileMemoryStore` 和 `EpisodeMemoryStore` 尚未实现。不要把现有 [episodic_memory.py](episodic_memory.py) 当作新的 Episode Store 扩展；它只负责现有 session 消息历史兼容。
+> Phase B 已完成注入：每次 LLM turn 前，`BaseAgent._memory_section()` 通过 `retrieve_memory_section()` 拉取画像和经历记录，拼入 system prompt。不要把 [episodic_memory.py](episodic_memory.py) 当作新的 Episode Store 扩展；它只负责现有 session 消息历史兼容。
 
 ## 修改导航
 
@@ -51,7 +56,11 @@ memory/
 | slot 定义、内置 slot、候选 artifact slot 校验 | [slots.py](slots.py) |
 | SQLite FTS5 中文预分词、查询 term 生成、实体词注入 | [segmentation.py](segmentation.py) |
 | 记忆冲突/写入决策审计日志 | [decision_log.py](decision_log.py) |
-| Profile Store / Episode Store（Phase B，待实现） | 新建 `profile_memory_store.py` / `episode_memory_store.py`，并按需要接入 `store.py` |
+| Profile 画像的写入、查询、supersede | [profile_store.py](profile_store.py) |
+| 经历事件的写入与 FTS 检索 | [episode_store.py](episode_store.py) |
+| 每轮记忆检索 pipeline（planner → fetch → assemble） | [retrieval.py](retrieval.py) |
+| 画像冲突检测与决策生成 | [resolver.py](resolver.py) |
+| 实体管理（CRUD） | [entity_registry.py](entity_registry.py) |
 | 语义记忆 / 向量检索（后续阶段，待实现） | 新建 `semantic_memory.py`，并按需要在 `store.py` 中注册 |
 
 ---

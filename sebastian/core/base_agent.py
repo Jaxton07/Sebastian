@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store.index_store import IndexStore
@@ -107,8 +109,10 @@ class BaseAgent(ABC):
         allowed_skills: list[str] | None = None,
         index_store: IndexStore | None = None,
         llm_registry: LLMProviderRegistry | None = None,
+        db_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._gate = gate
+        self._db_factory = db_factory
         self._current_task_goals: dict[str, str] = {}  # session_id → goal
         self._current_depth: dict[str, int] = {}  # session_id → depth
         self._session_store = session_store
@@ -228,6 +232,40 @@ class BaseAgent(ABC):
             "to update — pass the complete new list, not just changed items.)"
         )
         return "\n".join(lines)
+
+    async def _memory_section(
+        self,
+        session_id: str,
+        agent_context: str,
+        user_message: str,
+    ) -> str:
+        """Return assembled memory context string. Empty string on any failure or if disabled."""
+        if self._db_factory is None:
+            return ""
+        try:
+            import sebastian.gateway.state as state
+
+            if not state.memory_settings.enabled:
+                return ""
+        except (ImportError, AttributeError):
+            return ""
+        try:
+            from sebastian.memory.retrieval import RetrievalContext, retrieve_memory_section
+
+            ctx = RetrievalContext(
+                subject_id="owner",
+                session_id=session_id,
+                agent_type=agent_context,
+                user_message=user_message,
+            )
+            async with self._db_factory() as session:
+                return await retrieve_memory_section(ctx, db_session=session)
+        except Exception:
+            logger.warning(
+                "Memory section retrieval failed, continuing without memory context",
+                exc_info=True,
+            )
+            return ""
 
     def _knowledge_section(self) -> str:
         kdir = self._knowledge_dir()
@@ -409,9 +447,16 @@ class BaseAgent(ABC):
         full_text = ""
         assistant_blocks: list[dict[str, Any]] = []
         todo_section = await self._session_todos_section(session_id, agent_context)
-        effective_system_prompt = (
-            f"{self.system_prompt}\n\n{todo_section}" if todo_section else self.system_prompt
+        last_user_msg = messages[-1].get("content", "") if messages else ""
+        memory_section = await self._memory_section(
+            session_id, agent_context, user_message=last_user_msg
         )
+        sections = [self.system_prompt]
+        if memory_section:
+            sections.append(memory_section)
+        if todo_section:
+            sections.append(todo_section)
+        effective_system_prompt = "\n\n".join(sections)
         gen = self._loop.stream(
             effective_system_prompt, messages, task_id=task_id, thinking_effort=thinking_effort
         )
