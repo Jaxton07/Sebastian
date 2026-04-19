@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -27,12 +28,35 @@ class FakeProfileRecord:
     kind: str
     content: str
     policy_tags: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    valid_until: datetime | None = None
+
+
+@dataclass
+class FakeContextRecord:
+    content: str
+    policy_tags: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    valid_until: datetime | None = None
 
 
 @dataclass
 class FakeEpisodeRecord:
     content: str
     policy_tags: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    valid_until: datetime | None = None
+
+
+@dataclass
+class FakeRelationRecord:
+    source_entity_id: str
+    predicate: str
+    target_entity_id: str | None = None
+    content: str = ""
+    policy_tags: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    valid_until: datetime | None = None
 
 
 def _ctx(msg: str = "你好") -> RetrievalContext:
@@ -42,6 +66,17 @@ def _ctx(msg: str = "你好") -> RetrievalContext:
         agent_type="orchestrator",
         user_message=msg,
     )
+
+
+def _plan(**kw: Any) -> RetrievalPlan:
+    defaults = {
+        "profile_lane": True,
+        "context_lane": True,
+        "episode_lane": True,
+        "relation_lane": True,
+    }
+    defaults.update(kw)
+    return RetrievalPlan(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +156,6 @@ class TestMemoryRetrievalPlanner:
 
 
 class TestMemorySectionAssembler:
-    def _plan(self, **kw: Any) -> RetrievalPlan:
-        return RetrievalPlan(profile_lane=True, episode_lane=True, **kw)
-
     def test_filters_do_not_auto_inject_from_profile(self) -> None:
         records = [
             FakeProfileRecord(kind="preference", content="喜欢深色模式"),
@@ -134,8 +166,10 @@ class TestMemorySectionAssembler:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=records,
+            context_records=[],
             episode_records=[],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
         assert "敏感数据" not in result
         assert "喜欢深色模式" in result
@@ -148,8 +182,10 @@ class TestMemorySectionAssembler:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[],
+            context_records=[],
             episode_records=episodes,
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
         assert "隐私内容" not in result
         assert "上次聊了旅行计划" in result
@@ -159,10 +195,12 @@ class TestMemorySectionAssembler:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=records,
+            context_records=[],
             episode_records=[],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
-        assert "## What I know about the user" in result
+        assert "## Current facts about user" in result
         assert "喜欢简短回答" in result
 
     def test_episode_records_appear_under_correct_section(self) -> None:
@@ -170,78 +208,227 @@ class TestMemorySectionAssembler:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[],
+            context_records=[],
             episode_records=episodes,
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
-        assert "## Relevant past episodes" in result
+        assert "## Historical evidence (may be outdated)" in result
         assert "讨论了健身计划" in result
 
     def test_empty_profile_section_omitted(self) -> None:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[],
+            context_records=[],
             episode_records=[FakeEpisodeRecord(content="某段记忆")],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
-        assert "## What I know about the user" not in result
+        assert "## Current facts about user" not in result
 
     def test_empty_episode_section_omitted(self) -> None:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[FakeProfileRecord(kind="trait", content="外向")],
+            context_records=[],
             episode_records=[],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
-        assert "## Relevant past episodes" not in result
+        assert "## Historical evidence" not in result
 
-    def test_returns_empty_string_when_no_records(self) -> None:
+    def test_returns_empty_when_no_records(self) -> None:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[],
+            context_records=[],
             episode_records=[],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
         assert result == ""
 
-    def test_returns_empty_string_when_all_filtered(self) -> None:
+    def test_returns_empty_when_all_filtered(self) -> None:
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=[
                 FakeProfileRecord(kind="pref", content="x", policy_tags=["do_not_auto_inject"])
             ],
-            episode_records=[FakeEpisodeRecord(content="y", policy_tags=["do_not_auto_inject"])],
-            plan=self._plan(),
+            context_records=[],
+            episode_records=[
+                FakeEpisodeRecord(content="y", policy_tags=["do_not_auto_inject"])
+            ],
+            relation_records=[],
+            plan=_plan(),
         )
         assert result == ""
-
-    def test_respects_max_total_items(self) -> None:
-        # Feed 10 profile records + 3 episode records → total must not exceed 8
-        profiles = [FakeProfileRecord(kind="pref", content=f"profile-{i}") for i in range(10)]
-        episodes = [FakeEpisodeRecord(content=f"episode-{i}") for i in range(3)]
-        assembler = MemorySectionAssembler()
-        result = assembler.assemble(
-            profile_records=profiles,
-            episode_records=episodes,
-            plan=RetrievalPlan(
-                profile_lane=True,
-                episode_lane=True,
-                profile_limit=10,
-                episode_limit=3,
-            ),
-        )
-        # Count bullet points
-        bullets = [line for line in result.splitlines() if line.startswith("- ")]
-        assert len(bullets) <= 8
 
     def test_profile_kind_included_in_output(self) -> None:
         records = [FakeProfileRecord(kind="preference", content="喜欢音乐")]
         assembler = MemorySectionAssembler()
         result = assembler.assemble(
             profile_records=records,
+            context_records=[],
             episode_records=[],
-            plan=self._plan(),
+            relation_records=[],
+            plan=_plan(),
         )
         assert "[preference]" in result
+
+    def test_assembler_filters_low_confidence_records(self) -> None:
+        records = [
+            FakeProfileRecord(kind="pref", content="high-conf", confidence=0.9),
+            FakeProfileRecord(kind="pref", content="low-conf", confidence=0.2),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+        )
+        assert "high-conf" in result
+        assert "low-conf" not in result
+
+    def test_assembler_filters_expired_records(self) -> None:
+        past = datetime.now(UTC) - timedelta(days=1)
+        future = datetime.now(UTC) + timedelta(days=1)
+        records = [
+            FakeProfileRecord(kind="pref", content="still-valid", valid_until=future),
+            FakeProfileRecord(kind="pref", content="expired", valid_until=past),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+        )
+        assert "still-valid" in result
+        assert "expired" not in result
+
+    def test_assembler_filters_do_not_auto_inject_tag(self) -> None:
+        records = [
+            FakeProfileRecord(kind="pref", content="keep"),
+            FakeProfileRecord(
+                kind="pref", content="drop", policy_tags=["do_not_auto_inject"]
+            ),
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+        )
+        assert "keep" in result
+        assert "drop" not in result
+
+    def test_assembler_renders_all_four_sections(self) -> None:
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=[FakeProfileRecord(kind="pref", content="P1")],
+            context_records=[FakeContextRecord(content="C1")],
+            episode_records=[FakeEpisodeRecord(content="E1")],
+            relation_records=[
+                FakeRelationRecord(
+                    source_entity_id="user",
+                    predicate="has_spouse",
+                    target_entity_id="alice",
+                )
+            ],
+            plan=_plan(),
+        )
+        # All four headers present
+        assert "## Current facts about user" in result
+        assert "## Current context" in result
+        assert "## Important relationships" in result
+        assert "## Historical evidence (may be outdated)" in result
+        # Order: profile → context → relation → episode
+        idx_profile = result.index("## Current facts about user")
+        idx_context = result.index("## Current context")
+        idx_relation = result.index("## Important relationships")
+        idx_episode = result.index("## Historical evidence")
+        assert idx_profile < idx_context < idx_relation < idx_episode
+
+    def test_assembler_renders_historical_warning(self) -> None:
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=[],
+            context_records=[],
+            episode_records=[FakeEpisodeRecord(content="old")],
+            relation_records=[],
+            plan=_plan(),
+        )
+        assert "may be outdated" in result
+
+    def test_assembler_returns_empty_when_no_records(self) -> None:
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=[],
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(),
+        )
+        assert result == ""
+
+    def test_assembler_respects_per_lane_limits(self) -> None:
+        records = [
+            FakeProfileRecord(kind="pref", content=f"profile-{i}") for i in range(5)
+        ]
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=records,
+            context_records=[],
+            episode_records=[],
+            relation_records=[],
+            plan=_plan(profile_limit=2),
+        )
+        bullets = [line for line in result.splitlines() if line.startswith("- ")]
+        assert len(bullets) == 2
+        assert "profile-0" in result
+        assert "profile-1" in result
+        assert "profile-2" not in result
+
+    def test_assembler_renders_relation_with_target_entity(self) -> None:
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=[],
+            context_records=[],
+            episode_records=[],
+            relation_records=[
+                FakeRelationRecord(
+                    source_entity_id="user",
+                    predicate="has_spouse",
+                    target_entity_id="alice",
+                )
+            ],
+            plan=_plan(),
+        )
+        assert "user has_spouse alice" in result
+
+    def test_assembler_renders_relation_fallback_to_content(self) -> None:
+        assembler = MemorySectionAssembler()
+        result = assembler.assemble(
+            profile_records=[],
+            context_records=[],
+            episode_records=[],
+            relation_records=[
+                FakeRelationRecord(
+                    source_entity_id="user",
+                    predicate="prefers",
+                    target_entity_id=None,
+                    content="dark mode",
+                )
+            ],
+            plan=_plan(),
+        )
+        assert "user prefers dark mode" in result
 
 
 # ---------------------------------------------------------------------------
