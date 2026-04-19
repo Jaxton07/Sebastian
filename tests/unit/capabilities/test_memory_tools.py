@@ -538,3 +538,74 @@ async def test_memory_save_rejects_unknown_slot(enabled_memory_state) -> None:
     result = await memory_save(content="x", slot_id="no.such.slot")
     assert result.ok is False
     assert "slot" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_memory_save_decision_log_has_input_source(enabled_memory_state, monkeypatch) -> None:
+    """memory_save 写出的 decision log 应有 input_source["type"] == "memory_save_tool"。"""
+    from sqlalchemy import select
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    # 设置 session_id 便于断言
+    monkeypatch.setattr(_state, "current_session_id", "sess-tool-123", raising=False)
+
+    result = await memory_save(
+        content="以后回答简洁中文",
+        slot_id="user.preference.response_style",
+    )
+    assert result.ok is True
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(rows) >= 1
+    for row in rows:
+        assert row.input_source is not None
+        assert row.input_source["type"] == "memory_save_tool"
+
+
+@pytest.mark.asyncio
+async def test_memory_save_discard_decision_log_has_input_source(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """DISCARD 路径下 decision log 也应有 input_source["type"] == "memory_save_tool"。"""
+    from sqlalchemy import select
+
+    from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    async def fake_resolve(
+        candidate: CandidateArtifact,
+        *,
+        subject_id: str,
+        profile_store: ProfileMemoryStore,
+        slot_registry: SlotRegistry,
+    ) -> ResolveDecision:
+        return ResolveDecision(
+            decision=MemoryDecisionType.DISCARD,
+            reason="test-discard",
+            old_memory_ids=[],
+            new_memory=None,
+            candidate=candidate,
+            subject_id=subject_id,
+            scope=candidate.scope,
+            slot_id=candidate.slot_id,
+        )
+
+    monkeypatch.setattr(
+        "sebastian.capabilities.tools.memory_save.resolve_candidate",
+        fake_resolve,
+        raising=False,
+    )
+
+    result = await memory_save(content="x", slot_id="user.preference.language")
+    assert result.ok is False
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].input_source is not None
+    assert rows[0].input_source["type"] == "memory_save_tool"

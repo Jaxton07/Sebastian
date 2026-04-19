@@ -541,3 +541,90 @@ async def test_worker_executes_proposed_expire_action(db_factory):
         assert expire_logs[0].old_memory_ids == ["m-old"]
         assert expire_logs[0].conflicts == ["m-old"]
         assert expire_logs[0].reason == "stale data"
+
+
+@pytest.mark.asyncio
+async def test_consolidation_decision_log_has_input_source(db_factory):
+    """SessionConsolidationWorker 写出的所有 decision log 都应有 input_source["type"] == "session_consolidation"。"""
+    worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=FakeConsolidator(),
+        extractor=FakeExtractor(),
+        session_store=FakeSessionStore(),
+        memory_settings_fn=lambda: True,
+    )
+    await worker.consolidate_session("sess-input-src", "sebastian")
+
+    async with db_factory() as session:
+        log_result = await session.scalars(select(MemoryDecisionLogRecord))
+        logs = list(log_result.all())
+
+    assert len(logs) >= 1
+    for log in logs:
+        assert log.input_source is not None, f"log {log.id} missing input_source"
+        assert log.input_source["type"] == "session_consolidation"
+        assert log.input_source["session_id"] == "sess-input-src"
+        assert log.input_source["agent_type"] == "sebastian"
+
+
+@pytest.mark.asyncio
+async def test_consolidation_expire_log_has_input_source(db_factory):
+    """EXPIRE 路径下的 decision log 也应有 input_source["type"] == "session_consolidation"。"""
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+
+    async with db_factory() as session:
+        session.add(
+            ProfileMemoryRecord(
+                id="m-old-src",
+                subject_id="owner",
+                scope=MemoryScope.USER.value,
+                slot_id="",
+                kind=MemoryKind.FACT.value,
+                content="过期事实 src test",
+                structured_payload={},
+                source=MemorySource.OBSERVED.value,
+                confidence=0.7,
+                status="active",
+                valid_from=None,
+                valid_until=None,
+                provenance={},
+                policy_tags=[],
+                created_at=now,
+                updated_at=now,
+                last_accessed_at=None,
+                access_count=0,
+            )
+        )
+        await session.commit()
+
+    class FakeExpireConsolidatorSrc:
+        async def consolidate(self, input: ConsolidatorInput) -> ConsolidationResult:
+            from sebastian.memory.consolidation import ProposedAction
+
+            return ConsolidationResult(
+                summaries=[],
+                proposed_artifacts=[],
+                proposed_actions=[
+                    ProposedAction(action="EXPIRE", memory_id="m-old-src", reason="stale")
+                ],
+            )
+
+    worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=FakeExpireConsolidatorSrc(),
+        extractor=FakeExtractor(),
+        session_store=FakeSessionStore(),
+        memory_settings_fn=lambda: True,
+    )
+    await worker.consolidate_session("sess-exp-src", "sebastian")
+
+    async with db_factory() as session:
+        log_result = await session.scalars(select(MemoryDecisionLogRecord))
+        expire_logs = [log for log in log_result.all() if log.decision == "EXPIRE"]
+
+    assert len(expire_logs) == 1
+    assert expire_logs[0].input_source is not None
+    assert expire_logs[0].input_source["type"] == "session_consolidation"
+    assert expire_logs[0].input_source["session_id"] == "sess-exp-src"

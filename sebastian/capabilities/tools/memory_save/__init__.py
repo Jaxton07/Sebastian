@@ -52,9 +52,10 @@ async def memory_save(
         return ToolResult(ok=False, error="记忆存储不可用")
 
     memory_scope = MemoryScope(scope)
+    tool_session_id: str | None = getattr(state, "current_session_id", None) or None
     subject_id = await resolve_subject(
         memory_scope,
-        session_id=getattr(state, "current_session_id", "") or "",
+        session_id=tool_session_id or "",
         agent_type=getattr(state, "current_agent_type", "default") or "default",
     )
 
@@ -111,6 +112,7 @@ async def memory_save(
                 worker="memory_save_tool",
                 model=None,
                 rule_version="phase_b_v1",
+                input_source={"type": "memory_save_tool", "session_id": tool_session_id},
             )
             await session.commit()
             trace(
@@ -143,6 +145,7 @@ async def memory_save(
             worker="memory_save_tool",
             model=None,
             rule_version="phase_b_v1",
+            input_source={"type": "memory_save_tool", "session_id": tool_session_id},
         )
 
         await session.commit()

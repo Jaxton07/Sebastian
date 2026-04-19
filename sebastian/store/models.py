@@ -212,6 +212,7 @@ class MemoryDecisionLogRecord(Base):
     model: Mapped[str | None] = mapped_column(String, nullable=True)
     session_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     rule_version: Mapped[str] = mapped_column(String)
+    input_source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 

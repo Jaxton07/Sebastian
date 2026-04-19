@@ -257,3 +257,137 @@ async def test_decision_logger_append_supersede(db_session) -> None:
     assert record.conflicts == ["mem-001", "mem-002"]
     assert isinstance(record.candidate, dict)
     assert record.candidate["content"] == "用户偏好简洁中文回复"
+
+
+async def test_append_input_source_persisted(db_session) -> None:
+    """input_source dict 被持久化到 MemoryDecisionLogRecord.input_source。"""
+    from sqlalchemy import select
+
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    logger = MemoryDecisionLogger(db_session)
+
+    artifact = _make_memory_artifact(memory_id="mem-src-1")
+    artifact = artifact.model_copy(update={"provenance": {"session_id": "sess-abc"}})
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="ok",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_make_candidate(),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="user.preference.response_style",
+    )
+
+    await logger.append(
+        decision,
+        worker="unit-test",
+        model=None,
+        rule_version="v1",
+        input_source={"type": "memory_save_tool", "session_id": "sess-abc"},
+    )
+    await db_session.commit()
+
+    row = (await db_session.scalars(select(MemoryDecisionLogRecord))).first()
+    assert row is not None
+    assert row.input_source is not None
+    assert row.input_source["type"] == "memory_save_tool"
+    assert row.input_source["session_id"] == "sess-abc"
+
+
+async def test_append_input_source_none_by_default(db_session) -> None:
+    """不传 input_source 时，record.input_source 应为 None。"""
+    from sqlalchemy import select
+
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    logger = MemoryDecisionLogger(db_session)
+
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="ok",
+        old_memory_ids=[],
+        new_memory=_make_memory_artifact(memory_id="mem-src-2"),
+        candidate=_make_candidate(),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="user.preference.response_style",
+    )
+
+    await logger.append(decision, worker="unit-test", model=None, rule_version="v1")
+    await db_session.commit()
+
+    row = (await db_session.scalars(select(MemoryDecisionLogRecord))).first()
+    assert row is not None
+    assert row.input_source is None
+
+
+async def test_append_session_id_from_input_source_when_new_memory_none(db_session) -> None:
+    """DISCARD 且 new_memory=None 时，session_id 应从 input_source['session_id'] 取得。"""
+    from sqlalchemy import select
+
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    logger = MemoryDecisionLogger(db_session)
+
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.DISCARD,
+        reason="validate fail",
+        old_memory_ids=[],
+        new_memory=None,
+        candidate=_make_candidate(),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="user.preference.response_style",
+    )
+
+    await logger.append(
+        decision,
+        worker="unit-test",
+        model=None,
+        rule_version="v1",
+        input_source={"type": "session_consolidation", "session_id": "sess-fallback"},
+    )
+    await db_session.commit()
+
+    row = (await db_session.scalars(select(MemoryDecisionLogRecord))).first()
+    assert row is not None
+    assert row.session_id == "sess-fallback"
+    assert row.input_source is not None
+    assert row.input_source["session_id"] == "sess-fallback"
+
+
+async def test_append_session_id_provenance_takes_priority_over_input_source(db_session) -> None:
+    """provenance["session_id"] 优先级高于 input_source["session_id"]。"""
+    from sqlalchemy import select
+
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    logger = MemoryDecisionLogger(db_session)
+
+    artifact = _make_memory_artifact(memory_id="mem-prio-1")
+    artifact = artifact.model_copy(update={"provenance": {"session_id": "sess-from-provenance"}})
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="ok",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_make_candidate(),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="user.preference.response_style",
+    )
+
+    await logger.append(
+        decision,
+        worker="unit-test",
+        model=None,
+        rule_version="v1",
+        input_source={"type": "memory_save_tool", "session_id": "sess-from-input-source"},
+    )
+    await db_session.commit()
+
+    row = (await db_session.scalars(select(MemoryDecisionLogRecord))).first()
+    assert row is not None
+    assert row.session_id == "sess-from-provenance"

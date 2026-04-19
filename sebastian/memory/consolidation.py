@@ -342,6 +342,11 @@ class SessionConsolidationWorker:
                     worker=self._WORKER_ID,
                     model=model_name,
                     rule_version=self._RULE_VERSION,
+                    input_source={
+                        "type": "session_consolidation",
+                        "session_id": session_id,
+                        "agent_type": agent_type,
+                    },
                 )
 
             for candidate in result.proposed_artifacts:
@@ -368,6 +373,11 @@ class SessionConsolidationWorker:
                         worker=self._WORKER_ID,
                         model=model_name,
                         rule_version=self._RULE_VERSION,
+                        input_source={
+                            "type": "session_consolidation",
+                            "session_id": session_id,
+                            "agent_type": agent_type,
+                        },
                     )
                     persisted_counts["discard"] += 1
                     continue
@@ -396,6 +406,11 @@ class SessionConsolidationWorker:
                     worker=self._WORKER_ID,
                     model=model_name,
                     rule_version=self._RULE_VERSION,
+                    input_source={
+                        "type": "session_consolidation",
+                        "session_id": session_id,
+                        "agent_type": agent_type,
+                    },
                 )
 
             # Execute EXPIRE actions proposed by the consolidator. SUPERSEDE
@@ -437,6 +452,11 @@ class SessionConsolidationWorker:
                     worker=self._WORKER_ID,
                     model=model_name,
                     rule_version=self._RULE_VERSION,
+                    input_source={
+                        "type": "session_consolidation",
+                        "session_id": session_id,
+                        "agent_type": agent_type,
+                    },
                 )
                 persisted_counts["expire"] += 1
 
