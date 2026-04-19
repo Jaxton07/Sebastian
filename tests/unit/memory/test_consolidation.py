@@ -374,32 +374,67 @@ class TestMemoryConsolidatorConsolidate:
         assert result.summaries == []
 
     @pytest.mark.asyncio
-    async def test_does_not_write_to_db(self) -> None:
-        """Consolidator is pure LLM → schema transform; no persistence side-effects."""
-        raw = _make_valid_consolidation_result_json()
+    async def test_worker_writes_nothing_when_memory_disabled(self) -> None:
+        """When memory_settings_fn returns False, the worker must not write anything."""
+        from sqlalchemy import select, text
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-        db_write_called = False
+        from sebastian.memory.consolidation import SessionConsolidationWorker
+        from sebastian.store.models import (
+            Base,
+            EpisodeMemoryRecord,
+            ProfileMemoryRecord,
+            SessionConsolidationRecord,
+        )
 
-        class TrackingFakeLLMProvider(LLMProvider):
-            async def stream(self, **kwargs: Any) -> AsyncGenerator[LLMStreamEvent, None]:  # type: ignore[override]
-                yield TextDelta(block_id="b0", delta=raw)
-                yield ProviderCallEnd(stop_reason="end_turn")
-
-        class TrackingRegistry:
-            async def get_provider(self, agent_type: str) -> ResolvedProvider:
-                return ResolvedProvider(
-                    provider=TrackingFakeLLMProvider(),
-                    model="test",
-                    thinking_effort=None,
-                    capability=None,
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                # Create FTS virtual table required by EpisodeMemoryStore
+                await conn.execute(
+                    text(
+                        "CREATE VIRTUAL TABLE IF NOT EXISTS episode_memories_fts "
+                        "USING fts5(memory_id UNINDEXED, content_segmented, "
+                        "tokenize=unicode61)"
+                    )
                 )
+            factory = async_sessionmaker(engine, expire_on_commit=False)
 
-        consolidator = MemoryConsolidator(TrackingRegistry())  # type: ignore[arg-type]
-        result = await consolidator.consolidate(self._make_input())
+            class _FakeSessionStore:
+                async def get_messages(
+                    self, session_id: str, agent_type: str = "sebastian"
+                ) -> list[dict[str, Any]]:
+                    return [{"role": "user", "content": "should not be read"}]
 
-        # If no DB write was attempted, db_write_called stays False
-        assert not db_write_called
-        assert isinstance(result, ConsolidationResult)
+            class _FailingConsolidator:
+                """If the early-return is missing, we'd reach this and raise."""
+
+                async def consolidate(
+                    self, consolidator_input: ConsolidatorInput
+                ) -> ConsolidationResult:
+                    return ConsolidationResult()
+
+            worker = SessionConsolidationWorker(
+                db_factory=factory,
+                consolidator=_FailingConsolidator(),  # type: ignore[arg-type]
+                session_store=_FakeSessionStore(),
+                memory_settings_fn=lambda: False,
+            )
+
+            await worker.consolidate_session("s1", "default")
+
+            async with factory() as s:
+                profiles = list((await s.scalars(select(ProfileMemoryRecord))).all())
+                episodes = list((await s.scalars(select(EpisodeMemoryRecord))).all())
+                markers = list(
+                    (await s.scalars(select(SessionConsolidationRecord))).all()
+                )
+                assert profiles == []
+                assert episodes == []
+                assert markers == []
+        finally:
+            await engine.dispose()
 
 
 def test_memory_summary_rejects_invalid_scope() -> None:
