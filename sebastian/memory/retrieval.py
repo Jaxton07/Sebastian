@@ -283,11 +283,21 @@ async def retrieve_memory_section(
 
     episode_records: list[Any] = []
     if plan.episode_lane:
-        episode_records = await episode_store.search(
-            query=context.user_message,
+        summary_records = await episode_store.search_summaries_by_query(
             subject_id=context.subject_id,
+            query=context.user_message,
             limit=plan.episode_limit,
         )
+        if len(summary_records) >= plan.episode_limit:
+            episode_records = summary_records
+        else:
+            remaining = plan.episode_limit - len(summary_records)
+            detail_records = await episode_store.search_episodes_only(
+                subject_id=context.subject_id,
+                query=context.user_message,
+                limit=remaining,
+            )
+            episode_records = [*summary_records, *detail_records]
     trace(
         "retrieval.fetch",
         session_id=context.session_id,

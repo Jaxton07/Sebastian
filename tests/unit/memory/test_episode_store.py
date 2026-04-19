@@ -242,3 +242,85 @@ async def test_search_summaries_respects_limit(db_session) -> None:
     results = await store.search_summaries(subject_id="owner", limit=2)
 
     assert len(results) == 2
+
+
+async def test_search_summaries_by_query_returns_only_summary_kind(db_session) -> None:
+    """search_summaries_by_query must only return SUMMARY-kind records matching the query."""
+    store = EpisodeMemoryStore(db_session)
+    base = datetime.now(UTC)
+
+    await store.add_summary(
+        _make_artifact(
+            id="sum-match",
+            kind=MemoryKind.SUMMARY,
+            content="讨论了健身计划和饮食安排",
+            recorded_at=base,
+        )
+    )
+    await store.add_episode(
+        _make_artifact(
+            id="ep-match",
+            kind=MemoryKind.EPISODE,
+            content="健身计划细节",
+            recorded_at=base - timedelta(minutes=1),
+        )
+    )
+    await store.add_summary(
+        _make_artifact(
+            id="sum-nomatch",
+            kind=MemoryKind.SUMMARY,
+            content="工作汇报进展",
+            recorded_at=base - timedelta(minutes=2),
+        )
+    )
+
+    results = await store.search_summaries_by_query(
+        subject_id="owner", query="健身", limit=8
+    )
+
+    ids = [r.id for r in results]
+    assert "sum-match" in ids
+    assert "ep-match" not in ids, "episode-kind record must not appear in summary search"
+    assert "sum-nomatch" not in ids, "non-matching summary must not appear"
+    assert all(r.kind == MemoryKind.SUMMARY.value for r in results)
+
+
+async def test_search_episodes_only_returns_only_episode_kind(db_session) -> None:
+    """search_episodes_only must only return EPISODE-kind records matching the query."""
+    store = EpisodeMemoryStore(db_session)
+    base = datetime.now(UTC)
+
+    await store.add_episode(
+        _make_artifact(
+            id="ep-match",
+            kind=MemoryKind.EPISODE,
+            content="健身计划细节",
+            recorded_at=base,
+        )
+    )
+    await store.add_summary(
+        _make_artifact(
+            id="sum-match",
+            kind=MemoryKind.SUMMARY,
+            content="健身摘要汇总",
+            recorded_at=base - timedelta(minutes=1),
+        )
+    )
+    await store.add_episode(
+        _make_artifact(
+            id="ep-nomatch",
+            kind=MemoryKind.EPISODE,
+            content="工作汇报进展",
+            recorded_at=base - timedelta(minutes=2),
+        )
+    )
+
+    results = await store.search_episodes_only(
+        subject_id="owner", query="健身", limit=8
+    )
+
+    ids = [r.id for r in results]
+    assert "ep-match" in ids
+    assert "sum-match" not in ids, "summary-kind record must not appear in episode search"
+    assert "ep-nomatch" not in ids, "non-matching episode must not appear"
+    assert all(r.kind == MemoryKind.EPISODE.value for r in results)

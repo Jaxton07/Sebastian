@@ -739,3 +739,103 @@ async def test_retrieve_memory_section_skips_relation_lane_when_inactive(db_sess
     ) as spy:
         await retrieve_memory_section(context, db_session=db_session)
         spy.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# retrieve_memory_section — episode lane summary-first behaviour
+# ---------------------------------------------------------------------------
+
+
+async def test_episode_lane_uses_only_summaries_when_budget_filled(db_session) -> None:
+    """When search_summaries_by_query returns >= episode_limit records, no detail search."""
+    summary_records = [FakeEpisodeRecord(content=f"摘要{i}", kind="summary") for i in range(3)]
+
+    context = RetrievalContext(
+        subject_id="owner",
+        session_id="sess-1",
+        agent_type="orchestrator",
+        user_message="上次讨论的健身计划",
+    )
+    with (
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_summaries_by_query",
+            new=AsyncMock(return_value=summary_records),
+        ) as summary_spy,
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_episodes_only",
+            new=AsyncMock(return_value=[]),
+        ) as detail_spy,
+    ):
+        result = await retrieve_memory_section(context, db_session=db_session)
+
+    summary_spy.assert_awaited_once()
+    detail_spy.assert_not_awaited()
+    for i in range(3):
+        assert f"摘要{i}" in result
+
+
+async def test_episode_lane_supplements_with_detail_when_summaries_insufficient(
+    db_session,
+) -> None:
+    """When summaries < episode_limit, episode detail fills remaining budget."""
+    summary_records = [FakeEpisodeRecord(content="摘要0", kind="summary")]
+    detail_records = [
+        FakeEpisodeRecord(content="经历细节0"),
+        FakeEpisodeRecord(content="经历细节1"),
+    ]
+
+    context = RetrievalContext(
+        subject_id="owner",
+        session_id="sess-1",
+        agent_type="orchestrator",
+        user_message="上次讨论的健身计划",
+    )
+    with (
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_summaries_by_query",
+            new=AsyncMock(return_value=summary_records),
+        ) as summary_spy,
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_episodes_only",
+            new=AsyncMock(return_value=detail_records),
+        ) as detail_spy,
+    ):
+        result = await retrieve_memory_section(context, db_session=db_session)
+
+    summary_spy.assert_awaited_once()
+    detail_spy.assert_awaited_once()
+    # remaining = episode_limit(3) - 1 summary = 2
+    detail_kwargs = detail_spy.await_args.kwargs
+    assert detail_kwargs["limit"] == 2
+    assert "摘要0" in result
+    assert "经历细节0" in result
+    assert "经历细节1" in result
+
+
+async def test_episode_lane_irrelevant_summaries_do_not_enter_results(db_session) -> None:
+    """Summaries not matching the query must not appear (query-aware, not recency-only)."""
+    context = RetrievalContext(
+        subject_id="owner",
+        session_id="sess-1",
+        agent_type="orchestrator",
+        user_message="上次讨论的健身计划",
+    )
+    with (
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_summaries_by_query",
+            new=AsyncMock(return_value=[]),  # no matching summaries
+        ),
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_episodes_only",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "sebastian.memory.episode_store.EpisodeMemoryStore.search_summaries",
+            new=AsyncMock(return_value=[FakeEpisodeRecord(content="不相关的最近摘要")]),
+        ) as recency_spy,
+    ):
+        result = await retrieve_memory_section(context, db_session=db_session)
+
+    # search_summaries (recency-only) must NOT be called for the episode lane
+    recency_spy.assert_not_awaited()
+    assert "不相关的最近摘要" not in result

@@ -59,13 +59,19 @@ class EpisodeMemoryStore:
         summary = artifact.model_copy(update={"kind": MemoryKind.SUMMARY})
         return await self.add_episode(summary)
 
-    async def search(
+    async def _search_by_kind(
         self,
         *,
         subject_id: str,
         query: str,
-        limit: int = 8,
+        kinds: set[MemoryKind],
+        limit: int,
     ) -> list[EpisodeMemoryRecord]:
+        """FTS search filtered to the given set of MemoryKind values.
+
+        Reuses terms_for_query / _build_match_query / match_counts ranking,
+        then additionally filters by kind, subject_id, and active status.
+        """
         terms = terms_for_query(query)
         if not terms:
             return []
@@ -88,11 +94,13 @@ class EpisodeMemoryStore:
         ids_by_rank = [memory_id for memory_id, _count in match_counts.most_common()]
         rank_by_id = {memory_id: rank for rank, memory_id in enumerate(ids_by_rank)}
 
+        kind_values = [k.value for k in kinds]
         episode_rows = await self._session.scalars(
             select(EpisodeMemoryRecord).where(
                 EpisodeMemoryRecord.id.in_(ids_by_rank),
                 EpisodeMemoryRecord.subject_id == subject_id,
                 EpisodeMemoryRecord.status == MemoryStatus.ACTIVE.value,
+                EpisodeMemoryRecord.kind.in_(kind_values),
             )
         )
         records = list(episode_rows.all())
@@ -103,6 +111,50 @@ class EpisodeMemoryStore:
             )
         )
         return records[:limit]
+
+    async def search(
+        self,
+        *,
+        subject_id: str,
+        query: str,
+        limit: int = 8,
+    ) -> list[EpisodeMemoryRecord]:
+        return await self._search_by_kind(
+            subject_id=subject_id,
+            query=query,
+            kinds={MemoryKind.SUMMARY, MemoryKind.EPISODE},
+            limit=limit,
+        )
+
+    async def search_summaries_by_query(
+        self,
+        *,
+        subject_id: str,
+        query: str,
+        limit: int = 8,
+    ) -> list[EpisodeMemoryRecord]:
+        """FTS search restricted to SUMMARY-kind records."""
+        return await self._search_by_kind(
+            subject_id=subject_id,
+            query=query,
+            kinds={MemoryKind.SUMMARY},
+            limit=limit,
+        )
+
+    async def search_episodes_only(
+        self,
+        *,
+        subject_id: str,
+        query: str,
+        limit: int = 8,
+    ) -> list[EpisodeMemoryRecord]:
+        """FTS search restricted to EPISODE-kind records."""
+        return await self._search_by_kind(
+            subject_id=subject_id,
+            query=query,
+            kinds={MemoryKind.EPISODE},
+            limit=limit,
+        )
 
     async def search_summaries(
         self,
