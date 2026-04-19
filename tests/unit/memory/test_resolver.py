@@ -289,6 +289,37 @@ async def test_resolver_supersedes_when_new_has_higher_source() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolver_provenance_includes_session_id() -> None:
+    """Resolver lifts ``session_id`` from evidence into provenance top-level."""
+    store = FakeProfileStore([])
+    registry = SlotRegistry()
+
+    candidate = _make_candidate(
+        kind=MemoryKind.SUMMARY,
+        slot_id=None,
+        cardinality=None,
+        resolution_policy=None,
+        source=MemorySource.SYSTEM_DERIVED,
+        confidence=0.8,
+        evidence=[{"session_id": "s-xyz", "note": "from summary"}],
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user-1",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.new_memory is not None
+    assert decision.new_memory.provenance["session_id"] == "s-xyz"
+    assert decision.new_memory.provenance["evidence"] == [
+        {"session_id": "s-xyz", "note": "from summary"}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_resolver_supersedes_when_new_has_much_higher_confidence_same_source() -> None:
     """Same source but much higher confidence → SUPERSEDE (new not strictly weaker)."""
     existing = _make_record(

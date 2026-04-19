@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sebastian.memory.types import (
@@ -209,6 +209,14 @@ async def resolve_candidate(
 def _make_artifact(candidate: CandidateArtifact, subject_id: str) -> MemoryArtifact:
     """Convert a :class:`CandidateArtifact` into a ready-to-store :class:`MemoryArtifact`."""
     now = datetime.now(UTC)
+    session_id: str | None = None
+    for ev in candidate.evidence:
+        if isinstance(ev, dict) and "session_id" in ev:
+            session_id = ev["session_id"]
+            break
+    provenance: dict[str, Any] = {"evidence": candidate.evidence}
+    if session_id is not None:
+        provenance["session_id"] = session_id
     return MemoryArtifact(
         id=str(uuid4()),
         kind=candidate.kind,
@@ -227,7 +235,7 @@ def _make_artifact(candidate: CandidateArtifact, subject_id: str) -> MemoryArtif
         recorded_at=now,
         last_accessed_at=None,
         access_count=0,
-        provenance={"evidence": candidate.evidence},
+        provenance=provenance,
         links=[],
         embedding_ref=None,
         dedupe_key=None,
