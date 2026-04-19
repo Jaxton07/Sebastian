@@ -252,6 +252,11 @@ class ResolveDecision(TypedDict):
 - 失败后进入保守降级路径
 - 不允许因为 schema 错误而直接写入主存储
 
+### 实现状态
+
+- **schema validation**：已实现。`MemoryExtractor` 和 `MemoryConsolidator` 均在 LLM 输出后立即做 Pydantic schema 校验，失败时重试一次，重试后仍失败则返回空结果。
+- **low temperature**：暂不通过 provider 抽象暴露。本轮使用 provider 默认值；仅当实测中出现不可接受的结构化输出波动时，再讨论是否扩展 provider 抽象以支持显式 temperature 设置。
+
 ---
 
 *← 返回 [Memory 索引](INDEX.md)*

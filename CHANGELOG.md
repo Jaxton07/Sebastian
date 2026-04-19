@@ -34,6 +34,13 @@
 - `decision_log` 透传 `model` 与 `session_id` 便于审计
 - `provenance` 注入 `session_id`，便于记忆回溯
 - 一键安装脚本在检测到残缺 `.venv` 目录时会重新创建/修复虚拟环境，避免激活脚本缺失导致安装中断。
+- current truth 检索补全 `valid_from/status/subject_id` 三项二次过滤，避免时效外记录注入 prompt
+- Episode Lane 改为 query-aware summary-first，先检索摘要再按需补 episode detail，降低 prompt 噪声
+- `ExtractorInput` 补 `task: Literal["extract_memory_artifacts"]` 契约字段，与 spec 对齐
+- `memory_decision_log` 新增 `input_source` 字段，明确区分 `memory_save_tool` 与 `session_consolidation` 两条写入路径
+
+### Changed
+- `memory_search` 工具新增 `citation_type` 字段（`current_truth` / `historical_summary` / `historical_evidence`），保留 `is_current` 向后兼容
 
 ## [0.3.1] - 2026-04-18
 

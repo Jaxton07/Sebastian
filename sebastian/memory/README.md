@@ -10,8 +10,8 @@
 - **会话历史兼容层**：`EpisodicMemory`，基于 `SessionStore` 读写当前 session 的消息历史，用于兼容现有对话上下文链路；它不是新的 Episode Store。
 - **统一入口**：`MemoryStore`，当前聚合 working + session history compatibility layer。
 - **Phase A 长期记忆基础设施**：记忆 artifact 类型、slot 注册表、FTS 分词辅助、决策日志写入器。
-- **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询）、`EpisodeMemoryStore`（经历 FTS 检索）、`retrieval.py`（检索 pipeline）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt。
-- **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。
+- **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询，含 `valid_from/valid_until/status/subject_id` 四项 current truth 过滤）、`EpisodeMemoryStore`（经历 FTS 检索，含 summary-first 两阶段检索）、`retrieval.py`（检索 pipeline，含 Episode Lane query-aware summary-first 策略）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt；`memory_search` 工具输出 `citation_type`（`current_truth` / `historical_summary` / `historical_evidence`）。
+- **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact；`ExtractorInput.task` 已对齐 spec，值为 `"extract_memory_artifacts"`）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。`memory_decision_log` 新增 `input_source` 字段，记录写入来源（`memory_save_tool` / `session_consolidation`）。
 - **Memory Trace 日志**：`trace.py` 提供 `MEMORY_TRACE` 调试日志辅助，贯穿检索、注入、决策、写入、工具和会话沉淀链路，输出到现有 `main.log`。
 
 语义记忆（向量检索）为后续规划能力，当前未实现。
@@ -93,6 +93,21 @@ memory/
 ### 核心约束
 
 > **LLM 永远不直接修改记忆状态。** Extractor 和 Consolidator 的输出都是"建议"，最终写入前必须经过 Normalize 和 Resolve 流水线。
+
+## 已实现功能边界说明
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| current truth 过滤 | 已实现 | `profile_store.py` 三个查询方法加 `valid_from <= now` 过滤；`retrieval.py` Assembler `_keep()` 加 `status/subject_id/valid_from` 二次过滤 |
+| ExtractorInput.task 契约字段 | 已实现 | `ExtractorInput.task: Literal["extract_memory_artifacts"]`，与 spec §6 对齐 |
+| Episode Lane summary-first | 已实现 | `episode_store.py` 新增 `search_summaries_by_query`、`search_episodes_only`；检索 pipeline 先查 summary，不足时再补 episode detail |
+| memory_search citation_type | 已实现 | profile item → `current_truth`；episode summary → `historical_summary`；episode detail → `historical_evidence` |
+| decision_log input_source | 已实现 | `MemoryDecisionLogRecord` / `MemoryDecisionLogger.append()` 新增 `input_source` 字段，标记 `memory_save_tool` 或 `session_consolidation` |
+| Session Consolidation | 已实现 | `SessionConsolidationWorker` + startup catch-up sweep |
+| Cross-Session Consolidation | **deferred** | 需单独 spec，明确触发频率、扫描窗口、证据合并规则和幂等 key |
+| Full Maintenance Worker | **deferred** | 降权、重复压缩、索引修复需单独 spec |
+| Exclusive Relation | **deferred** | 互斥关系语义需单独设计 |
+| Summary Replacement | **deferred** | episode summary 替换策略需单独设计 |
 
 ## 修改导航
 

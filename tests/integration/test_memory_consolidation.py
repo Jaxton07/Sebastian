@@ -545,7 +545,8 @@ async def test_worker_executes_proposed_expire_action(db_factory):
 
 @pytest.mark.asyncio
 async def test_consolidation_decision_log_has_input_source(db_factory):
-    """SessionConsolidationWorker 写出的所有 decision log 都应有 input_source["type"] == "session_consolidation"。"""
+    """SessionConsolidationWorker 写出的所有 decision log 都应有
+    input_source["type"] == "session_consolidation"。"""
     worker = SessionConsolidationWorker(
         db_factory=db_factory,
         consolidator=FakeConsolidator(),

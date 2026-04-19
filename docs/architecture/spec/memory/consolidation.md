@@ -1,6 +1,6 @@
 ---
 version: "1.0"
-last_updated: 2026-04-19
+last_updated: 2026-04-20
 status: partially-implemented
 ---
 
@@ -8,6 +8,16 @@ status: partially-implemented
 
 > 模块索引：[INDEX.md](INDEX.md)
 > 架构图：[../../diagrams/memory/consolidation.html](../../diagrams/memory/consolidation.html)
+
+---
+
+## 实现状态速览
+
+| 模块 | 状态 | 备注 |
+|------|------|------|
+| Session Consolidation | **implemented** | `SessionConsolidationWorker` + startup catch-up sweep 已实现 |
+| Cross-Session Consolidation | **planned** | 需单独 spec 设计触发频率、扫描窗口、证据合并规则、幂等 key |
+| Memory Maintenance（过期扫描） | **partial** | EXPIRE 动作和 catch-up sweep 已有；降权、重复压缩、索引修复 planned |
 
 ---
 
