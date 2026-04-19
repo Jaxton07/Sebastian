@@ -97,6 +97,7 @@ class MemoryConsolidator:
                         attempt + 1,
                         e,
                     )
+                    continue
                 logger.warning(
                     "Consolidator failed after %d retries, returning empty: %s",
                     self._max_retries + 1,
