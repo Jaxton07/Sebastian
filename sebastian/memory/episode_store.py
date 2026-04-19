@@ -88,14 +88,14 @@ class EpisodeMemoryStore:
         ids_by_rank = [memory_id for memory_id, _count in match_counts.most_common()]
         rank_by_id = {memory_id: rank for rank, memory_id in enumerate(ids_by_rank)}
 
-        result = await self._session.scalars(
+        episode_rows = await self._session.scalars(
             select(EpisodeMemoryRecord).where(
                 EpisodeMemoryRecord.id.in_(ids_by_rank),
                 EpisodeMemoryRecord.subject_id == subject_id,
                 EpisodeMemoryRecord.status == MemoryStatus.ACTIVE.value,
             )
         )
-        records = list(result.all())
+        records = list(episode_rows.all())
         records.sort(
             key=lambda record: (
                 rank_by_id[record.id],

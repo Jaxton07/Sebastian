@@ -4,7 +4,35 @@
 
 ## [Unreleased]
 
+### Added
+- `write_router`：按 kind 分发 memory artifact 到 Profile/Episode/Entity/Relation 存储
+- `subject resolver`：替换硬编码 owner，按 scope/session/agent 派生 subject_id
+- `Context Lane`：检索注入近期时效性记忆
+- `Relation Lane`：检索注入当前有效关系候选
+- `memory_search` 返回结构化 citations（区分 current / historical）
+- 启动时 catch-up sweep 未沉淀 session，避免 gateway 崩溃丢失
+- 启动时 seed 内建 slots 并同步 jieba 词典
+- `MemoryError` 异常体系替换 SlotRegistry 裸异常
+- 执行 Consolidator 的 `proposed_actions` 中 EXPIRE 动作
+- `MemoryExtractor` 接入沉淀 worker 并携带 active/summary/slot/entity 上下文
+- `MemoryConsolidationScheduler.drain()` 公开 API 用于测试与优雅关停
+
+### Changed
+- `MemoryDecisionType` 枚举值统一为大写（ADD/SUPERSEDE/MERGE/EXPIRE/DISCARD）
+- `MemorySummary.scope` 改为 `MemoryScope` 枚举
+- `RelationCandidateRecord` 补齐 `valid_from` / `valid_until` / `updated_at` 字段
+
 ### Fixed
+- `search_active` 过滤过期记录，避免失效事实被注入 prompt
+- `memory_save` DISCARD 分支补写决策日志
+- 沉淀 summary 走 resolver 并写决策日志
+- Resolver 按 source / confidence 优先级正确输出 SUPERSEDE 或 DISCARD
+- FTS5 MATCH 查询按 phrase 转义，避免用户输入触发操作符解析错误
+- `MemoryExtractor` / `MemoryConsolidator` LLM 异常兜底，返回空结果避免 Worker 崩溃
+- 替换一批假阳性测试为真正断言 DB 状态
+- `EntityRegistry.lookup` 改走 SQL 索引，避免全表扫描
+- `decision_log` 透传 `model` 与 `session_id` 便于审计
+- `provenance` 注入 `session_id`，便于记忆回溯
 - 一键安装脚本在检测到残缺 `.venv` 目录时会重新创建/修复虚拟环境，避免激活脚本缺失导致安装中断。
 
 ## [0.3.1] - 2026-04-18
