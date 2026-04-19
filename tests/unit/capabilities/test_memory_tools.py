@@ -78,7 +78,11 @@ def no_db_state(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_memory_save_returns_ok(enabled_memory_state) -> None:
+    from sqlalchemy import select
+
     from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.memory.types import MemoryStatus
+    from sebastian.store.models import ProfileMemoryRecord
 
     result = await memory_save(
         content="以后回答简洁中文",
@@ -89,6 +93,15 @@ async def test_memory_save_returns_ok(enabled_memory_state) -> None:
     assert result.output is not None
     assert result.output["saved"] == "以后回答简洁中文"
     assert result.output["slot_id"] == "user.preference.response_style"
+
+    # DB-state assertion: verify the record was actually persisted correctly.
+    async with enabled_memory_state() as session:
+        rows = (await session.scalars(select(ProfileMemoryRecord))).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.content == "以后回答简洁中文"
+    assert row.slot_id == "user.preference.response_style"
+    assert row.status == MemoryStatus.ACTIVE.value
 
 
 @pytest.mark.asyncio
@@ -306,9 +319,7 @@ async def test_memory_search_no_db_returns_error(no_db_state) -> None:
 
 
 @pytest.mark.asyncio
-async def test_memory_save_discard_writes_decision_log(
-    enabled_memory_state, monkeypatch
-) -> None:
+async def test_memory_save_discard_writes_decision_log(enabled_memory_state, monkeypatch) -> None:
     from sqlalchemy import select
 
     from sebastian.capabilities.tools.memory_save import memory_save
