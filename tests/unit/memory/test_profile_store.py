@@ -271,6 +271,21 @@ async def test_search_recent_context_skips_expired(db_session) -> None:
     assert ids == {"ctx-valid"}
 
 
+async def test_expire_marks_record_expired(db_session) -> None:
+    store = ProfileMemoryStore(db_session)
+    original = datetime.now(UTC) - timedelta(days=1)
+    db_session.add(_make_record(id="m-old", created_at=original, updated_at=original))
+    await db_session.flush()
+
+    await store.expire("m-old")
+
+    record = await db_session.get(ProfileMemoryRecord, "m-old")
+    assert record is not None
+    assert record.status == MemoryStatus.EXPIRED.value
+    # SQLite returns naive datetimes; compare after stripping tz from original.
+    assert record.updated_at.replace(tzinfo=None) > original.replace(tzinfo=None)
+
+
 async def test_search_recent_context_skips_inactive(db_session) -> None:
     store = ProfileMemoryStore(db_session)
     now = datetime.now(UTC)

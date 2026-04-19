@@ -16,6 +16,7 @@ from sebastian.memory.types import (
     MemoryKind,
     MemoryScope,
     MemorySource,
+    MemoryStatus,
     ResolutionPolicy,
 )
 from sebastian.store.models import (
@@ -471,3 +472,71 @@ async def test_worker_runs_extractor_before_consolidator(db_factory):
     assert captor.last_input is not None
     assert len(captor.last_input.candidate_artifacts) == 1
     assert captor.last_input.candidate_artifacts[0].content == "test"
+
+
+class FakeExpireConsolidator:
+    """Returns a ConsolidationResult that contains only an EXPIRE action."""
+
+    async def consolidate(self, input: ConsolidatorInput) -> ConsolidationResult:
+        from sebastian.memory.consolidation import ProposedAction
+
+        return ConsolidationResult(
+            summaries=[],
+            proposed_artifacts=[],
+            proposed_actions=[
+                ProposedAction(action="EXPIRE", memory_id="m-old", reason="stale data")
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_worker_executes_proposed_expire_action(db_factory):
+    """Consolidator's EXPIRE action must mark the targeted profile EXPIRED and log it."""
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+
+    async with db_factory() as session:
+        session.add(
+            ProfileMemoryRecord(
+                id="m-old",
+                subject_id="owner",
+                scope=MemoryScope.USER.value,
+                slot_id="",
+                kind=MemoryKind.FACT.value,
+                content="过期事实",
+                structured_payload={},
+                source=MemorySource.OBSERVED.value,
+                confidence=0.7,
+                status="active",
+                valid_from=None,
+                valid_until=None,
+                provenance={},
+                policy_tags=[],
+                created_at=now,
+                updated_at=now,
+                last_accessed_at=None,
+                access_count=0,
+            )
+        )
+        await session.commit()
+
+    worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=FakeExpireConsolidator(),
+        extractor=FakeExtractor(),
+        session_store=FakeSessionStore(),
+        memory_settings_fn=lambda: True,
+    )
+    await worker.consolidate_session("sess-exp", "sebastian")
+
+    async with db_factory() as session:
+        record = await session.get(ProfileMemoryRecord, "m-old")
+        assert record is not None
+        assert record.status == MemoryStatus.EXPIRED.value
+
+        log_result = await session.scalars(select(MemoryDecisionLogRecord))
+        expire_logs = [log for log in log_result.all() if log.decision == "EXPIRE"]
+        assert len(expire_logs) == 1
+        assert expire_logs[0].old_memory_ids == ["m-old"]
+        assert expire_logs[0].reason == "stale data"

@@ -62,6 +62,19 @@ class ProfileMemoryStore:
         await self._session.flush()
         return record
 
+    async def expire(self, memory_id: str) -> None:
+        """Mark a profile memory record as EXPIRED."""
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(ProfileMemoryRecord)
+            .where(ProfileMemoryRecord.id == memory_id)
+            .values(
+                status=MemoryStatus.EXPIRED.value,
+                updated_at=now,
+            )
+        )
+        await self._session.flush()
+
     async def search_active(
         self,
         *,

@@ -346,6 +346,47 @@ class SessionConsolidationWorker:
                     rule_version=self._RULE_VERSION,
                 )
 
+            # Execute EXPIRE actions proposed by the consolidator. SUPERSEDE
+            # actions are paired with proposed_artifacts and handled above;
+            # ignore them here to prevent double-processing.
+            for action in result.proposed_actions:
+                if action.action != "EXPIRE" or not action.memory_id:
+                    continue
+                await profile_store.expire(action.memory_id)
+                placeholder_candidate = CandidateArtifact(
+                    kind=MemoryKind.FACT,
+                    content=f"EXPIRE: {action.reason}",
+                    structured_payload={},
+                    subject_hint=context_subject_id,
+                    scope=MemoryScope.USER,
+                    slot_id=None,
+                    cardinality=None,
+                    resolution_policy=None,
+                    confidence=0.0,
+                    source=MemorySource.SYSTEM_DERIVED,
+                    evidence=[{"session_id": session_id}],
+                    valid_from=None,
+                    valid_until=None,
+                    policy_tags=[],
+                    needs_review=False,
+                )
+                expire_decision = ResolveDecision(
+                    decision=MemoryDecisionType.EXPIRE,
+                    reason=action.reason,
+                    old_memory_ids=[action.memory_id],
+                    new_memory=None,
+                    candidate=placeholder_candidate,
+                    subject_id=context_subject_id,
+                    scope=MemoryScope.USER,
+                    slot_id=None,
+                )
+                await decision_logger.append(
+                    expire_decision,
+                    worker=self._WORKER_ID,
+                    model=None,
+                    rule_version=self._RULE_VERSION,
+                )
+
             marker = SessionConsolidationRecord(
                 session_id=session_id,
                 agent_type=agent_type,
