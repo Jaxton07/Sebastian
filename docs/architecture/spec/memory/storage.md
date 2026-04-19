@@ -141,11 +141,19 @@ status: planned
 不使用 embedding 时，首版检索主要依赖：
 
 - 结构化查询
-- 全文检索
+- 全文检索：SQLite FTS5 + jieba 预分词 + `unicode61`
 - 时间排序
 - entity 命中
 - 当前 session / 项目上下文
 - summary 优先、episode 下钻
+
+FTS5 中文检索约束：
+
+- 不直接用 `unicode61` 索引中文原文，因为连续中文会被当成大 token，短词召回失败
+- 不用 `trigram` 作为主方案，因为 2 字中文词无法命中
+- 对需要全文检索的文本同时保存 `content` 和 `content_segmented`
+- `content_segmented` 由 `jieba.cut_for_search()` 生成，并作为 FTS5 索引字段
+- 单字实体优先走 `Entity Registry`，不依赖 FTS 单字匹配
 
 ---
 

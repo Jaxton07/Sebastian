@@ -92,7 +92,54 @@ Planner 输出：
 
 ---
 
-## 5. Assembler（上下文装配器）
+## 5. FTS5 中文检索策略
+
+首版如果使用 SQLite FTS5（全文检索），不能直接使用默认 `unicode61` tokenizer（分词器）处理中文原文。
+
+本地验证环境：
+
+- SQLite `3.51.0`
+- FTS5 enabled
+- jieba `0.42.1`
+
+验证结论：
+
+| 方案 | 结果 | 结论 |
+|------|------|------|
+| `unicode61` 直接索引中文原文 | `用户` / `偏好` / `中文` 等短词无法命中 | 不适合作为中文主检索方案 |
+| `trigram` 三元分词 | 能命中 3 字以上片段，但 `用户` / `偏好` / `小橘` 等 2 字词无法命中 | 召回不稳定，不适合作为主方案 |
+| jieba 预分词 + `unicode61` | 测试语料 15/15 命中 | 首版采用 |
+
+首版实现方案：
+
+```text
+原文字段: content
+索引字段: content_segmented
+写入: content -> jieba.cut_for_search(content) -> 空格拼接 -> content_segmented
+FTS5: 对 content_segmented 建 unicode61 索引
+查询: query -> jieba.cut_for_search(query) -> 逐词 MATCH -> 合并去重排序
+```
+
+示例：
+
+```text
+content:
+用户偏好简洁中文回复
+
+content_segmented:
+用户 偏好 简洁 中文 回复
+```
+
+查询策略：
+
+- 默认使用 `jieba.cut_for_search()`，比普通 `jieba.cut()` 更适合检索召回
+- 默认过滤单字词，降低噪声
+- 单字实体或特殊名称不依赖 FTS，优先走 `Entity Registry`（实体注册表）的 entity lookup（实体查找）
+- 从 `Entity Registry` 同步项目名、Agent 名、家庭成员名、宠物名等到 jieba 用户词典，提升实体分词稳定性
+
+---
+
+## 6. Assembler（上下文装配器）
 
 最终注入不做平铺列表，而按语义分区装配：
 
@@ -112,7 +159,7 @@ Assembler 在最终注入前，必须统一执行以下过滤：
 
 ---
 
-## 6. Token Budget（上下文预算）
+## 7. Token Budget（上下文预算）
 
 各 lane 需要独立预算，不能共享抢占。
 
@@ -124,7 +171,7 @@ Assembler 在最终注入前，必须统一执行以下过滤：
 
 ---
 
-## 7. 当前真值与历史证据分离
+## 8. 当前真值与历史证据分离
 
 注入语义必须区分：
 
