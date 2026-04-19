@@ -1,7 +1,7 @@
 ---
 version: "1.0"
 last_updated: 2026-04-19
-status: planned
+status: in-progress
 ---
 
 # Memory（记忆）总体架构
@@ -100,23 +100,31 @@ Sebastian 的长期记忆采用三层逻辑模型：
 - 新增真正的 `Episode Store` 存储 `episode`（经历）/ `summary`（摘要）等 artifacts（记忆产物）
 - 后续可在不影响行为的前提下，将现有类重命名为 `SessionHistory` 或 `ConversationHistory`，避免概念混淆
 
-### 5.3 BaseAgent Hook
+### 5.3 BaseAgent Memory 入口
 
-后续实现至少需要四个 hook：
+当前实现不把 memory planner、assembler 和 prompt 注入拆成多个 BaseAgent hook。BaseAgent 只保留一个长期记忆入口：
 
-- turn 入口的 memory retrieval planner
-- system prompt 组装时的 memory section assembler
-- turn 结束或 session 转 idle 时的 consolidation scheduler
-- 显式 `memory_*` 工具入口
+- `_memory_section()`：在构造 system prompt 前调用，内部完成 retrieval plan（检索规划）→ lane fetch（分通道检索）→ assemble（装配）→ 返回可注入文本。
+
+这个边界让 BaseAgent 主链路只关心“本轮需要注入什么长期记忆”，不感知 Memory 系统内部的 lane 细节。短期不拆出独立的 BaseAgent planner hook 或 assembler hook，避免把 Memory 内部策略泄漏到 Agent 运行时。
+
+后台沉淀也不由 BaseAgent 的 turn end / idle hook 直接触发。当前会话沉淀由 `SESSION_COMPLETED` 事件和 startup catch-up sweep 驱动；如果未来需要 `idle` / `stalled` 触发，应先补独立 spec，明确触发条件、幂等标记和与未完成 session 的边界。
+
+显式 `memory_*` 能力不是新的 BaseAgent hook。它们是通过现有 Native Tool 注册系统暴露给 Agent 的普通工具，不经过 `_memory_section()`，也不绕过 `CapabilityRegistry`。
 
 ### 5.4 工具层
 
-首期建议只提供两个 agent-facing（面向 Agent 的）工具：
+首期建议只提供两个 memory-facing（面向记忆系统的）Native Tool：
 
 - `memory_save`
 - `memory_search`
 
-工具层只触发统一写入/读取协议，不直接操作底层表。
+这两个工具与 `file_read`、`bash_execute` 等工具一样，放在 `sebastian/capabilities/tools/` 下，通过 `@tool(...)` 注册，并由现有 tools loader 自动扫描。它们的特殊性不在注册机制，而在工具背后调用的是 Memory 统一协议：
+
+- `memory_save`：显式写入入口，仅在用户明确要求“记住这个”时使用，背后走 candidate artifact → resolve → persist → decision log。
+- `memory_search`：显式检索入口，供 Agent 主动查询长期记忆，背后走 memory retrieval / store。
+
+工具层只触发统一写入/读取协议，不直接绕过 Memory 模块操作底层表。
 
 `memory_list` / `memory_delete` 不作为首期 agent 工具。它们更适合作为后续 owner-only（仅主人可用）的管理 API 或记忆管理 UI 能力，用于用户核查、纠错、删除敏感记忆。原因：
 
@@ -126,14 +134,22 @@ Sebastian 的长期记忆采用三层逻辑模型：
 
 ---
 
-## 6. 分阶段实现
+## 6. 分阶段实现与当前进度
 
-| Phase | 目标 | 内容 |
-|-------|------|------|
-| A | 协议先行 | artifact schema（记忆产物结构）、slot registry（语义槽位注册表）、resolution policy（冲突解决策略）、retrieval planner interface（检索规划接口）、assembler interface（装配器接口）、decision log schema（决策日志结构） |
-| B | Profile + Episode 可用版 | fact/preference（事实/偏好）写入更新注入、episode/summary（经历/摘要）存储检索、基础三 lane（检索通道）、decision log（决策日志）落盘 |
-| C | Consolidation 成熟版 | session consolidation（会话沉淀）、cross-session preference strengthening（跨会话偏好强化）、maintenance worker（维护任务）、summary（摘要）策略 |
-| D | Relation / Graph 增强 | entity normalization（实体规范化）强化、relation artifact（关系记忆产物）正式入库、relation lane（关系检索通道）检索、时间区间关系 |
+| Phase | 当前状态 | 目标 | 内容 / 边界 |
+|-------|----------|------|-------------|
+| A | 已实现 | 协议先行 | artifact schema（记忆产物结构）、slot registry（语义槽位注册表）、resolution policy（冲突解决策略）、retrieval planner / assembler、decision log schema（决策日志结构）已落地 |
+| B | 已实现，审查修复中 | Profile + Episode 可用版 | fact/preference（事实/偏好）写入更新注入、episode/summary（经历/摘要）存储检索、基础 lane、decision log（决策日志）落盘已可用；当前修复聚焦 current truth 过滤、Episode Lane summary-first、审计字段补齐 |
+| C | 部分实现 | Consolidation 成熟版 | session consolidation（会话沉淀）、startup catch-up sweep 与 EXPIRE 生命周期处理已实现；cross-session preference strengthening（跨会话偏好强化）、maintenance worker（维护任务）、降权、重复压缩、索引修复需单独 spec |
+| D | 部分实现 | Relation / Graph 增强 | entity normalization（实体规范化）、relation candidate 入库、relation lane（关系检索通道）与时间区间检索已实现；exclusive relation 边界覆盖、正式 relation facts / graph 查询语义需单独 spec |
+
+需要单独讨论 spec 的事项：
+
+- summary 默认替换策略：何时替换、何时追加、如何保留历史 evidence。
+- exclusive relation 时间边界覆盖：新关系如何关闭旧关系，是否只基于同一 subject / predicate / object set。
+- Cross-Session Consolidation：触发频率、证据合并、幂等 key、人工审核边界。
+- Memory Maintenance：降权、重复压缩、索引修复、周期性 sweep 的触发与审计。
+- Relation facts / graph：`relation_candidates` 何时晋升为正式事实，以及 Relation Lane 是否需要多跳查询。
 
 ---
 

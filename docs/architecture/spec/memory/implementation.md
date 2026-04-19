@@ -1,7 +1,7 @@
 ---
 version: "1.0"
 last_updated: 2026-04-19
-status: implemented
+status: in-progress
 ---
 
 # Memory（记忆）实现策略与 LLM（大语言模型）协议
@@ -58,6 +58,16 @@ status: implemented
 ### 调度器集成
 
 `MemoryConsolidationScheduler` 在 `sebastian/gateway/app.py` 的 lifespan startup 中创建并订阅 `SESSION_COMPLETED` 事件，shutdown 时调用 `aclose()` 清理 pending task。调度器收到事件后先检查 `memory_enabled` 标志，启用时才通过 `asyncio.create_task` 派发 `SessionConsolidationWorker`。
+
+### Temperature 边界
+
+Extractor / Consolidator 的理想运行方式是稳定、低随机性、严格 schema 输出。但短期不为 Memory 单独扩展 `LLMProvider` temperature 接口，也不把低 temperature 作为实现通过条件。
+
+当前策略：
+
+- 复用 provider 默认推理参数。
+- 依靠固定 task、固定 schema、固定枚举和 schema validation 控制输出稳定性。
+- 只有当真实效果显示默认参数导致不可接受的结构化输出波动时，再讨论是否扩展 provider 抽象。
 
 ---
 
@@ -233,7 +243,7 @@ class ResolveDecision(TypedDict):
 
 - 固定 schema
 - 固定枚举
-- 低 temperature
+- 低随机性输出目标；当前使用 provider 默认参数，短期不新增 Memory 专用 temperature 接口
 - schema validation
 
 如模型输出不满足 schema：

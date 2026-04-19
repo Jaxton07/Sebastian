@@ -17,13 +17,20 @@ status: partially-implemented
 
 ### 1.1 Session Consolidation（会话沉淀）
 
-针对单次 session 在 `idle` / `stalled` / `completed` 后做：
+针对单次 session 在 `completed` 后做：
 
 - 生成阶段摘要
 - 提取候选事实、偏好、关系
 - 产生新的 artifacts
 
-**Phase C 实现状态**：`SessionConsolidationWorker`（`sebastian/memory/consolidation.py`）已实现，由 `MemoryConsolidationScheduler` 订阅 `SESSION_COMPLETED` 事件触发。幂等性通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证；写入原子性通过单事务实现。
+**Phase C 实现状态**：`SessionConsolidationWorker`（`sebastian/memory/consolidation.py`）已实现，由 `MemoryConsolidationScheduler` 订阅 `SESSION_COMPLETED` 事件触发。幂等性通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证；写入原子性通过单事务实现。启动时的 catch-up sweep 会补处理未沉淀的 completed session。
+
+`idle` / `stalled` 触发当前不属于已实现契约。未来如果需要支持，应先补独立 spec，明确：
+
+- 什么状态算 session idle / stalled。
+- 是否允许对仍可能继续追加消息的 session 做沉淀。
+- 幂等标记如何区分部分沉淀与最终沉淀。
+- 后续 `SESSION_COMPLETED` 到来时如何避免重复摘要和重复写入。
 
 ### 1.2 Cross-Session Consolidation（跨会话沉淀）
 
@@ -34,6 +41,8 @@ status: partially-implemented
 - 长期主题聚合
 - 多来源证据合并
 
+**实现状态**：未实现。Cross-Session Consolidation 属于后续增强能力，不能直接复用当前 Session Consolidation 的完成事件语义。实现前需要单独 spec 讨论触发频率、扫描窗口、证据合并规则、幂等 key、decision log 记录方式和人工审核边界。
+
 ### 1.3 Memory Maintenance（记忆维护）
 
 负责：
@@ -43,6 +52,8 @@ status: partially-implemented
 - 重复压缩
 - 摘要替换
 - 索引修复
+
+**实现状态**：部分实现。当前已有 EXPIRE 类生命周期动作和 startup catch-up sweep，但还没有独立周期性 Maintenance Worker。降权、重复压缩、摘要替换和索引修复都需要单独 spec，先定义可观测输入、决策规则、审计字段和回滚方式。
 
 ---
 

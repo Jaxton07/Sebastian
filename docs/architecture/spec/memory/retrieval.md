@@ -1,7 +1,7 @@
 ---
 version: "1.0"
 last_updated: 2026-04-19
-status: planned
+status: in-progress
 ---
 
 # Memory（记忆）读取与注入
@@ -147,6 +147,15 @@ content_segmented:
 - `Relevant current context`
 - `Relevant past episodes`
 - `Important relationships`
+
+Assembler 不允许把不同来源的记忆压成无类型自然语言摘要。自动注入内容必须保留语义分区和 memory kind（记忆类型）标识，让 Agent 能区分：
+
+- `preference`：用户偏好，通常比普通事实有更高注入优先级
+- `fact`：当前有效事实或状态
+- `episode` / `summary`：历史经历与历史证据
+- `relation`：实体关系及其时间性状态
+
+例如 Profile Lane 中的条目应显式保留 `[preference]` / `[fact]` 标记；Episode Lane 中的条目应显式保留 `[episode]` / `[summary]` 标记。这样可以避免 Agent 把“历史上发生过的事”误当成“当前偏好”，也避免 profile、preference、episode 和 relation 在 prompt 中混成同一种记忆。
 
 Assembler 在最终注入前，必须统一执行以下过滤：
 
