@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select, text, update
+from sqlalchemy.engine import CursorResult
 
 from sebastian.memory.segmentation import build_match_query, segment_for_fts, terms_for_query
 from sebastian.memory.types import MemoryArtifact, MemoryStatus
@@ -100,10 +101,10 @@ class ProfileMemoryStore:
         await self._session.flush()
         return record
 
-    async def expire(self, memory_id: str) -> None:
-        """Mark a profile memory record as EXPIRED."""
+    async def expire(self, memory_id: str) -> int:
+        """Mark a profile memory record as EXPIRED. Returns rowcount (0 = not found)."""
         now = datetime.now(UTC)
-        await self._session.execute(
+        cursor: CursorResult[tuple[()]] = await self._session.execute(  # type: ignore[assignment]
             update(ProfileMemoryRecord)
             .where(ProfileMemoryRecord.id == memory_id)
             .values(
@@ -112,6 +113,7 @@ class ProfileMemoryStore:
             )
         )
         await self._session.flush()
+        return cursor.rowcount
 
     async def search_active(
         self,

@@ -572,3 +572,25 @@ async def test_find_active_exact_ignores_superseded_record(db_session) -> None:
     )
 
     assert result is None
+
+
+async def test_expire_nonexistent_returns_zero(db_session) -> None:
+    """expire() on a non-existent id must return 0."""
+    store = ProfileMemoryStore(db_session)
+    rowcount = await store.expire("does-not-exist")
+    assert rowcount == 0
+
+
+async def test_expire_existing_returns_one(db_session) -> None:
+    """expire() on an existing active record must return 1 and set status=expired."""
+    store = ProfileMemoryStore(db_session)
+    now = datetime.now(UTC)
+    db_session.add(_make_record(id="mem-expire-rc", created_at=now, updated_at=now))
+    await db_session.flush()
+
+    rowcount = await store.expire("mem-expire-rc")
+    assert rowcount == 1
+
+    record = await db_session.get(ProfileMemoryRecord, "mem-expire-rc")
+    assert record is not None
+    assert record.status == MemoryStatus.EXPIRED.value

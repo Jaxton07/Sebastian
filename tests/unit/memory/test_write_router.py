@@ -572,3 +572,32 @@ async def test_persist_decision_fact_merge_marks_old_and_inserts_new(
     assert rows_by_id[old_artifact.id].status == MemoryStatus.SUPERSEDED.value
     assert rows_by_id[new_artifact.id].status == MemoryStatus.ACTIVE.value
     assert rows_by_id[new_artifact.id].content == "用户使用 Sebastian"
+
+
+@pytest.mark.asyncio
+async def test_persist_decision_expire_zero_hit_traces_miss(db_session, caplog) -> None:
+    """EXPIRE targeting a non-existent memory_id must emit persist.expire_miss trace."""
+    caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
+    profile_store, episode_store, entity_registry = _stores(db_session)
+
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.EXPIRE,
+        reason="stale preference",
+        old_memory_ids=["does-not-exist"],
+        new_memory=None,
+        candidate=_candidate(MemoryKind.FACT),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    assert "persist.expire_miss" in caplog.text
+    assert "does-not-exist" in caplog.text

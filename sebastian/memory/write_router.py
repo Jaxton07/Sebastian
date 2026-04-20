@@ -43,7 +43,14 @@ async def persist_decision(
     if decision.decision == MemoryDecisionType.EXPIRE:
         if decision.candidate.kind in (MemoryKind.FACT, MemoryKind.PREFERENCE):
             for memory_id in decision.old_memory_ids:
-                await profile_store.expire(memory_id)
+                rowcount = await profile_store.expire(memory_id)
+                if rowcount == 0:
+                    trace(
+                        "persist.expire_miss",
+                        memory_id=memory_id,
+                        subject_id=decision.subject_id,
+                        reason="target memory_id not found or already inactive",
+                    )
             _trace_write("profile", decision)
             return
         trace(
