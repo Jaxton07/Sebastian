@@ -324,6 +324,44 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test 4b — _memory_section() passes active_project_or_agent_context to RetrievalContext
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_memory_section_passes_active_project_or_agent_context(mem_factory) -> None:
+    """_memory_section must populate active_project_or_agent_context with agent_type."""
+    from unittest.mock import patch
+
+    import sebastian.gateway.state as gw_state
+    from sebastian.memory.retrieval import RetrievalContext
+
+    agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
+
+    fake_settings = MagicMock()
+    fake_settings.enabled = True
+
+    captured_contexts: list[RetrievalContext] = []
+
+    async def _fake_retrieve(ctx: RetrievalContext, *, db_session) -> str:  # type: ignore[override]
+        captured_contexts.append(ctx)
+        return ""
+
+    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+        with patch(
+            "sebastian.memory.retrieval.retrieve_memory_section",
+            side_effect=_fake_retrieve,
+        ):
+            await agent._memory_section(
+                session_id="s-ctx", agent_context="orchestrator", user_message="测试"
+            )
+
+    assert captured_contexts, "retrieve_memory_section was not called"
+    ctx = captured_contexts[0]
+    assert ctx.active_project_or_agent_context == {"agent_type": "orchestrator"}
+
+
+# ---------------------------------------------------------------------------
 # Test 5 — _memory_section() returns "" and logs warning when retrieval raises
 # ---------------------------------------------------------------------------
 

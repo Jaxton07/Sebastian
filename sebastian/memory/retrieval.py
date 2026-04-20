@@ -28,6 +28,7 @@ class RetrievalContext(BaseModel):
     agent_type: str
     user_message: str
     access_purpose: str = "context_injection"
+    active_project_or_agent_context: dict[str, Any] | None = None
 
 
 class RetrievalPlan(BaseModel):

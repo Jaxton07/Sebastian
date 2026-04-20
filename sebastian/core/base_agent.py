@@ -265,6 +265,7 @@ class BaseAgent(ABC):
                 session_id=session_id,
                 agent_type=agent_context,
                 user_message=user_message,
+                active_project_or_agent_context={"agent_type": agent_context},
             )
             async with self._db_factory() as session:
                 section = await retrieve_memory_section(ctx, db_session=session)

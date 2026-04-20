@@ -869,6 +869,20 @@ async def test_episode_lane_supplements_with_detail_when_summaries_insufficient(
     assert "经历细节1" in result
 
 
+def test_retrieval_context_accepts_active_project_or_agent_context() -> None:
+    ctx = RetrievalContext(
+        subject_id="user:owner",
+        session_id="sess-1",
+        agent_type="sebastian",
+        user_message="现在项目做什么",
+        active_project_or_agent_context={"agent_type": "sebastian", "project": "Sebastian"},
+    )
+    assert ctx.active_project_or_agent_context == {
+        "agent_type": "sebastian",
+        "project": "Sebastian",
+    }
+
+
 async def test_episode_lane_irrelevant_summaries_do_not_enter_results(db_session) -> None:
     """Summaries not matching the query must not appear (query-aware, not recency-only)."""
     context = RetrievalContext(
