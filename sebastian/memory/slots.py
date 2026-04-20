@@ -74,13 +74,40 @@ _BUILTIN_SLOTS: list[SlotDefinition] = [
         kind_constraints=[MemoryKind.FACT],
         description="Agent 当前被分配的任务",
     ),
+    SlotDefinition(
+        slot_id="user.profile.name",
+        scope=MemoryScope.USER,
+        subject_kind="user",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        kind_constraints=[MemoryKind.FACT],
+        description="用户姓名",
+    ),
+    SlotDefinition(
+        slot_id="user.profile.location",
+        scope=MemoryScope.USER,
+        subject_kind="user",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        kind_constraints=[MemoryKind.FACT],
+        description="用户所在地",
+    ),
+    SlotDefinition(
+        slot_id="user.profile.occupation",
+        scope=MemoryScope.USER,
+        subject_kind="user",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        kind_constraints=[MemoryKind.FACT],
+        description="用户职业",
+    ),
 ]
 
 
 class SlotRegistry:
     """Thin dict-backed registry of :class:`SlotDefinition` objects.
 
-    When constructed with ``slots=None`` the 6 built-in Phase-A slots are
+    When constructed with ``slots=None`` the 9 built-in Phase-A slots are
     loaded automatically.  Pass an explicit iterable to override (useful in
     tests).
     """

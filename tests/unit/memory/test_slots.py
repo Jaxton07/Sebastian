@@ -51,7 +51,7 @@ class TestBuiltinSlots:
         assert slot.cardinality == Cardinality.SINGLE
         assert slot.resolution_policy == ResolutionPolicy.SUPERSEDE
 
-    def test_all_six_builtin_slots_exist(self) -> None:
+    def test_all_nine_builtin_slots_exist(self) -> None:
         registry = SlotRegistry()
         expected = [
             "user.preference.response_style",
@@ -60,10 +60,13 @@ class TestBuiltinSlots:
             "user.profile.timezone",
             "project.current_phase",
             "agent.current_assignment",
+            "user.profile.name",
+            "user.profile.location",
+            "user.profile.occupation",
         ]
         for slot_id in expected:
             assert registry.get(slot_id) is not None, f"Missing slot: {slot_id}"
-        assert len(registry._slots) == 6  # no accidental extra slots
+        assert len(registry._slots) == 9  # no accidental extra slots
 
 
 class TestRegistryLookup:
@@ -96,7 +99,7 @@ class TestListAll:
     def test_list_all_returns_all_registered_slots(self) -> None:
         registry = SlotRegistry()
         slots = registry.list_all()
-        assert len(slots) == 6
+        assert len(slots) == 9
         slot_ids = {s.slot_id for s in slots}
         assert slot_ids == {
             "user.preference.response_style",
@@ -105,6 +108,9 @@ class TestListAll:
             "user.profile.timezone",
             "project.current_phase",
             "agent.current_assignment",
+            "user.profile.name",
+            "user.profile.location",
+            "user.profile.occupation",
         }
 
     def test_list_all_returns_slot_definitions(self) -> None:
