@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -153,8 +154,6 @@ class ProfileMemoryStore:
         Falls back to confidence-then-recency order when *query* is empty
         or produces no FTS terms.
         """
-        from collections import Counter
-
         now = datetime.now(UTC)
         cutoff = now - timedelta(days=window_days)
         base_filters = [
@@ -170,14 +169,14 @@ class ProfileMemoryStore:
             match_counts: Counter[str] = Counter()
             for term in terms:
                 phrase = build_match_query([term])
-                result = await self._session.execute(
+                fts_result = await self._session.execute(
                     text(
                         "SELECT memory_id FROM profile_memories_fts "
                         "WHERE content_segmented MATCH :query"
                     ),
                     {"query": phrase},
                 )
-                match_counts.update(row[0] for row in result)
+                match_counts.update(row[0] for row in fts_result)
 
             if match_counts:
                 ids_by_rank = [mid for mid, _ in match_counts.most_common()]

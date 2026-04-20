@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 
-
 async def ensure_episode_fts(conn: AsyncConnection) -> None:
     await conn.execute(
         text(
