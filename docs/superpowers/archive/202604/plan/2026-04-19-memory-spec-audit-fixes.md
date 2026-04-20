@@ -10,7 +10,7 @@
 > - summary replacement 与 relation(exclusive) 需要先定义唯一键、冲突范围和生命周期策略，不能临时以 payload 字段拼接。
 >
 > 当前采用的执行计划是：
-> [`2026-04-19-memory-spec-audit-targeted-fixes.md`](../../../plans/2026-04-19-memory-spec-audit-targeted-fixes.md)
+> [`2026-04-19-memory-spec-audit-targeted-fixes.md`](2026-04-19-memory-spec-audit-targeted-fixes.md)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

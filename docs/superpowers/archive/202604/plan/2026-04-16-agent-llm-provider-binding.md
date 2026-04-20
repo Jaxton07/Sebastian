@@ -13,7 +13,7 @@
 
 **Tech Stack:** Python 3.12 + SQLAlchemy async + FastAPI（后端）· Kotlin + Jetpack Compose + Retrofit + Hilt（Android）
 
-**Spec reference:** [docs/superpowers/specs/2026-04-16-agent-llm-provider-binding-design.md](../specs/2026-04-16-agent-llm-provider-binding-design.md)
+**Spec reference:** [docs/superpowers/specs/2026-04-16-agent-llm-provider-binding-design.md](../../../specs/2026-04-16-agent-llm-provider-binding-design.md)
 
 ---
 

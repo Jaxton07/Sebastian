@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.12 + SQLAlchemy async + FastAPI (后端) / Kotlin + Jetpack Compose + Hilt + Retrofit/Moshi (Android)
 
-**Spec:** [docs/superpowers/specs/2026-04-16-agent-binding-thinking-migration-design.md](../specs/2026-04-16-agent-binding-thinking-migration-design.md)
+**Spec:** [docs/superpowers/specs/2026-04-16-agent-binding-thinking-migration-design.md](../../../specs/2026-04-16-agent-binding-thinking-migration-design.md)
 
 **执行顺序：** Phase A（后端）先于 Phase B（前端），Phase B 开始前 Phase A 必须已合并到共享开发库。Phase A / B 内部任务按序。
 
