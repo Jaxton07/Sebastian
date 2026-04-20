@@ -32,6 +32,39 @@ status: partially-implemented
 - 生成阶段摘要
 - 提取候选事实、偏好、关系
 - 产生新的 artifacts
+- 对已有记忆提出生命周期操作（如 EXPIRE）
+
+#### ConsolidationResult 三个输出字段的语义分工
+
+| 字段 | 操作对象 | 是否经过 Resolver | 说明 |
+|------|----------|-------------------|------|
+| `summaries` | 不存在的新摘要 | 是（走 resolve_candidate） | Consolidator 生成的会话摘要，经 resolver 判断是否 ADD/DISCARD |
+| `proposed_artifacts` | 不存在的新候选记忆 | 是（走 resolve_candidate） | Consolidator 提议的新 fact/preference/episode/entity/relation，最终 ADD/SUPERSEDE/MERGE/DISCARD 由 resolver 决定，LLM 不直接控制 |
+| `proposed_actions` | 数据库中已存在的记忆（by memory_id） | 否（直接执行） | Consolidator 对已有记忆提出生命周期操作，唯一合法值为 `EXPIRE` |
+
+#### proposed_actions 的定位与边界
+
+`proposed_actions` 解决的是 `proposed_artifacts → resolver` 路径**无法覆盖的场景**：
+
+- `proposed_artifacts` + resolver 处理"新候选 vs 现有记录的冲突"，resolver 产出 SUPERSEDE 时同时有 old_id 和 new_memory
+- 但有一类场景是"**不需要新记忆、只需要让旧记忆失效**"：某条 active 事实没有设置 `valid_until`，但 Consolidator 从本次会话语义中判断它已经不再成立
+
+典型例子：上次记录了 `user.current_project_focus = "项目 A"`（无截止时间），本次会话用户说"已把项目 A 交给别人了"。Consolidator 通过 `proposed_actions EXPIRE + memory_id` 把该记录显式标为 `expired`，无需产生替代记忆。
+
+这与 `valid_until` 自动失效的区别：
+
+| | `valid_until` 到期 | `proposed_actions EXPIRE` |
+|---|---|---|
+| 触发方式 | 写入时设定，检索层过滤 | Consolidator 从会话语义主动判断 |
+| 适用场景 | 已知时效性的事实 | 无截止时间但被新对话语义推翻的事实 |
+| DB status 变化 | 无需改变（过滤层排除） | 显式从 active 改为 expired |
+| 需要 memory_id | 否 | 是 |
+
+**约束：**
+
+- `proposed_actions.action` 只允许 `"EXPIRE"`；ADD/SUPERSEDE 的语义由 `proposed_artifacts → resolver` 路径承担，不在此处执行
+- `memory_id` 必须非空且指向 active 的 profile memory 记录；0 命中时记录 `failed_expire` decision log，不写成功状态
+- 所有 EXPIRE 操作必须进入 `memory_decision_log`
 
 **Phase C 实现状态**：`SessionConsolidationWorker`（`sebastian/memory/consolidation.py`）已实现，由 `MemoryConsolidationScheduler` 订阅 `SESSION_COMPLETED` 事件触发。幂等性通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证；写入原子性通过单事务实现。启动时的 catch-up sweep 会补处理未沉淀的 completed session。
 

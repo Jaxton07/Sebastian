@@ -223,6 +223,23 @@ class ConsolidationResult(TypedDict):
 
 Consolidator 的职责是提出建议，而不是最终执行状态迁移。
 
+三个字段的语义分工：
+
+- `summaries`：Consolidator 生成的会话摘要，经 `resolve_candidate` 判断后写入 Episode Store
+- `proposed_artifacts`：Consolidator 提议的新候选记忆；最终 ADD / SUPERSEDE / MERGE / DISCARD 由 Resolver 决定，LLM 不直接控制写入结果
+- `proposed_actions`：对数据库中**已存在**记忆的生命周期操作建议，`action` 只允许 `"EXPIRE"`
+
+`ProposedAction` schema：
+
+```python
+class ProposedAction(TypedDict):
+    action: Literal["EXPIRE"]   # 唯一合法值；ADD/SUPERSEDE 由 proposed_artifacts + resolver 承担
+    memory_id: str              # 必填，指向 active profile memory 记录
+    reason: str
+```
+
+`proposed_actions` 的存在意义是覆盖一类 resolver 无法单独处理的场景：某条 active 事实没有 `valid_until`，但 Consolidator 从本次会话语义判断它已过时，需要显式将其标为 `expired`，且不产生任何替代记忆。详见 `consolidation.md §1.1`。
+
 ---
 
 ## 10. ResolveDecision
