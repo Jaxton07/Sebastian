@@ -7,7 +7,7 @@ from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.memory.subject import resolve_subject
 from sebastian.memory.trace import preview_text, record_ref, trace
-from sebastian.memory.types import MemoryScope
+from sebastian.memory.types import MemoryScope, MemorySource
 from sebastian.permissions.types import PermissionTier
 
 
@@ -94,7 +94,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
                 )
                 episode_records = [*summary_records, *detail_records]
 
-        relation_records = (
+        relation_records: list[Any] = (
             await entity_registry.list_relations(
                 subject_id=subject_id,
                 limit=plan.relation_limit,
@@ -149,7 +149,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
                 "lane": "relation",
                 "kind": "relation",
                 "content": record.content,
-                "source": "system_derived",
+                "source": MemorySource.SYSTEM_DERIVED.value,
                 "confidence": record.confidence if record.confidence is not None else 1.0,
                 "citation_type": "current_truth",
                 "is_current": True,
