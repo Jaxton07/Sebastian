@@ -137,5 +137,9 @@ class SlotRegistry:
                 f" (allowed: {[k.value for k in slot.kind_constraints]})."
             )
 
+    def register(self, schema: SlotDefinition) -> None:
+        """运行时注册 / 覆盖 slot。被 SlotProposalHandler 调用。"""
+        self._slots[schema.slot_id] = schema
+
 
 DEFAULT_SLOT_REGISTRY: SlotRegistry = SlotRegistry()
