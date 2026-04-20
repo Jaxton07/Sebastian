@@ -84,16 +84,16 @@ async def resolve_candidate(
     # ------------------------------------------------------------------
     if candidate.kind in (MemoryKind.EPISODE, MemoryKind.SUMMARY):
         if episode_store is not None:
-            existing = await episode_store.find_active_exact(
+            existing_ep = await episode_store.find_active_exact(
                 subject_id=subject_id,
                 kind=candidate.kind,
                 content=candidate.content,
             )
-            if existing is not None:
+            if existing_ep is not None:
                 return _trace_decision(ResolveDecision(
                     decision=MemoryDecisionType.DISCARD,
                     reason="exact duplicate episode/summary already exists",
-                    old_memory_ids=[existing.id],
+                    old_memory_ids=[existing_ep.id],
                     new_memory=None,
                     candidate=candidate,
                     subject_id=subject_id,

@@ -486,3 +486,30 @@ async def test_find_active_exact_returns_none_for_different_content(db_session) 
     )
 
     assert result is None
+
+
+async def test_find_active_exact_ignores_superseded_record(db_session) -> None:
+    """find_active_exact returns None when the matching record is superseded."""
+    store = ProfileMemoryStore(db_session)
+    db_session.add(
+        _make_record(
+            id="exact-superseded",
+            subject_id="user:owner",
+            scope=MemoryScope.USER.value,
+            slot_id="test.multi.merge",
+            kind=MemoryKind.FACT.value,
+            content="用户使用 Sebastian",
+            status=MemoryStatus.SUPERSEDED.value,
+        )
+    )
+    await db_session.flush()
+
+    result = await store.find_active_exact(
+        subject_id="user:owner",
+        scope=MemoryScope.USER.value,
+        slot_id="test.multi.merge",
+        kind=MemoryKind.FACT.value,
+        content="用户使用 Sebastian",
+    )
+
+    assert result is None

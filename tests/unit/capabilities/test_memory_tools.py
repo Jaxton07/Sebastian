@@ -703,6 +703,7 @@ async def test_memory_save_discard_writes_decision_log(enabled_memory_state, mon
         subject_id: str,
         profile_store: ProfileMemoryStore,
         slot_registry: SlotRegistry,
+        episode_store=None,
     ) -> ResolveDecision:
         return ResolveDecision(
             decision=MemoryDecisionType.DISCARD,
@@ -839,6 +840,7 @@ async def test_memory_save_discard_decision_log_has_input_source(
         subject_id: str,
         profile_store: ProfileMemoryStore,
         slot_registry: SlotRegistry,
+        episode_store=None,
     ) -> ResolveDecision:
         return ResolveDecision(
             decision=MemoryDecisionType.DISCARD,

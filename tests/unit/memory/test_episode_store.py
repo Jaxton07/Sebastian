@@ -430,3 +430,29 @@ async def test_find_active_exact_returns_none_for_different_content(db_session) 
     )
 
     assert result is None
+
+
+async def test_find_active_exact_ignores_superseded_record(db_session) -> None:
+    """find_active_exact must return None when the matching record is superseded."""
+    store = EpisodeMemoryStore(db_session)
+    content = "本次讨论了记忆模块"
+    record = await store.add_summary(
+        _make_artifact(
+            id="sum-superseded",
+            kind=MemoryKind.SUMMARY,
+            content=content,
+            subject_id="user:owner",
+        )
+    )
+
+    # Mark the record superseded directly via the session
+    record.status = MemoryStatus.SUPERSEDED.value
+    await db_session.flush()
+
+    result = await store.find_active_exact(
+        subject_id="user:owner",
+        kind=MemoryKind.SUMMARY,
+        content=content,
+    )
+
+    assert result is None
