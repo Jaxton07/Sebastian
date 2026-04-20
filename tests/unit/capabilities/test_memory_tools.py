@@ -84,48 +84,94 @@ def no_db_state(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def _preference_candidate():
+    """Valid CandidateArtifact for use in mocked extractor responses."""
+    from sebastian.memory.types import (
+        CandidateArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+    )
+
+    return CandidateArtifact(
+        kind=MemoryKind.PREFERENCE,
+        content="以后回答简洁中文",
+        structured_payload={},
+        subject_hint="owner",
+        scope=MemoryScope.USER,
+        slot_id="user.preference.response_style",
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.95,
+        source=MemorySource.EXPLICIT,
+        evidence=[],
+        valid_from=None,
+        valid_until=None,
+        policy_tags=[],
+        needs_review=False,
+    )
+
+
+def _mock_extractor(monkeypatch, candidates):
+    """Patch state.memory_extractor with an AsyncMock returning `candidates`."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock = MagicMock()
+    mock.extract = AsyncMock(return_value=candidates)
+    monkeypatch.setattr(state_module, "memory_extractor", mock, raising=False)
+    return mock
+
+
 @pytest.mark.asyncio
-async def test_memory_save_returns_ok(enabled_memory_state, caplog) -> None:
+async def test_memory_save_returns_ok(enabled_memory_state, monkeypatch, caplog) -> None:
+    """memory_save 立即返回 ok=True，后台保存完成后 DB 有记录。"""
     from sqlalchemy import select
 
-    from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
     from sebastian.memory.types import MemoryStatus
     from sebastian.store.models import ProfileMemoryRecord
 
+    _mock_extractor(monkeypatch, [_preference_candidate()])
     caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
-    result = await memory_save(
-        content="以后回答简洁中文",
-        slot_id="user.preference.response_style",
-    )
+
+    result = await memory_save(content="以后回答简洁中文")
 
     assert result.ok is True
-    assert result.output is not None
-    assert result.output["saved"] == "以后回答简洁中文"
-    assert result.output["slot_id"] == "user.preference.response_style"
+    assert result.output == {"message": "已记住，正在后台保存。"}
 
-    # DB-state assertion: verify the record was actually persisted correctly.
+    await drain_pending_saves()
+
     async with enabled_memory_state() as session:
         rows = (await session.scalars(select(ProfileMemoryRecord))).all()
     assert len(rows) == 1
-    row = rows[0]
-    assert row.content == "以后回答简洁中文"
-    assert row.slot_id == "user.preference.response_style"
-    assert row.status == MemoryStatus.ACTIVE.value
-    assert "MEMORY_TRACE tool.memory_save.start" in caplog.text
-    assert "MEMORY_TRACE tool.memory_save.done" in caplog.text
+    assert rows[0].content == "以后回答简洁中文"
+    assert rows[0].slot_id == "user.preference.response_style"
+    assert rows[0].status == MemoryStatus.ACTIVE.value
+    assert "MEMORY_TRACE tool.memory_save.bg_done" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_memory_save_without_slot_id_rejected(enabled_memory_state, caplog) -> None:
-    """Saving without a slot_id yields FACT kind, which requires a slot → validation rejects."""
-    from sebastian.capabilities.tools.memory_save import memory_save
+async def test_memory_save_extractor_empty_skips_save(
+    enabled_memory_state, monkeypatch, caplog
+) -> None:
+    """extractor 返回空列表时，后台任务不写入任何记录。"""
+    from sqlalchemy import select
 
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.store.models import ProfileMemoryRecord
+
+    _mock_extractor(monkeypatch, [])
     caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
+
     result = await memory_save(content="用户喜欢深色主题")
 
-    assert result.ok is False
-    assert "slot" in (result.error or "").lower()
-    assert "MEMORY_TRACE tool.memory_save.reject" in caplog.text
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as session:
+        rows = (await session.scalars(select(ProfileMemoryRecord))).all()
+    assert len(rows) == 0
+    assert "tool.memory_save.bg_skip" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -146,6 +192,222 @@ async def test_memory_save_no_db_returns_error(no_db_state) -> None:
 
     assert result.ok is False
     assert result.error is not None
+
+
+@pytest.mark.asyncio
+async def test_memory_save_invalid_slot_logs_discard(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """extractor 返回未知 slot 的 candidate → validate 失败 → DISCARD 进 decision log，无 DB 记录。"""
+    from sqlalchemy import select
+
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.memory.types import (
+        CandidateArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+    )
+    from sebastian.store.models import MemoryDecisionLogRecord, ProfileMemoryRecord
+
+    bad_candidate = CandidateArtifact(
+        kind=MemoryKind.FACT,
+        content="x",
+        structured_payload={},
+        subject_hint="owner",
+        scope=MemoryScope.USER,
+        slot_id="no.such.slot",
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.95,
+        source=MemorySource.EXPLICIT,
+        evidence=[],
+        valid_from=None,
+        valid_until=None,
+        policy_tags=[],
+        needs_review=False,
+    )
+    _mock_extractor(monkeypatch, [bad_candidate])
+
+    result = await memory_save(content="x")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        profile_rows = (await s.scalars(select(ProfileMemoryRecord))).all()
+        log_rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(profile_rows) == 0
+    assert len(log_rows) == 1
+    assert log_rows[0].decision == "DISCARD"
+
+
+@pytest.mark.asyncio
+async def test_memory_save_discard_writes_decision_log(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """resolver 返回 DISCARD 时 decision log 有记录。"""
+    from sqlalchemy import select
+
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    async def fake_resolve(
+        candidate,
+        *,
+        subject_id,
+        profile_store,
+        slot_registry,
+        episode_store=None,
+    ) -> ResolveDecision:
+        return ResolveDecision(
+            decision=MemoryDecisionType.DISCARD,
+            reason="test",
+            old_memory_ids=[],
+            new_memory=None,
+            candidate=candidate,
+            subject_id=subject_id,
+            scope=candidate.scope,
+            slot_id=candidate.slot_id,
+        )
+
+    monkeypatch.setattr("sebastian.memory.pipeline.resolve_candidate", fake_resolve)
+
+    result = await memory_save(content="x")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].decision == MemoryDecisionType.DISCARD.value
+
+
+@pytest.mark.asyncio
+async def test_memory_save_decision_log_has_input_source(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """decision log 的 input_source["type"] == "memory_save_tool"。"""
+    from sqlalchemy import select
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    monkeypatch.setattr(_state, "current_session_id", "sess-tool-123", raising=False)
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    result = await memory_save(content="以后回答简洁中文")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(rows) >= 1
+    for row in rows:
+        assert row.input_source is not None
+        assert row.input_source["type"] == "memory_save_tool"
+
+
+@pytest.mark.asyncio
+async def test_memory_save_provenance_contains_session_id(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """保存的记忆 provenance 包含 session_id 和 evidence。"""
+    from sqlalchemy import select
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.store.models import ProfileMemoryRecord
+
+    monkeypatch.setattr(_state, "current_session_id", "sess-memory-save", raising=False)
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    result = await memory_save(content="以后回答简洁中文")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(ProfileMemoryRecord))).all()
+    assert len(rows) == 1
+    prov = rows[0].provenance
+    assert prov is not None
+    assert prov.get("session_id") == "sess-memory-save"
+    assert prov.get("evidence") == [{"session_id": "sess-memory-save"}]
+
+
+@pytest.mark.asyncio
+async def test_memory_save_provenance_no_session_id_when_absent(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """未设置 session_id 时 provenance.evidence 为空列表，无 session_id 键。"""
+    from sqlalchemy import select
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.store.models import ProfileMemoryRecord
+
+    monkeypatch.setattr(_state, "current_session_id", None, raising=False)
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    result = await memory_save(content="以后回答简洁中文")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(ProfileMemoryRecord))).all()
+    assert len(rows) == 1
+    prov = rows[0].provenance
+    assert prov is not None
+    assert prov.get("evidence") == []
+    assert "session_id" not in prov
+
+
+@pytest.mark.asyncio
+async def test_memory_save_discard_decision_log_has_input_source(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """DISCARD 路径下 decision log 也有 input_source["type"] == "memory_save_tool"。"""
+    from sqlalchemy import select
+
+    from sebastian.capabilities.tools.memory_save import drain_pending_saves, memory_save
+    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
+    from sebastian.store.models import MemoryDecisionLogRecord
+
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    async def fake_resolve(
+        candidate,
+        *,
+        subject_id,
+        profile_store,
+        slot_registry,
+        episode_store=None,
+    ) -> ResolveDecision:
+        return ResolveDecision(
+            decision=MemoryDecisionType.DISCARD,
+            reason="test-discard",
+            old_memory_ids=[],
+            new_memory=None,
+            candidate=candidate,
+            subject_id=subject_id,
+            scope=candidate.scope,
+            slot_id=candidate.slot_id,
+        )
+
+    monkeypatch.setattr("sebastian.memory.pipeline.resolve_candidate", fake_resolve)
+
+    result = await memory_save(content="x")
+    assert result.ok is True
+    await drain_pending_saves()
+
+    async with enabled_memory_state() as s:
+        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
+    assert len(rows) == 1
+    assert rows[0].input_source is not None
+    assert rows[0].input_source["type"] == "memory_save_tool"
 
 
 # ---------------------------------------------------------------------------
@@ -1008,140 +1270,6 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
     assert "relation" in lanes, f"Relation lane missing; lanes={lanes}"
 
 
-@pytest.mark.asyncio
-async def test_memory_save_discard_writes_decision_log(enabled_memory_state, monkeypatch) -> None:
-    from sqlalchemy import select
-
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
-    from sebastian.store.models import MemoryDecisionLogRecord
-
-    async def fake_resolve(
-        candidate: CandidateArtifact,
-        *,
-        subject_id: str,
-        profile_store: ProfileMemoryStore,
-        slot_registry: SlotRegistry,
-        episode_store=None,
-    ) -> ResolveDecision:
-        return ResolveDecision(
-            decision=MemoryDecisionType.DISCARD,
-            reason="test",
-            old_memory_ids=[],
-            new_memory=None,
-            candidate=candidate,
-            subject_id=subject_id,
-            scope=candidate.scope,
-            slot_id=candidate.slot_id,
-        )
-
-    monkeypatch.setattr(
-        "sebastian.capabilities.tools.memory_save.resolve_candidate",
-        fake_resolve,
-        raising=False,
-    )
-
-    result = await memory_save(content="x", slot_id="user.preference.language")
-    assert result.ok is False
-
-    async with enabled_memory_state() as s:
-        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
-        assert len(rows) == 1
-        assert rows[0].decision == MemoryDecisionType.DISCARD.value
-
-
-@pytest.mark.asyncio
-async def test_memory_save_rejects_unknown_slot(enabled_memory_state) -> None:
-    from sebastian.capabilities.tools.memory_save import memory_save
-
-    result = await memory_save(content="x", slot_id="no.such.slot")
-    assert result.ok is False
-    assert "slot" in (result.error or "").lower()
-
-
-@pytest.mark.asyncio
-async def test_memory_save_decision_log_has_input_source(enabled_memory_state, monkeypatch) -> None:
-    """memory_save 写出的 decision log 应有 input_source["type"] == "memory_save_tool"。"""
-    from sqlalchemy import select
-
-    import sebastian.gateway.state as _state
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.store.models import MemoryDecisionLogRecord
-
-    # 设置 session_id 便于断言
-    monkeypatch.setattr(_state, "current_session_id", "sess-tool-123", raising=False)
-
-    result = await memory_save(
-        content="以后回答简洁中文",
-        slot_id="user.preference.response_style",
-    )
-    assert result.ok is True
-
-    async with enabled_memory_state() as s:
-        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
-    assert len(rows) >= 1
-    for row in rows:
-        assert row.input_source is not None
-        assert row.input_source["type"] == "memory_save_tool"
-
-
-@pytest.mark.asyncio
-async def test_memory_save_provenance_contains_session_id(
-    enabled_memory_state, monkeypatch
-) -> None:
-    """memory_save 保存的记忆 provenance 应包含 session_id 和 evidence。"""
-    from sqlalchemy import select
-
-    import sebastian.gateway.state as _state
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.store.models import ProfileMemoryRecord
-
-    monkeypatch.setattr(_state, "current_session_id", "sess-memory-save", raising=False)
-
-    result = await memory_save(
-        content="以后回答简洁中文",
-        slot_id="user.preference.response_style",
-    )
-    assert result.ok is True
-
-    async with enabled_memory_state() as s:
-        rows = (await s.scalars(select(ProfileMemoryRecord))).all()
-    assert len(rows) == 1
-    prov = rows[0].provenance
-    assert prov is not None
-    assert prov.get("session_id") == "sess-memory-save"
-    assert prov.get("evidence") == [{"session_id": "sess-memory-save"}]
-
-
-@pytest.mark.asyncio
-async def test_memory_save_provenance_no_session_id_when_absent(
-    enabled_memory_state, monkeypatch
-) -> None:
-    """未设置 session_id 时 provenance.evidence 应为空列表，无 session_id 键。"""
-    from sqlalchemy import select
-
-    import sebastian.gateway.state as _state
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.store.models import ProfileMemoryRecord
-
-    # Ensure no session_id is set
-    monkeypatch.setattr(_state, "current_session_id", None, raising=False)
-
-    result = await memory_save(
-        content="以后回答简洁中文",
-        slot_id="user.preference.response_style",
-    )
-    assert result.ok is True
-
-    async with enabled_memory_state() as s:
-        rows = (await s.scalars(select(ProfileMemoryRecord))).all()
-    assert len(rows) == 1
-    prov = rows[0].provenance
-    assert prov is not None
-    assert prov.get("evidence") == []
-    assert "session_id" not in prov
-
-
 # ---------------------------------------------------------------------------
 # memory_search filtering tests (Task 3)
 # ---------------------------------------------------------------------------
@@ -1311,47 +1439,3 @@ async def test_memory_search_returns_do_not_auto_inject_record(enabled_memory_st
     )
 
 
-@pytest.mark.asyncio
-async def test_memory_save_discard_decision_log_has_input_source(
-    enabled_memory_state, monkeypatch
-) -> None:
-    """DISCARD 路径下 decision log 也应有 input_source["type"] == "memory_save_tool"。"""
-    from sqlalchemy import select
-
-    from sebastian.capabilities.tools.memory_save import memory_save
-    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
-    from sebastian.store.models import MemoryDecisionLogRecord
-
-    async def fake_resolve(
-        candidate: CandidateArtifact,
-        *,
-        subject_id: str,
-        profile_store: ProfileMemoryStore,
-        slot_registry: SlotRegistry,
-        episode_store=None,
-    ) -> ResolveDecision:
-        return ResolveDecision(
-            decision=MemoryDecisionType.DISCARD,
-            reason="test-discard",
-            old_memory_ids=[],
-            new_memory=None,
-            candidate=candidate,
-            subject_id=subject_id,
-            scope=candidate.scope,
-            slot_id=candidate.slot_id,
-        )
-
-    monkeypatch.setattr(
-        "sebastian.capabilities.tools.memory_save.resolve_candidate",
-        fake_resolve,
-        raising=False,
-    )
-
-    result = await memory_save(content="x", slot_id="user.preference.language")
-    assert result.ok is False
-
-    async with enabled_memory_state() as s:
-        rows = (await s.scalars(select(MemoryDecisionLogRecord))).all()
-    assert len(rows) == 1
-    assert rows[0].input_source is not None
-    assert rows[0].input_source["type"] == "memory_save_tool"

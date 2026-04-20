@@ -11,119 +11,109 @@ from sebastian.permissions.types import PermissionTier
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Pending task registry — used by drain_pending_saves() in tests
+# ---------------------------------------------------------------------------
+
+_pending_tasks: set[asyncio.Task[None]] = set()
+
+
+async def drain_pending_saves() -> None:
+    """Wait for all in-flight background save tasks to complete.
+
+    Intended for use in tests only. In production, background tasks complete
+    independently and callers must not block on them.
+    """
+    pending = list(_pending_tasks)
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+# ---------------------------------------------------------------------------
+# Background save task
+# ---------------------------------------------------------------------------
+
 
 async def _do_save(content: str, session_id: str | None, agent_type: str) -> None:
-    """Background task: run the full memory write pipeline for an explicit save."""
+    """Background task: extract candidate artifacts via LLM, then persist them."""
     from sebastian.memory.decision_log import MemoryDecisionLogger
     from sebastian.memory.entity_registry import EntityRegistry
     from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.errors import InvalidCandidateError
+    from sebastian.memory.extraction import ExtractorInput
+    from sebastian.memory.pipeline import process_candidates
     from sebastian.memory.profile_store import ProfileMemoryStore
-    from sebastian.memory.resolver import resolve_candidate
     from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
     from sebastian.memory.subject import resolve_subject
-    from sebastian.memory.types import (
-        CandidateArtifact,
-        MemoryKind,
-        MemoryScope,
-        MemorySource,
-    )
-    from sebastian.memory.write_router import persist_decision
+    from sebastian.memory.types import MemoryScope
 
-    memory_scope = MemoryScope.USER
+    extractor = getattr(state, "memory_extractor", None)
+    if extractor is None:
+        trace("tool.memory_save.bg_skip", reason="no_extractor")
+        return
+
     subject_id = await resolve_subject(
-        memory_scope,
+        MemoryScope.USER,
         session_id=session_id or "",
         agent_type=agent_type,
     )
 
-    evidence = [{"session_id": session_id}] if session_id is not None else []
-    candidate = CandidateArtifact(
-        kind=MemoryKind.FACT,
-        content=content,
-        structured_payload={},
-        subject_hint=subject_id,
-        scope=memory_scope,
-        slot_id=None,
-        cardinality=None,
-        resolution_policy=None,
-        confidence=0.95,
-        source=MemorySource.EXPLICIT,
-        evidence=evidence,
-        valid_from=None,
-        valid_until=None,
-        policy_tags=[],
-        needs_review=False,
+    extractor_input = ExtractorInput(
+        subject_context={"subject_id": subject_id, "agent_type": agent_type},
+        conversation_window=[{"role": "user", "content": content}],
+        known_slots=[s.model_dump() for s in DEFAULT_SLOT_REGISTRY.list_all()],
     )
+    candidates = await extractor.extract(extractor_input)
 
-    try:
-        DEFAULT_SLOT_REGISTRY.validate_candidate(candidate)
-    except InvalidCandidateError as e:
-        trace("tool.memory_save.bg_reject", reason="validation_failed", error=str(e))
-        logger.warning("memory_save background task: validation failed: %s", e)
+    if not candidates:
+        trace("tool.memory_save.bg_skip", reason="extractor_empty")
         return
 
-    async with state.db_factory() as session:
-        profile_store = ProfileMemoryStore(session)
-        episode_store = EpisodeMemoryStore(session)
-        entity_registry = EntityRegistry(session)
-        decision_logger = MemoryDecisionLogger(session)
+    # Inject session evidence so provenance is traceable per session
+    if session_id is not None:
+        candidates = [
+            c.model_copy(update={"evidence": [{"session_id": session_id}]})
+            for c in candidates
+        ]
 
-        from sebastian.memory.types import MemoryDecisionType
-
-        decision = await resolve_candidate(
-            candidate,
-            subject_id=subject_id,
-            profile_store=profile_store,
+    async with state.db_factory() as db_session:
+        decisions = await process_candidates(
+            candidates,
+            session_id=session_id or "",
+            agent_type=agent_type,
+            db_session=db_session,
+            profile_store=ProfileMemoryStore(db_session),
+            episode_store=EpisodeMemoryStore(db_session),
+            entity_registry=EntityRegistry(db_session),
+            decision_logger=MemoryDecisionLogger(db_session),
             slot_registry=DEFAULT_SLOT_REGISTRY,
-            episode_store=episode_store,
-        )
-
-        if decision.decision == MemoryDecisionType.DISCARD:
-            await decision_logger.append(
-                decision,
-                worker="memory_save_tool",
-                model=None,
-                rule_version="phase_b_v1",
-                input_source={"type": "memory_save_tool", "session_id": session_id},
-            )
-            await session.commit()
-            trace("tool.memory_save.bg_done", decision="DISCARD")
-            return
-
-        if decision.new_memory is None:
-            trace("tool.memory_save.bg_error", reason="missing_new_memory")
-            logger.error("memory_save background task: resolver produced no new_memory")
-            return
-
-        await persist_decision(
-            decision,
-            session=session,
-            profile_store=profile_store,
-            episode_store=episode_store,
-            entity_registry=entity_registry,
-        )
-        await decision_logger.append(
-            decision,
-            worker="memory_save_tool",
-            model=None,
+            worker_id="memory_save_tool",
+            model_name=None,
             rule_version="phase_b_v1",
             input_source={"type": "memory_save_tool", "session_id": session_id},
         )
-        await session.commit()
+        await db_session.commit()
 
-    trace(
-        "tool.memory_save.bg_done",
-        decision=decision.decision,
-        new_memory_id=decision.new_memory.id if decision.new_memory is not None else None,
-    )
+    trace("tool.memory_save.bg_done", decision_count=len(decisions))
+
+
+def _log_bg_error(t: asyncio.Task[None]) -> None:
+    if t.cancelled():
+        return
+    exc = t.exception()
+    if exc is not None:
+        logger.error("memory_save background task failed: %s", exc, exc_info=exc)
+
+
+# ---------------------------------------------------------------------------
+# Tool definition
+# ---------------------------------------------------------------------------
 
 
 @tool(
     name="memory_save",
     description=(
         "保存用户明确要求记住的内容。"
-        "仅当用户直接要求你记住某件事时调用，例如"帮我记住……"。"
+        "仅当用户直接要求你记住某件事时调用，例如'帮我记住……'。"
     ),
     permission_tier=PermissionTier.LOW,
 )
@@ -146,14 +136,8 @@ async def memory_save(content: str) -> ToolResult:
         _do_save(content, session_id, agent_type),
         name=f"memory_save_{session_id}",
     )
-
-    def _log_bg_error(t: asyncio.Task[None]) -> None:
-        if t.cancelled():
-            return
-        exc = t.exception()
-        if exc is not None:
-            logger.error("memory_save background task failed: %s", exc, exc_info=exc)
-
+    _pending_tasks.add(task)
+    task.add_done_callback(_pending_tasks.discard)
     task.add_done_callback(_log_bg_error)
 
     trace("tool.memory_save.dispatched", session_id=session_id)
