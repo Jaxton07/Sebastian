@@ -3,20 +3,54 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from sebastian.memory.episode_store import ensure_episode_fts
 from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
 from sebastian.store.models import MemorySlotRecord
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
+
+
+async def ensure_profile_fts(conn: AsyncConnection) -> None:
+    """Create the profile_memories_fts virtual table if it does not exist."""
+    await conn.execute(
+        text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
+            "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+        )
+    )
+
+
+async def _backfill_profile_fts(conn: AsyncConnection) -> None:
+    """Index profile_memories rows not yet in the FTS virtual table."""
+    from sebastian.memory.segmentation import segment_for_fts
+
+    result = await conn.execute(
+        text(
+            "SELECT id, content FROM profile_memories "
+            "WHERE id NOT IN (SELECT memory_id FROM profile_memories_fts)"
+        )
+    )
+    rows = result.fetchall()
+    for row in rows:
+        segmented = segment_for_fts(row[1])
+        await conn.execute(
+            text(
+                "INSERT INTO profile_memories_fts(memory_id, content_segmented) "
+                "VALUES (:memory_id, :content_segmented)"
+            ),
+            {"memory_id": row[0], "content_segmented": segmented},
+        )
 
 
 async def init_memory_storage(engine: AsyncEngine) -> None:
     """Initialize memory storage virtual tables. Idempotent. Call after init_db()."""
     async with engine.begin() as conn:
         await ensure_episode_fts(conn)
+        await ensure_profile_fts(conn)
+        await _backfill_profile_fts(conn)
 
 
 async def seed_builtin_slots(session: AsyncSession) -> None:

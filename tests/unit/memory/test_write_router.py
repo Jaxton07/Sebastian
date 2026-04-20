@@ -35,10 +35,13 @@ from sebastian.store.models import (
 
 @pytest.fixture
 async def db_session():
+    from sebastian.memory.startup import ensure_profile_fts
+
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await ensure_episode_fts(conn)
+        await ensure_profile_fts(conn)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         yield session

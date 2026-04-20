@@ -76,6 +76,7 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
         ("memory_decision_log", "input_source", "TEXT"),
         ("profile_memories", "cardinality", "VARCHAR"),
         ("profile_memories", "resolution_policy", "VARCHAR"),
+        ("profile_memories", "content_segmented", "VARCHAR DEFAULT ''"),
         ("episode_memories", "valid_from", "DATETIME"),
         ("episode_memories", "valid_until", "DATETIME"),
         ("relation_candidates", "policy_tags", "TEXT"),

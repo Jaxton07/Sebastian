@@ -130,6 +130,7 @@ class ProfileMemoryRecord(Base):
     cardinality: Mapped[str | None] = mapped_column(String, nullable=True)
     resolution_policy: Mapped[str | None] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(String)
+    content_segmented: Mapped[str] = mapped_column(String, default="")
     structured_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     source: Mapped[str] = mapped_column(String)
     confidence: Mapped[float] = mapped_column(Float)

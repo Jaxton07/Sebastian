@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, text, update
 
+from sebastian.memory.segmentation import build_match_query, segment_for_fts, terms_for_query
 from sebastian.memory.types import MemoryArtifact, MemoryStatus
 from sebastian.store.models import ProfileMemoryRecord
 
@@ -19,6 +20,14 @@ class ProfileMemoryStore:
     async def add(self, artifact: MemoryArtifact) -> ProfileMemoryRecord:
         record = self._artifact_to_record(artifact)
         self._session.add(record)
+        await self._session.flush()
+        await self._session.execute(
+            text(
+                "INSERT INTO profile_memories_fts(memory_id, content_segmented) "
+                "VALUES (:memory_id, :content_segmented)"
+            ),
+            {"memory_id": record.id, "content_segmented": record.content_segmented},
+        )
         await self._session.flush()
         return record
 
@@ -134,28 +143,64 @@ class ProfileMemoryStore:
         self,
         *,
         subject_id: str,
+        query: str = "",
         window_days: int = 7,
         limit: int = 3,
     ) -> list[ProfileMemoryRecord]:
-        """Return recent active FACT/PREFERENCE records within the time window."""
+        """Return recent active records matching *query* within *window_days*.
+
+        Uses FTS5 + jieba when *query* is non-empty and produces terms.
+        Falls back to confidence-then-recency order when *query* is empty
+        or produces no FTS terms.
+        """
+        from collections import Counter
+
         now = datetime.now(UTC)
         cutoff = now - timedelta(days=window_days)
+        base_filters = [
+            ProfileMemoryRecord.subject_id == subject_id,
+            ProfileMemoryRecord.status == MemoryStatus.ACTIVE.value,
+            or_(ProfileMemoryRecord.valid_until.is_(None), ProfileMemoryRecord.valid_until > now),
+            or_(ProfileMemoryRecord.valid_from.is_(None), ProfileMemoryRecord.valid_from <= now),
+            ProfileMemoryRecord.created_at >= cutoff,
+        ]
+
+        terms = terms_for_query(query) if query else []
+        if terms:
+            match_counts: Counter[str] = Counter()
+            for term in terms:
+                phrase = build_match_query([term])
+                result = await self._session.execute(
+                    text(
+                        "SELECT memory_id FROM profile_memories_fts "
+                        "WHERE content_segmented MATCH :query"
+                    ),
+                    {"query": phrase},
+                )
+                match_counts.update(row[0] for row in result)
+
+            if match_counts:
+                ids_by_rank = [mid for mid, _ in match_counts.most_common()]
+                rank_by_id = {mid: rank for rank, mid in enumerate(ids_by_rank)}
+
+                rows = await self._session.scalars(
+                    select(ProfileMemoryRecord).where(
+                        *base_filters,
+                        ProfileMemoryRecord.id.in_(ids_by_rank),
+                    )
+                )
+                records = list(rows.all())
+                records.sort(key=lambda r: (rank_by_id[r.id], -(r.confidence or 0.0)))
+                return records[:limit]
+
+        # Fallback: confidence-then-recency
         statement = (
             select(ProfileMemoryRecord)
-            .where(
-                ProfileMemoryRecord.subject_id == subject_id,
-                ProfileMemoryRecord.status == MemoryStatus.ACTIVE.value,
-                or_(
-                    ProfileMemoryRecord.valid_until.is_(None),
-                    ProfileMemoryRecord.valid_until > now,
-                ),
-                or_(
-                    ProfileMemoryRecord.valid_from.is_(None),
-                    ProfileMemoryRecord.valid_from <= now,
-                ),
-                ProfileMemoryRecord.created_at >= cutoff,
+            .where(*base_filters)
+            .order_by(
+                ProfileMemoryRecord.confidence.desc(),
+                ProfileMemoryRecord.created_at.desc(),
             )
-            .order_by(ProfileMemoryRecord.created_at.desc())
             .limit(limit)
         )
         result = await self._session.scalars(statement)
@@ -188,6 +233,7 @@ class ProfileMemoryStore:
                 else None
             ),
             content=artifact.content,
+            content_segmented=segment_for_fts(artifact.content),
             structured_payload=artifact.structured_payload,
             source=artifact.source.value,
             confidence=artifact.confidence,

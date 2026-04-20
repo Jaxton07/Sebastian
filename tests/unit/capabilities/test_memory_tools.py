@@ -34,6 +34,13 @@ async def _create_in_memory_factory():
                 "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
             )
         )
+        # Profile FTS table (needed by ProfileMemoryStore.add)
+        await conn.execute(
+            sqlalchemy.text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
     return async_sessionmaker(engine, expire_on_commit=False)
 
 

@@ -23,9 +23,17 @@ from sebastian.store.models import ProfileMemoryRecord
 
 @pytest.fixture
 async def db_session():
+    from sqlalchemy import text
+
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         yield session
@@ -486,6 +494,57 @@ async def test_find_active_exact_returns_none_for_different_content(db_session) 
     )
 
     assert result is None
+
+
+@pytest.fixture
+async def fts_db_session():
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_search_recent_context_is_query_aware(fts_db_session) -> None:
+    store = ProfileMemoryStore(fts_db_session)
+
+    project_artifact = _make_artifact(
+        id="mem-project",
+        slot_id="user.current_project_focus",
+        kind=MemoryKind.FACT,
+        content="当前专注 Sebastian 项目的记忆模块",
+        confidence=0.9,
+    )
+    other_artifact = _make_artifact(
+        id="mem-timezone",
+        slot_id="user.profile.timezone",
+        kind=MemoryKind.FACT,
+        content="用户所在时区为 Asia/Shanghai",
+        confidence=0.95,
+    )
+    await store.add(project_artifact)
+    await store.add(other_artifact)
+
+    results = await store.search_recent_context(
+        subject_id="owner",
+        query="记忆模块",
+        limit=5,
+    )
+    assert len(results) >= 1
+    assert results[0].id == "mem-project"
+    assert all(r.id != "mem-timezone" for r in results)
 
 
 async def test_find_active_exact_ignores_superseded_record(db_session) -> None:

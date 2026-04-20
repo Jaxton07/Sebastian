@@ -104,6 +104,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         context_records = (
             await profile_store.search_recent_context(
                 subject_id=subject_id,
+                query=query,
                 limit=lane_budgets["context"],
             )
             if plan.context_lane

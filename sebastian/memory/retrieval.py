@@ -286,6 +286,7 @@ async def retrieve_memory_section(
     if plan.context_lane:
         context_records = await profile_store.search_recent_context(
             subject_id=context.subject_id,
+            query=context.user_message,
             limit=plan.context_limit,
         )
     trace(
