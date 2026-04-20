@@ -690,6 +690,204 @@ async def test_memory_search_summary_first(enabled_memory_state) -> None:
 
 
 @pytest.mark.asyncio
+async def test_memory_search_profile_does_not_starve_episode_lane(
+    enabled_memory_state,
+) -> None:
+    """With 5 profile records and limit=5, episode lane must still appear in results."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        profile_store = ProfileMemoryStore(session)
+        for idx in range(5):
+            await profile_store.add(
+                MemoryArtifact(
+                    id=f"profile-starve-{idx}",
+                    kind=MemoryKind.PREFERENCE,
+                    scope=MemoryScope.USER,
+                    subject_id="owner",
+                    slot_id=f"user.preference.starve_{idx}",
+                    cardinality=None,
+                    resolution_policy=None,
+                    content=f"偏好设置 {idx}",
+                    structured_payload={},
+                    source=MemorySource.EXPLICIT,
+                    confidence=1.0,
+                    status=MemoryStatus.ACTIVE,
+                    valid_from=None,
+                    valid_until=None,
+                    recorded_at=now,
+                    last_accessed_at=None,
+                    access_count=0,
+                    provenance={},
+                    links=[],
+                    embedding_ref=None,
+                    dedupe_key=None,
+                    policy_tags=[],
+                )
+            )
+        await EpisodeMemoryStore(session).add_episode(
+            MemoryArtifact(
+                id="episode-starve-1",
+                kind=MemoryKind.EPISODE,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上次讨论了记忆模块设计",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.9,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    # "上次" triggers episode lane; profile is always on
+    result = await memory_search(query="上次讨论偏好", limit=5)
+
+    assert result.ok is True
+    items = result.output["items"]
+    lanes = [item["lane"] for item in items]
+    assert len(items) <= 5, f"Total items must not exceed limit=5, got {len(items)}"
+    assert "episode" in lanes, (
+        f"Episode lane must appear despite 5 profile records; lanes={lanes}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_memory_search_all_lanes_represented_within_limit(
+    enabled_memory_state,
+) -> None:
+    """When all 4 lanes activate, each must appear at least once and total <= limit."""
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+    from sebastian.store.models import RelationCandidateRecord
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        profile_store = ProfileMemoryStore(session)
+        for idx in range(3):
+            await profile_store.add(
+                MemoryArtifact(
+                    id=f"profile-alllane-{idx}",
+                    kind=MemoryKind.FACT,
+                    scope=MemoryScope.USER,
+                    subject_id="owner",
+                    slot_id=f"user.fact.alllane_{idx}",
+                    cardinality=None,
+                    resolution_policy=None,
+                    content=f"事实 {idx}",
+                    structured_payload={},
+                    source=MemorySource.EXPLICIT,
+                    confidence=1.0,
+                    status=MemoryStatus.ACTIVE,
+                    valid_from=None,
+                    valid_until=None,
+                    recorded_at=now,
+                    last_accessed_at=None,
+                    access_count=0,
+                    provenance={},
+                    links=[],
+                    embedding_ref=None,
+                    dedupe_key=None,
+                    policy_tags=[],
+                )
+            )
+        await EpisodeMemoryStore(session).add_episode(
+            MemoryArtifact(
+                id="episode-alllane-1",
+                kind=MemoryKind.EPISODE,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上次讨论了项目架构",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.9,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        session.add(
+            RelationCandidateRecord(
+                id=str(uuid4()),
+                subject_id="owner",
+                predicate="works_on",
+                source_entity_id="owner",
+                target_entity_id="sebastian-project",
+                content="owner works_on sebastian-project",
+                structured_payload={},
+                confidence=0.9,
+                status="active",
+                valid_from=None,
+                valid_until=None,
+                provenance={},
+                policy_tags=[],
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await session.commit()
+
+    # "现在"→context, "上次"→episode, "项目"→relation, profile is always on
+    result = await memory_search(query="现在上次项目讨论", limit=5)
+
+    assert result.ok is True
+    items = result.output["items"]
+    lanes = [item["lane"] for item in items]
+    assert len(items) <= 5, f"Total must not exceed limit=5, got {len(items)}"
+    assert "profile" in lanes, f"Profile lane missing; lanes={lanes}"
+    assert "context" in lanes, f"Context lane missing; lanes={lanes}"
+    assert "episode" in lanes, f"Episode lane missing; lanes={lanes}"
+    assert "relation" in lanes, f"Relation lane missing; lanes={lanes}"
+
+
+@pytest.mark.asyncio
 async def test_memory_save_discard_writes_decision_log(enabled_memory_state, monkeypatch) -> None:
     from sqlalchemy import select
 

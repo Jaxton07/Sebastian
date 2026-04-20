@@ -54,6 +54,29 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     planner = MemoryRetrievalPlanner()
     plan = planner.plan(retrieval_ctx)
 
+    # Lane-aware budget allocation: distribute `limit` across activated lanes so
+    # every lane gets at least 1 slot, then spread the remainder to earlier lanes.
+    # This prevents high-cardinality lanes (profile) from silently starving others.
+    active_lanes: list[tuple[str, int]] = []
+    if plan.profile_lane:
+        active_lanes.append(("profile", plan.profile_limit))
+    if plan.context_lane:
+        active_lanes.append(("context", plan.context_limit))
+    if plan.episode_lane:
+        active_lanes.append(("episode", plan.episode_limit))
+    if plan.relation_lane:
+        active_lanes.append(("relation", plan.relation_limit))
+
+    safe_limit = max(1, limit)
+    n_active = len(active_lanes)
+    base = max(1, safe_limit // n_active) if n_active else safe_limit
+    remainder = safe_limit % n_active if n_active else 0
+
+    lane_budgets: dict[str, int] = {}
+    for idx, (lane_name, plan_limit) in enumerate(active_lanes):
+        extra = 1 if idx < remainder else 0
+        lane_budgets[lane_name] = min(plan_limit, base + extra)
+
     async with state.db_factory() as session:
         profile_store = ProfileMemoryStore(session)
         episode_store = EpisodeMemoryStore(session)
@@ -62,7 +85,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         profile_records = (
             await profile_store.search_active(
                 subject_id=subject_id,
-                limit=plan.profile_limit,
+                limit=lane_budgets["profile"],
             )
             if plan.profile_lane
             else []
@@ -71,7 +94,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         context_records = (
             await profile_store.search_recent_context(
                 subject_id=subject_id,
-                limit=plan.context_limit,
+                limit=lane_budgets["context"],
             )
             if plan.context_lane
             else []
@@ -79,25 +102,26 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
 
         episode_records: list[Any] = []
         if plan.episode_lane:
+            ep_budget = lane_budgets["episode"]
             summary_records = await episode_store.search_summaries_by_query(
                 subject_id=subject_id,
                 query=query,
-                limit=plan.episode_limit,
+                limit=ep_budget,
             )
-            if len(summary_records) >= plan.episode_limit:
+            if len(summary_records) >= ep_budget:
                 episode_records = summary_records
             else:
                 detail_records = await episode_store.search_episodes_only(
                     subject_id=subject_id,
                     query=query,
-                    limit=plan.episode_limit - len(summary_records),
+                    limit=ep_budget - len(summary_records),
                 )
                 episode_records = [*summary_records, *detail_records]
 
         relation_records: list[Any] = (
             await entity_registry.list_relations(
                 subject_id=subject_id,
-                limit=plan.relation_limit,
+                limit=lane_budgets["relation"],
             )
             if plan.relation_lane
             else []
@@ -156,7 +180,6 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
             }
         )
 
-    items = items[:limit]
     trace(
         "tool.memory_search.done",
         query_preview=preview_text(query),
@@ -166,7 +189,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         items=[
             record_ref(r)
             for r in [*profile_records, *context_records, *episode_records, *relation_records]
-        ][:limit],
+        ],
     )
 
     if not items:
