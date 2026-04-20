@@ -30,6 +30,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     if not hasattr(state, "db_factory") or state.db_factory is None:
         return ToolResult(ok=False, error="记忆存储不可用")
 
+    from sebastian.memory.entity_registry import EntityRegistry
     from sebastian.memory.episode_store import EpisodeMemoryStore
     from sebastian.memory.profile_store import ProfileMemoryStore
     from sebastian.memory.retrieval import MemoryRetrievalPlanner, RetrievalContext
@@ -56,6 +57,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     async with state.db_factory() as session:
         profile_store = ProfileMemoryStore(session)
         episode_store = EpisodeMemoryStore(session)
+        entity_registry = EntityRegistry(session)
 
         profile_records = (
             await profile_store.search_active(
@@ -65,13 +67,39 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
             if plan.profile_lane
             else []
         )
-        episode_records = (
-            await episode_store.search(
+
+        context_records = (
+            await profile_store.search_recent_context(
+                subject_id=subject_id,
+                limit=plan.context_limit,
+            )
+            if plan.context_lane
+            else []
+        )
+
+        episode_records: list[Any] = []
+        if plan.episode_lane:
+            summary_records = await episode_store.search_summaries_by_query(
                 subject_id=subject_id,
                 query=query,
                 limit=plan.episode_limit,
             )
-            if plan.episode_lane
+            if len(summary_records) >= plan.episode_limit:
+                episode_records = summary_records
+            else:
+                detail_records = await episode_store.search_episodes_only(
+                    subject_id=subject_id,
+                    query=query,
+                    limit=plan.episode_limit - len(summary_records),
+                )
+                episode_records = [*summary_records, *detail_records]
+
+        relation_records = (
+            await entity_registry.list_relations(
+                subject_id=subject_id,
+                limit=plan.relation_limit,
+            )
+            if plan.relation_lane
             else []
         )
 
@@ -79,7 +107,20 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     for record in profile_records:
         items.append(
             {
+                "lane": "profile",
                 "kind": record.kind,
+                "content": record.content,
+                "source": record.source,
+                "confidence": record.confidence if record.confidence is not None else 1.0,
+                "citation_type": "current_truth",
+                "is_current": True,
+            }
+        )
+    for record in context_records:
+        items.append(
+            {
+                "lane": "context",
+                "kind": str(getattr(record.kind, "value", record.kind)),
                 "content": record.content,
                 "source": record.source,
                 "confidence": record.confidence if record.confidence is not None else 1.0,
@@ -93,12 +134,25 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         )
         items.append(
             {
+                "lane": "episode",
                 "kind": record.kind,
                 "content": record.content,
                 "source": record.source,
                 "confidence": record.confidence if record.confidence is not None else 1.0,
                 "citation_type": citation_type,
                 "is_current": False,
+            }
+        )
+    for record in relation_records:
+        items.append(
+            {
+                "lane": "relation",
+                "kind": "relation",
+                "content": record.content,
+                "source": "system_derived",
+                "confidence": record.confidence if record.confidence is not None else 1.0,
+                "citation_type": "current_truth",
+                "is_current": True,
             }
         )
 
@@ -109,7 +163,10 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         result_count=len(items),
         current_count=sum(1 for item in items if item["is_current"]),
         historical_count=sum(1 for item in items if not item["is_current"]),
-        items=[record_ref(r) for r in [*profile_records, *episode_records]][:limit],
+        items=[
+            record_ref(r)
+            for r in [*profile_records, *context_records, *episode_records, *relation_records]
+        ][:limit],
     )
 
     if not items:

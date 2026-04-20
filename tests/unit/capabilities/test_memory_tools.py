@@ -491,6 +491,205 @@ async def test_memory_search_citation_type_episode(enabled_memory_state) -> None
 
 
 @pytest.mark.asyncio
+async def test_memory_search_context_lane(enabled_memory_state) -> None:
+    """Context-lane: a recent active profile record should appear with lane='context'."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        await ProfileMemoryStore(session).add(
+            MemoryArtifact(
+                id="ctx-1",
+                kind=MemoryKind.FACT,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.fact.current_project",
+                cardinality=None,
+                resolution_policy=None,
+                content="正在做 Sebastian 项目",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=1.0,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    # "现在" triggers context lane keyword
+    result = await memory_search(query="现在在做什么项目", limit=5)
+
+    assert result.ok is True
+    items = result.output["items"]
+    assert any(item.get("lane") == "context" for item in items), (
+        f"Expected at least one context-lane item, got: {items}"
+    )
+    context_item = next(i for i in items if i.get("lane") == "context")
+    assert context_item["citation_type"] == "current_truth"
+    assert context_item["is_current"] is True
+
+
+@pytest.mark.asyncio
+async def test_memory_search_relation_lane(enabled_memory_state) -> None:
+    """Relation-lane: an active RelationCandidateRecord should appear with lane='relation'."""
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.store.models import RelationCandidateRecord
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        session.add(
+            RelationCandidateRecord(
+                id=str(uuid4()),
+                subject_id="owner",
+                predicate="works_on",
+                source_entity_id="owner",
+                target_entity_id="sebastian-project",
+                content="owner works_on sebastian-project",
+                structured_payload={},
+                confidence=0.9,
+                status="active",
+                valid_from=None,
+                valid_until=None,
+                provenance={},
+                policy_tags=[],
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await session.commit()
+
+    # "project" triggers relation lane keyword
+    result = await memory_search(query="this project related to", limit=5)
+
+    assert result.ok is True
+    items = result.output["items"]
+    assert any(item.get("lane") == "relation" for item in items), (
+        f"Expected at least one relation-lane item, got: {items}"
+    )
+    relation_item = next(i for i in items if i.get("lane") == "relation")
+    assert relation_item["citation_type"] == "current_truth"
+    assert relation_item["is_current"] is True
+
+
+@pytest.mark.asyncio
+async def test_memory_search_summary_first(enabled_memory_state) -> None:
+    """Summary-first: when both summary and episode match, summary appears before episode."""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        store = EpisodeMemoryStore(session)
+        await store.add_episode(
+            MemoryArtifact(
+                id="summary-sf-1",
+                kind=MemoryKind.SUMMARY,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上次讨论了 Python 的总结",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.9,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={"session_id": "s-sf-1"},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await store.add_episode(
+            MemoryArtifact(
+                id="episode-sf-1",
+                kind=MemoryKind.EPISODE,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id=None,
+                cardinality=None,
+                resolution_policy=None,
+                content="上次讨论了 Python 的细节",
+                structured_payload={},
+                source=MemorySource.OBSERVED,
+                confidence=0.8,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={"session_id": "s-sf-2"},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    # "上次讨论" triggers episode lane
+    result = await memory_search(query="上次讨论", limit=5)
+
+    assert result.ok is True
+    items = result.output["items"]
+    episode_items = [i for i in items if i.get("lane") == "episode"]
+    assert len(episode_items) >= 2, f"Expected at least 2 episode-lane items, got: {episode_items}"
+
+    # Summary should come before raw episode
+    summary_idx = next(
+        (idx for idx, i in enumerate(episode_items) if i.get("kind") == MemoryKind.SUMMARY.value),
+        None,
+    )
+    episode_idx = next(
+        (idx for idx, i in enumerate(episode_items) if i.get("kind") == MemoryKind.EPISODE.value),
+        None,
+    )
+    assert summary_idx is not None, "No summary item found"
+    assert episode_idx is not None, "No episode item found"
+    assert summary_idx < episode_idx, (
+        f"Summary (idx={summary_idx}) should come before episode (idx={episode_idx})"
+    )
+
+
+@pytest.mark.asyncio
 async def test_memory_save_discard_writes_decision_log(enabled_memory_state, monkeypatch) -> None:
     from sqlalchemy import select
 
