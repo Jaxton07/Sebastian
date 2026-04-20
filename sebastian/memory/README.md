@@ -12,6 +12,7 @@
 - **Phase A 长期记忆基础设施**：记忆 artifact 类型、slot 注册表、FTS 分词辅助、决策日志写入器。
 - **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询，含 `valid_from/valid_until/status/subject_id` 四项 current truth 过滤）、`EpisodeMemoryStore`（经历 FTS 检索，含 summary-first 两阶段检索）、`retrieval.py`（检索 pipeline，含 Episode Lane query-aware summary-first 策略）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt；`memory_search` 工具输出 `citation_type`（`current_truth` / `historical_summary` / `historical_evidence`），并按 active lane 数量把用户请求的 `limit` 提升为 `effective_limit`，避免已激活通道被全局截断饿死。
 - **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact；`ExtractorInput.task` 已对齐 spec，值为 `"extract_memory_artifacts"`）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。`memory_decision_log` 新增 `input_source` 字段，记录写入来源（`memory_save_tool` / `session_consolidation`）。
+- **统一写入 pipeline**：`pipeline.py`（`process_candidates()`，将 validate → resolve → persist → log 四步封装为单一可复用入口）。`memory_save` 工具后台任务和 `SessionConsolidationWorker` 均通过此函数写入，消除重复逻辑。
 - **Memory Trace 日志**：`trace.py` 提供 `MEMORY_TRACE` 调试日志辅助，贯穿检索、注入、决策、写入、工具和会话沉淀链路，输出到现有 `main.log`。
 
 语义记忆（向量检索）为后续规划能力，当前未实现。
@@ -37,6 +38,7 @@ memory/
 ├── working_memory.py     # WorkingMemory：进程内 dict，按 task_id 隔离，任务结束后清除
 ├── provider_bindings.py  # LLM binding 常量：MEMORY_EXTRACTOR_BINDING / MEMORY_CONSOLIDATOR_BINDING
 ├── extraction.py         # MemoryExtractor：LLM 提取候选 artifact，严格 JSON 校验，失败重试一次返回 []
+├── pipeline.py           # process_candidates()：统一 validate→resolve→persist→log 写入流程
 └── consolidation.py      # MemoryConsolidator + SessionConsolidationWorker + MemoryConsolidationScheduler
 ```
 
@@ -76,11 +78,22 @@ memory/
 - schema 校验失败时重试一次，重试后仍失败则返回空 `ConsolidationResult`
 - **永不写入任何存储**；只生成 proposed artifacts，由 Worker 经 Normalize / Resolve 后写入
 
+### process_candidates（`pipeline.py`）
+
+`process_candidates(candidates, *, session_id, agent_type, db_session, ...)` 是记忆写入的统一入口：
+
+1. 对每个 `CandidateArtifact` 依次执行：`resolve_subject` → `validate_candidate` → `resolve_candidate` → `persist_decision` → `decision_logger.append`
+2. 校验失败（`InvalidCandidateError`）时直接生成 DISCARD 决策并写 decision log，跳过当前 candidate
+3. **不处理 EXPIRE**——EXPIRE 由调用方直接构造 `ResolveDecision` 并走 `persist_decision`，不经此函数
+4. **不 commit**——调用方负责事务边界
+5. 返回所有决策（含 DISCARD），供调用方统计
+
 ### SessionConsolidationWorker（`consolidation.py`）
 
 - **幂等性**：通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证同一 session 只执行一次
 - **原子性**：存在检查 + 全部写入 + 标记插入在**一个事务**内完成；`IntegrityError` → 事务回滚 → 直接返回（防重复执行）
 - 执行前检查 `memory_settings_fn()` 返回的 `memory_enabled` 标志，未启用则跳过
+- summaries 和 proposed_artifacts 统一经 `process_candidates()` 写入；EXPIRE 动作仍保持 inline
 - proposed artifacts 必须经过 Normalize + Resolve 才能落库，Consolidator 的 LLM 输出绝不直接修改记忆状态
 
 ### MemoryConsolidationScheduler（`consolidation.py`）
@@ -109,6 +122,7 @@ memory/
 | Profile 行持久化协议字段 | 已实现 | `cardinality`/`resolution_policy` 已写入 DB；支持存量数据库幂等迁移 |
 | Episode 行持久化有效期字段 | 已实现 | `valid_from`/`valid_until` 已写入 DB；支持存量数据库幂等迁移 |
 | Relation candidate 持久化 policy_tags | 已实现 | `policy_tags` 已写入 DB（JSON）；支持存量数据库幂等迁移 |
+| `memory_save` fire-and-forget + extractor slot 分配 | 已实现 | 工具接口仅 `content: str`，立即返回；后台任务调 `MemoryExtractor` 分配 slot/kind，结果经 `process_candidates()` 写入；extractor 返回空则跳过，无降级 fallback |
 | `memory_save` provenance 含 session_id | 已实现 | session 上下文存在时注入 `evidence=[{"session_id": ...}]`，提升审计追踪可靠性 |
 | Episode/Summary 精确去重 | 已实现 | `EpisodeMemoryStore.find_active_exact()` 新增；相同 content 二次写入返回 DISCARD |
 | MERGE 最小执行路径 | 已实现 | `ProfileMemoryStore.find_active_exact()` 新增；merge-policy slot 精确匹配走 MERGE → supersede；无模糊语义合并 |
@@ -140,6 +154,7 @@ memory/
 | 语义记忆 / 向量检索（后续阶段，待实现） | 新建 `semantic_memory.py`，并按需要在 `store.py` 中注册 |
 | LLM binding 常量（extractor / consolidator） | [provider_bindings.py](provider_bindings.py) |
 | 从会话片段提取候选 artifact（LLM 提取） | [extraction.py](extraction.py) |
+| 候选 artifact 统一写入（validate→resolve→persist→log） | [pipeline.py](pipeline.py) |
 | 会话沉淀 Worker、Consolidator、Scheduler | [consolidation.py](consolidation.py) |
 
 ---

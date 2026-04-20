@@ -33,7 +33,7 @@ tools/
 ├── write/                   # 文件写入工具，含 mtime 保护（permission_tier: MODEL_DECIDES）
 │   └── __init__.py          # @tool: file_write
 ├── memory_save/             # 显式记忆写入工具，仅在用户明确要求时使用（permission_tier: LOW）
-│   └── __init__.py          # @tool: memory_save
+│   └── __init__.py          # @tool: memory_save(content: str)；fire-and-forget，立即返回；后台调 MemoryExtractor 分配 slot，经 process_candidates() 写入；extractor 返回空则跳过
 ├── memory_search/           # 长期记忆检索工具（permission_tier: LOW）
 │   └── __init__.py          # @tool: memory_search
 │
