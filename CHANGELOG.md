@@ -42,6 +42,7 @@
 - `memory_search` 工具新增 `citation_type` 字段（`current_truth` / `historical_summary` / `historical_evidence`），保留 `is_current` 向后兼容
 - 记忆注入在所有检索通道保留类型标签（Context/Episode/Relation 均显示 `[kind]` 前缀），避免注入内容类型混淆。
 - `memory_search` 主动检索覆盖 context/relation 通道，与自动注入路径保持 summary-first episode 策略一致；返回 `lane` 字段区分通道来源。
+- `memory_search` 使用 lane-aware effective limit：当请求 `limit` 小于已激活通道数时，会提高有效上限以保证每条 active lane 至少返回 1 条候选，避免高召回通道饿死其他通道。
 - 记忆存储补齐协议字段持久化：ProfileMemory 保存 `cardinality`/`resolution_policy`，EpisodeMemory 保存 `valid_from`/`valid_until`，RelationCandidate 保存 `policy_tags`；支持存量数据库幂等迁移。
 - `memory_save` provenance 在 session 上下文存在时注入 `evidence=[{"session_id": ...}]`，提升审计追踪可靠性。
 - Episode/Summary 精确去重：相同 content 的二次写入返回 DISCARD，避免历史证据重复堆积。

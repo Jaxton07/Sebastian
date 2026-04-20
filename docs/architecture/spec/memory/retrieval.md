@@ -1,6 +1,6 @@
 ---
 version: "1.0"
-last_updated: 2026-04-19
+last_updated: 2026-04-20
 status: in-progress
 ---
 
@@ -177,6 +177,21 @@ Assembler 在最终注入前，必须统一执行以下过滤：
 - episode 抢光上下文
 - preference 被挤掉
 - 历史经历覆盖当前事实
+
+### 7.1 `memory_search` 工具的 effective limit
+
+`memory_search(query, limit)` 是显式工具检索入口，和自动注入路径共享 Retrieval Planner 与 lane 语义，但 `limit` 是工具调用方请求的总结果目标值，不应直接覆盖每条 lane 的独立预算。
+
+工具路径采用 lane-aware budget（按通道分配预算）：
+
+- 先根据 Retrieval Planner 得到已激活 lane。
+- `requested_limit = max(1, limit)`。
+- `effective_limit = max(requested_limit, active_lane_count)`。
+- 当 `requested_limit < active_lane_count` 时，提高 effective limit，确保每条已激活 lane 至少有 1 个候选名额。
+- 当 `requested_limit >= active_lane_count` 时，在不超过 `effective_limit` 的前提下，按 lane 顺序分配余数；较早 lane 拿到额外预算。
+- 不允许先拼接所有 lane 再做全局截断，因为这会让 Profile Lane 等高召回通道饿死 Episode / Context / Relation Lane。
+
+因此 `memory_search` 的 `limit` 是“请求的目标总数”，实际返回上限是 `effective_limit`。这个规则只适用于显式工具检索；自动注入路径仍由 `MemorySectionAssembler` 对各 lane 独立应用 `plan.xxx_limit`。
 
 ---
 

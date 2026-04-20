@@ -10,7 +10,7 @@
 - **会话历史兼容层**：`EpisodicMemory`，基于 `SessionStore` 读写当前 session 的消息历史，用于兼容现有对话上下文链路；它不是新的 Episode Store。
 - **统一入口**：`MemoryStore`，当前聚合 working + session history compatibility layer。
 - **Phase A 长期记忆基础设施**：记忆 artifact 类型、slot 注册表、FTS 分词辅助、决策日志写入器。
-- **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询，含 `valid_from/valid_until/status/subject_id` 四项 current truth 过滤）、`EpisodeMemoryStore`（经历 FTS 检索，含 summary-first 两阶段检索）、`retrieval.py`（检索 pipeline，含 Episode Lane query-aware summary-first 策略）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt；`memory_search` 工具输出 `citation_type`（`current_truth` / `historical_summary` / `historical_evidence`）。
+- **Phase B 画像与经历检索**：`ProfileMemoryStore`（profile 写入 / 查询，含 `valid_from/valid_until/status/subject_id` 四项 current truth 过滤）、`EpisodeMemoryStore`（经历 FTS 检索，含 summary-first 两阶段检索）、`retrieval.py`（检索 pipeline，含 Episode Lane query-aware summary-first 策略）、`resolver.py`（冲突解决）。检索结果在每次 LLM turn 前通过 `BaseAgent._memory_section()` 注入 system prompt；`memory_search` 工具输出 `citation_type`（`current_truth` / `historical_summary` / `historical_evidence`），并按 active lane 数量把用户请求的 `limit` 提升为 `effective_limit`，避免已激活通道被全局截断饿死。
 - **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact；`ExtractorInput.task` 已对齐 spec，值为 `"extract_memory_artifacts"`）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。`memory_decision_log` 新增 `input_source` 字段，记录写入来源（`memory_save_tool` / `session_consolidation`）。
 - **Memory Trace 日志**：`trace.py` 提供 `MEMORY_TRACE` 调试日志辅助，贯穿检索、注入、决策、写入、工具和会话沉淀链路，输出到现有 `main.log`。
 
@@ -105,7 +105,7 @@ memory/
 | decision_log input_source | 已实现 | `MemoryDecisionLogRecord` / `MemoryDecisionLogger.append()` 新增 `input_source` 字段，标记 `memory_save_tool` 或 `session_consolidation` |
 | Session Consolidation | 已实现 | `SessionConsolidationWorker` + startup catch-up sweep |
 | Assembler kind labels 全通道 | 已实现 | Context/Episode/Relation 通道均保留 `[kind]` 前缀，与 Profile 通道行为一致 |
-| `memory_search` 全通道检索 | 已实现 | profile/context/episode(summary-first)/relation 四通道；返回 `lane` 字段区分通道来源 |
+| `memory_search` 全通道检索 | 已实现 | profile/context/episode(summary-first)/relation 四通道；返回 `lane` 字段区分通道来源；`effective_limit = max(requested_limit, active_lane_count)`，确保每条 active lane 至少有 1 个候选名额 |
 | Profile 行持久化协议字段 | 已实现 | `cardinality`/`resolution_policy` 已写入 DB；支持存量数据库幂等迁移 |
 | Episode 行持久化有效期字段 | 已实现 | `valid_from`/`valid_until` 已写入 DB；支持存量数据库幂等迁移 |
 | Relation candidate 持久化 policy_tags | 已实现 | `policy_tags` 已写入 DB（JSON）；支持存量数据库幂等迁移 |
