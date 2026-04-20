@@ -463,3 +463,58 @@ async def test_persist_decision_relation_persists_empty_policy_tags(db_session) 
 
     row = (await db_session.scalars(select(RelationCandidateRecord))).one()
     assert row.policy_tags == []
+
+
+# ---------------------------------------------------------------------------
+# MERGE decision path (Task 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_persist_decision_fact_merge_marks_old_and_inserts_new(
+    db_session,
+) -> None:
+    """persist_decision with MERGE supersedes old record and inserts new active record."""
+    from sebastian.memory.types import Cardinality, ResolutionPolicy
+
+    profile_store, episode_store, entity_registry = _stores(db_session)
+
+    old_artifact = _artifact(
+        MemoryKind.FACT,
+        content="用户使用 Sebastian",
+        slot_id="test.multi.merge",
+    )
+    await profile_store.add(old_artifact)
+
+    new_artifact = _artifact(
+        MemoryKind.FACT,
+        content="用户使用 Sebastian",
+        slot_id="test.multi.merge",
+        cardinality=Cardinality.MULTI,
+        resolution_policy=ResolutionPolicy.MERGE,
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.MERGE,
+        reason="merge-policy slot matched an exact active record",
+        old_memory_ids=[old_artifact.id],
+        new_memory=new_artifact,
+        candidate=_candidate(MemoryKind.FACT),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id="test.multi.merge",
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    rows_by_id = {
+        row.id: row
+        for row in (await db_session.scalars(select(ProfileMemoryRecord))).all()
+    }
+    assert rows_by_id[old_artifact.id].status == MemoryStatus.SUPERSEDED.value
+    assert rows_by_id[new_artifact.id].status == MemoryStatus.ACTIVE.value
+    assert rows_by_id[new_artifact.id].content == "用户使用 Sebastian"

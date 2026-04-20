@@ -426,3 +426,63 @@ async def test_search_recent_context_excludes_valid_from_future(db_session) -> N
     ids = {r.id for r in rows}
     assert "ctx-vf-future" not in ids
     assert {"ctx-vf-past", "ctx-vf-none"} <= ids
+
+
+# ---------------------------------------------------------------------------
+# find_active_exact (Task 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_find_active_exact_returns_matching_record(db_session) -> None:
+    """find_active_exact returns a record when subject/scope/slot/kind/content all match."""
+    store = ProfileMemoryStore(db_session)
+    db_session.add(
+        _make_record(
+            id="exact-1",
+            subject_id="user:owner",
+            scope=MemoryScope.USER.value,
+            slot_id="test.multi.merge",
+            kind=MemoryKind.FACT.value,
+            content="用户使用 Sebastian",
+            status=MemoryStatus.ACTIVE.value,
+        )
+    )
+    await db_session.flush()
+
+    result = await store.find_active_exact(
+        subject_id="user:owner",
+        scope=MemoryScope.USER.value,
+        slot_id="test.multi.merge",
+        kind=MemoryKind.FACT.value,
+        content="用户使用 Sebastian",
+    )
+
+    assert result is not None
+    assert result.id == "exact-1"
+
+
+async def test_find_active_exact_returns_none_for_different_content(db_session) -> None:
+    """find_active_exact returns None when content does not match."""
+    store = ProfileMemoryStore(db_session)
+    db_session.add(
+        _make_record(
+            id="exact-2",
+            subject_id="user:owner",
+            scope=MemoryScope.USER.value,
+            slot_id="test.multi.merge",
+            kind=MemoryKind.FACT.value,
+            content="用户使用 Sebastian",
+            status=MemoryStatus.ACTIVE.value,
+        )
+    )
+    await db_session.flush()
+
+    result = await store.find_active_exact(
+        subject_id="user:owner",
+        scope=MemoryScope.USER.value,
+        slot_id="test.multi.merge",
+        kind=MemoryKind.FACT.value,
+        content="完全不同的内容",
+    )
+
+    assert result is None

@@ -704,3 +704,137 @@ async def test_episode_without_episode_store_still_adds() -> None:
     )
 
     assert decision.decision == MemoryDecisionType.ADD
+
+
+# ---------------------------------------------------------------------------
+# MERGE decision path (Task 6)
+# ---------------------------------------------------------------------------
+
+
+class FakeProfileStoreWithExact(FakeProfileStore):
+    """Extends FakeProfileStore with find_active_exact support."""
+
+    def __init__(
+        self,
+        records: list[ProfileMemoryRecord],
+        exact_record: ProfileMemoryRecord | None = None,
+    ) -> None:
+        super().__init__(records)
+        self._exact_record = exact_record
+
+    async def find_active_exact(
+        self,
+        *,
+        subject_id: str,
+        scope: str,
+        slot_id: str,
+        kind: str,
+        content: str,
+    ) -> ProfileMemoryRecord | None:
+        if self._exact_record is not None:
+            r = self._exact_record
+            if (
+                r.subject_id == subject_id
+                and r.scope == scope
+                and r.slot_id == slot_id
+                and r.kind == kind
+                and r.content == content
+            ):
+                return r
+        return None
+
+
+@pytest.mark.asyncio
+async def test_merge_policy_exact_duplicate_returns_merge() -> None:
+    """MULTI MERGE-policy slot with exact content duplicate → MERGE decision."""
+    from sebastian.memory.types import SlotDefinition
+
+    content = "用户使用 Sebastian"
+    existing = _make_record(
+        "mem-merge-old",
+        subject_id="user:owner",
+        slot_id="test.multi.merge",
+        kind=MemoryKind.FACT.value,
+        content=content,
+        source=MemorySource.EXPLICIT.value,
+        confidence=0.9,
+    )
+    store = FakeProfileStoreWithExact([existing], exact_record=existing)
+    registry = SlotRegistry(
+        slots=[
+            SlotDefinition(
+                slot_id="test.multi.merge",
+                scope=MemoryScope.USER,
+                subject_kind="user",
+                cardinality=Cardinality.MULTI,
+                resolution_policy=ResolutionPolicy.MERGE,
+                kind_constraints=[MemoryKind.FACT],
+                description="Test multi merge slot",
+            )
+        ]
+    )
+
+    candidate = _make_candidate(
+        kind=MemoryKind.FACT,
+        source=MemorySource.EXPLICIT,
+        slot_id="test.multi.merge",
+        cardinality=Cardinality.MULTI,
+        resolution_policy=ResolutionPolicy.MERGE,
+        confidence=0.9,
+        content=content,
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user:owner",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.MERGE
+    assert decision.old_memory_ids == [existing.id]
+    assert decision.new_memory is not None
+    assert decision.new_memory.cardinality == Cardinality.MULTI
+    assert decision.new_memory.resolution_policy == ResolutionPolicy.MERGE
+
+
+@pytest.mark.asyncio
+async def test_merge_policy_non_duplicate_still_adds() -> None:
+    """MULTI MERGE-policy slot with no matching existing content → ADD (not MERGE)."""
+    from sebastian.memory.types import SlotDefinition
+
+    store = FakeProfileStoreWithExact([], exact_record=None)
+    registry = SlotRegistry(
+        slots=[
+            SlotDefinition(
+                slot_id="test.multi.merge",
+                scope=MemoryScope.USER,
+                subject_kind="user",
+                cardinality=Cardinality.MULTI,
+                resolution_policy=ResolutionPolicy.MERGE,
+                kind_constraints=[MemoryKind.FACT],
+                description="Test multi merge slot",
+            )
+        ]
+    )
+
+    candidate = _make_candidate(
+        kind=MemoryKind.FACT,
+        source=MemorySource.EXPLICIT,
+        slot_id="test.multi.merge",
+        cardinality=Cardinality.MULTI,
+        resolution_policy=ResolutionPolicy.MERGE,
+        confidence=0.9,
+        content="全新内容，不重复",
+    )
+
+    decision = await resolve_candidate(
+        candidate,
+        subject_id="user:owner",
+        profile_store=store,
+        slot_registry=registry,
+    )
+
+    assert decision.decision == MemoryDecisionType.ADD
+    assert decision.old_memory_ids == []
+    assert decision.new_memory is not None

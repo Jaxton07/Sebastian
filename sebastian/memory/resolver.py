@@ -142,6 +142,36 @@ async def resolve_candidate(
             effective_policy = slot.resolution_policy
 
     # ------------------------------------------------------------------
+    # 4a. MERGE policy → check for exact duplicate first
+    # ------------------------------------------------------------------
+    if candidate.slot_id is not None and effective_policy == ResolutionPolicy.MERGE:
+        existing_exact = await profile_store.find_active_exact(
+            subject_id=subject_id,
+            scope=candidate.scope.value,
+            slot_id=candidate.slot_id,
+            kind=candidate.kind.value,
+            content=candidate.content,
+        )
+        if existing_exact is not None:
+            return _trace_decision(ResolveDecision(
+                decision=MemoryDecisionType.MERGE,
+                reason=(
+                    f"merge-policy slot '{candidate.slot_id}' matched an exact active record"
+                ),
+                old_memory_ids=[existing_exact.id],
+                new_memory=_make_artifact(
+                    candidate,
+                    subject_id,
+                    cardinality=effective_cardinality,
+                    resolution_policy=effective_policy,
+                ),
+                candidate=candidate,
+                subject_id=subject_id,
+                scope=candidate.scope,
+                slot_id=candidate.slot_id,
+            ))
+
+    # ------------------------------------------------------------------
     # 4. MULTI cardinality or APPEND_ONLY policy → ADD
     # ------------------------------------------------------------------
     if (
@@ -243,8 +273,19 @@ def _trace_decision(decision: ResolveDecision) -> ResolveDecision:
     return decision
 
 
-def _make_artifact(candidate: CandidateArtifact, subject_id: str) -> MemoryArtifact:
-    """Convert a :class:`CandidateArtifact` into a ready-to-store :class:`MemoryArtifact`."""
+def _make_artifact(
+    candidate: CandidateArtifact,
+    subject_id: str,
+    *,
+    cardinality: Cardinality | None = None,
+    resolution_policy: ResolutionPolicy | None = None,
+) -> MemoryArtifact:
+    """Convert a :class:`CandidateArtifact` into a ready-to-store :class:`MemoryArtifact`.
+
+    The optional *cardinality* and *resolution_policy* keyword arguments let the
+    caller pass the slot-registry-resolved effective values, which take precedence
+    over the candidate-level hints.
+    """
     now = datetime.now(UTC)
     session_id: str | None = None
     for ev in candidate.evidence:
@@ -260,8 +301,10 @@ def _make_artifact(candidate: CandidateArtifact, subject_id: str) -> MemoryArtif
         scope=candidate.scope,
         subject_id=subject_id,
         slot_id=candidate.slot_id,
-        cardinality=candidate.cardinality,
-        resolution_policy=candidate.resolution_policy,
+        cardinality=cardinality if cardinality is not None else candidate.cardinality,
+        resolution_policy=(
+            resolution_policy if resolution_policy is not None else candidate.resolution_policy
+        ),
         content=candidate.content,
         structured_payload=candidate.structured_payload,
         source=candidate.source,

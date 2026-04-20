@@ -22,6 +22,30 @@ class ProfileMemoryStore:
         await self._session.flush()
         return record
 
+    async def find_active_exact(
+        self,
+        *,
+        subject_id: str,
+        scope: str,
+        slot_id: str,
+        kind: str,
+        content: str,
+    ) -> ProfileMemoryRecord | None:
+        """Return the first active record that exactly matches all five fields, or None."""
+        now = datetime.now(UTC)
+        statement = select(ProfileMemoryRecord).where(
+            ProfileMemoryRecord.subject_id == subject_id,
+            ProfileMemoryRecord.scope == scope,
+            ProfileMemoryRecord.slot_id == slot_id,
+            ProfileMemoryRecord.kind == kind,
+            ProfileMemoryRecord.content == content,
+            ProfileMemoryRecord.status == MemoryStatus.ACTIVE.value,
+            or_(ProfileMemoryRecord.valid_until.is_(None), ProfileMemoryRecord.valid_until > now),
+            or_(ProfileMemoryRecord.valid_from.is_(None), ProfileMemoryRecord.valid_from <= now),
+        )
+        result = await self._session.scalars(statement)
+        return result.first()
+
     async def get_active_by_slot(
         self,
         subject_id: str,

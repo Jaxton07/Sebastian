@@ -92,7 +92,7 @@ async def persist_decision(
         return
 
     # FACT / PREFERENCE
-    if decision.decision == MemoryDecisionType.SUPERSEDE:
+    if decision.decision in (MemoryDecisionType.SUPERSEDE, MemoryDecisionType.MERGE):
         await profile_store.supersede(decision.old_memory_ids, artifact)
     else:
         await profile_store.add(artifact)
