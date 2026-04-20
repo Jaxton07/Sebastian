@@ -157,6 +157,12 @@ class ProfileMemoryStore:
             scope=artifact.scope.value,
             slot_id=artifact.slot_id or "",
             kind=artifact.kind.value,
+            cardinality=artifact.cardinality.value if artifact.cardinality is not None else None,
+            resolution_policy=(
+                artifact.resolution_policy.value
+                if artifact.resolution_policy is not None
+                else None
+            ),
             content=artifact.content,
             structured_payload=artifact.structured_payload,
             source=artifact.source.value,

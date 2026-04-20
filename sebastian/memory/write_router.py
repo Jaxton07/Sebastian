@@ -82,6 +82,7 @@ async def persist_decision(
                 valid_from=artifact.valid_from,
                 valid_until=artifact.valid_until,
                 provenance=artifact.provenance,
+                policy_tags=artifact.policy_tags,
                 created_at=artifact.recorded_at,
                 updated_at=artifact.recorded_at,
             )

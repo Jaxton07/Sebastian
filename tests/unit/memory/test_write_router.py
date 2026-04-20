@@ -390,3 +390,76 @@ async def test_persist_decision_time_bound_relation_preserves_validity_window(
     row = (await db_session.scalars(select(RelationCandidateRecord))).one()
     assert row.valid_from == valid_from.replace(tzinfo=None)
     assert row.valid_until == valid_until.replace(tzinfo=None)
+
+
+# ---------------------------------------------------------------------------
+# RelationCandidateRecord.policy_tags persistence (Step 3)
+# ---------------------------------------------------------------------------
+
+
+async def test_persist_decision_relation_persists_policy_tags(db_session) -> None:
+    """persist_decision() must persist policy_tags on RelationCandidateRecord."""
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(
+        MemoryKind.RELATION,
+        content="owner relationship with project",
+        policy_tags=["do_not_auto_inject", "agent:sebastian"],
+        structured_payload={
+            "predicate": "manages",
+            "source_entity_id": "owner",
+            "target_entity_id": "entity-project",
+        },
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.RELATION),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    row = (await db_session.scalars(select(RelationCandidateRecord))).one()
+    assert row.policy_tags == ["do_not_auto_inject", "agent:sebastian"]
+
+
+async def test_persist_decision_relation_persists_empty_policy_tags(db_session) -> None:
+    """policy_tags defaults to an empty list when not supplied."""
+    profile_store, episode_store, entity_registry = _stores(db_session)
+    artifact = _artifact(
+        MemoryKind.RELATION,
+        content="simple relation",
+        policy_tags=[],
+        structured_payload={"predicate": "knows"},
+    )
+    decision = ResolveDecision(
+        decision=MemoryDecisionType.ADD,
+        reason="r",
+        old_memory_ids=[],
+        new_memory=artifact,
+        candidate=_candidate(MemoryKind.RELATION),
+        subject_id="owner",
+        scope=MemoryScope.USER,
+        slot_id=None,
+    )
+
+    await persist_decision(
+        decision,
+        session=db_session,
+        profile_store=profile_store,
+        episode_store=episode_store,
+        entity_registry=entity_registry,
+    )
+
+    row = (await db_session.scalars(select(RelationCandidateRecord))).one()
+    assert row.policy_tags == []

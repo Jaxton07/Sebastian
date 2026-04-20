@@ -307,6 +307,50 @@ async def test_search_recent_context_skips_inactive(db_session) -> None:
 
 
 # ---------------------------------------------------------------------------
+# cardinality / resolution_policy persistence (Step 1)
+# ---------------------------------------------------------------------------
+
+
+async def test_add_persists_cardinality_and_resolution_policy(db_session) -> None:
+    """ProfileMemoryStore.add() must persist cardinality and resolution_policy."""
+    store = ProfileMemoryStore(db_session)
+    artifact = _make_artifact(
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+    )
+
+    record = await store.add(artifact)
+
+    assert record.cardinality == "single"
+    assert record.resolution_policy == "supersede"
+
+
+async def test_add_persists_null_cardinality_and_resolution_policy(db_session) -> None:
+    """cardinality and resolution_policy default to None when not supplied."""
+    store = ProfileMemoryStore(db_session)
+    artifact = _make_artifact(cardinality=None, resolution_policy=None)
+
+    record = await store.add(artifact)
+
+    assert record.cardinality is None
+    assert record.resolution_policy is None
+
+
+async def test_add_persists_multi_cardinality_append_only_policy(db_session) -> None:
+    """MULTI cardinality and APPEND_ONLY resolution_policy are stored correctly."""
+    store = ProfileMemoryStore(db_session)
+    artifact = _make_artifact(
+        cardinality=Cardinality.MULTI,
+        resolution_policy=ResolutionPolicy.APPEND_ONLY,
+    )
+
+    record = await store.add(artifact)
+
+    assert record.cardinality == "multi"
+    assert record.resolution_policy == "append_only"
+
+
+# ---------------------------------------------------------------------------
 # valid_from future filtering tests (Step 1: these should fail before fix)
 # ---------------------------------------------------------------------------
 

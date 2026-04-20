@@ -324,3 +324,38 @@ async def test_search_episodes_only_returns_only_episode_kind(db_session) -> Non
     assert "sum-match" not in ids, "summary-kind record must not appear in episode search"
     assert "ep-nomatch" not in ids, "non-matching episode must not appear"
     assert all(r.kind == MemoryKind.EPISODE.value for r in results)
+
+
+# ---------------------------------------------------------------------------
+# valid_from / valid_until persistence (Step 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_add_episode_persists_valid_from_and_valid_until(db_session) -> None:
+    """EpisodeMemoryStore.add_episode() must persist valid_from and valid_until."""
+    store = EpisodeMemoryStore(db_session)
+    valid_from = datetime(2026, 1, 1, tzinfo=UTC)
+    valid_until = datetime(2026, 6, 1, tzinfo=UTC)
+    artifact = _make_artifact(
+        id="ep-validity",
+        content="project phase active",
+        valid_from=valid_from,
+        valid_until=valid_until,
+    )
+
+    record = await store.add_episode(artifact)
+
+    # The in-memory record may retain tz; compare naive values to be safe
+    assert record.valid_from.replace(tzinfo=None) == valid_from.replace(tzinfo=None)
+    assert record.valid_until.replace(tzinfo=None) == valid_until.replace(tzinfo=None)
+
+
+async def test_add_episode_persists_null_valid_from_and_valid_until(db_session) -> None:
+    """valid_from and valid_until default to None when not supplied."""
+    store = EpisodeMemoryStore(db_session)
+    artifact = _make_artifact(id="ep-no-validity", valid_from=None, valid_until=None)
+
+    record = await store.add_episode(artifact)
+
+    assert record.valid_from is None
+    assert record.valid_until is None

@@ -204,6 +204,8 @@ class EpisodeMemoryStore:
             confidence=artifact.confidence,
             status=MemoryStatus.ACTIVE.value,
             recorded_at=artifact.recorded_at,
+            valid_from=artifact.valid_from,
+            valid_until=artifact.valid_until,
             provenance=artifact.provenance,
             links=artifact.links,
             policy_tags=artifact.policy_tags,
