@@ -68,6 +68,20 @@ class SlotDefinition(BaseModel):
     description: str
 
 
+class ProposedSlot(BaseModel):
+    """LLM 提议的新 slot，由 Extractor/Consolidator 产出，经 SlotProposalHandler 验证后注册。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slot_id: str
+    scope: MemoryScope
+    subject_kind: str
+    cardinality: Cardinality
+    resolution_policy: ResolutionPolicy
+    kind_constraints: list[MemoryKind]
+    description: str
+
+
 class CandidateArtifact(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

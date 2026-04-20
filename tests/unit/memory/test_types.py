@@ -14,6 +14,7 @@ from sebastian.memory.types import (
     MemoryScope,
     MemorySource,
     MemoryStatus,
+    ProposedSlot,
     ResolutionPolicy,
     ResolveDecision,
     SlotDefinition,
@@ -547,6 +548,38 @@ def test_resolve_decision_supersede_requires_old_memory_ids() -> None:
             subject_id="owner",
             scope=MemoryScope.USER,
             slot_id=None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# ProposedSlot
+# ---------------------------------------------------------------------------
+
+
+def test_proposed_slot_minimum_valid() -> None:
+    slot = ProposedSlot(
+        slot_id="user.profile.location",
+        scope=MemoryScope.USER,
+        subject_kind="user",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        kind_constraints=[MemoryKind.FACT],
+        description="用户居住地",
+    )
+    assert slot.slot_id == "user.profile.location"
+
+
+def test_proposed_slot_rejects_extra_field() -> None:
+    with pytest.raises(ValidationError):
+        ProposedSlot(
+            slot_id="user.profile.x",
+            scope=MemoryScope.USER,
+            subject_kind="user",
+            cardinality=Cardinality.SINGLE,
+            resolution_policy=ResolutionPolicy.SUPERSEDE,
+            kind_constraints=[MemoryKind.FACT],
+            description="x",
+            spurious="not allowed",  # type: ignore[call-arg]
         )
 
 
