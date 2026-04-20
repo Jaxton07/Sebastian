@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sebastian.memory.segmentation import add_entity_terms, segment_for_fts, terms_for_query
+from sebastian.memory.segmentation import add_entity_terms, build_match_query, segment_for_fts, terms_for_query
 
 
 def test_segment_for_fts_chinese_contains_expected_words() -> None:
@@ -48,3 +48,21 @@ def test_segment_for_fts_returns_nonempty_string_for_nonempty_input() -> None:
     result = segment_for_fts("你好世界")
     assert isinstance(result, str)
     assert len(result.strip()) > 0
+
+
+def test_build_match_query_single_term() -> None:
+    assert build_match_query(["项目"]) == '"项目"'
+
+
+def test_build_match_query_multiple_terms() -> None:
+    result = build_match_query(["记忆", "模块"])
+    assert result == '"记忆" "模块"'
+
+
+def test_build_match_query_empty() -> None:
+    assert build_match_query([]) == '""'
+
+
+def test_build_match_query_escapes_double_quotes() -> None:
+    result = build_match_query(['say "hello"'])
+    assert '""' in result  # inner quote is doubled

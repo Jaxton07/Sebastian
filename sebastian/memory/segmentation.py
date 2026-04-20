@@ -35,3 +35,15 @@ def terms_for_query(query: str) -> list[str]:
     jb = _jieba()
     tokens = jb.cut_for_search(query)
     return [t for t in (tok.strip() for tok in tokens) if t and len(t) > 1]
+
+
+def build_match_query(terms: list[str]) -> str:
+    """Wrap each term as a double-quoted phrase for FTS5 MATCH.
+
+    Prevents operators (AND/OR/NOT/*/quote/paren) inside the user query from
+    being interpreted as FTS5 syntax. Inner double-quote characters are escaped
+    by doubling them (FTS5 convention). Empty term list yields an empty-string
+    phrase, which FTS5 treats as no-match.
+    """
+    safe = [f'"{t.replace(chr(34), chr(34) * 2)}"' for t in terms if t]
+    return " ".join(safe) if safe else '""'
