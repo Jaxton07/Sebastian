@@ -535,6 +535,19 @@ class TestMemoryConsolidatorConsolidate:
             await engine.dispose()
 
 
+def test_consolidator_input_task_rejects_invalid_literal() -> None:
+    with pytest.raises(Exception):
+        ConsolidatorInput(
+            task="wrong_task",
+            session_messages=[],
+            candidate_artifacts=[],
+            active_memories_for_subject=[],
+            recent_summaries=[],
+            slot_definitions=[],
+            entity_registry_snapshot=[],
+        )
+
+
 def test_memory_summary_rejects_invalid_scope() -> None:
     with pytest.raises(ValidationError):
         MemorySummary(content="x", subject_id="owner", scope="User", session_id=None)  # type: ignore[arg-type]

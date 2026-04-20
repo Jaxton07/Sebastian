@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConsolidatorInput(BaseModel):
-    task: str = "consolidate_memory"
+    task: Literal["consolidate_memory"] = "consolidate_memory"
     session_messages: list[dict[str, Any]]
     candidate_artifacts: list[CandidateArtifact]
     active_memories_for_subject: list[dict[str, Any]]
