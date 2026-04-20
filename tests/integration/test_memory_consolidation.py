@@ -103,10 +103,16 @@ async def engine():
     eng = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Create FTS virtual table required by EpisodeMemoryStore
+        # Create FTS virtual tables required by memory stores
         await conn.execute(
             text(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS episode_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
                 "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
             )
         )

@@ -54,6 +54,12 @@ async def engine() -> AsyncIterator[AsyncEngine]:
                 "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
             )
         )
+        await conn.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
     try:
         yield eng
     finally:

@@ -23,6 +23,12 @@
 - `RelationCandidateRecord` 补齐 `valid_from` / `valid_until` / `updated_at` 字段
 
 ### Fixed
+- Context Lane 改为 query-aware FTS 检索，问"今天项目 A 情况"不再随机返回近期无关事实
+- `memory_search` 工具复用 Assembler `_keep_record` 过滤逻辑，与自动注入路径行为一致
+- `proposed_actions` 中非 EXPIRE 动作现在写入 DISCARD 审计日志，不再静默丢弃
+- `profile_store.expire()` 返回 rowcount，`write_router` 对 0 命中记录 `persist.expire_miss` trace
+- `search_active` 改为置信度优先排序，符合 artifact-model §9 可信度优先级原则
+- `RelationCandidateRecord` 补 `source` 字段，写入和检索链路完整保留来源语义
 - `search_active` 过滤过期记录，避免失效事实被注入 prompt
 - `memory_save` DISCARD 分支补写决策日志
 - 沉淀 summary 走 resolver 并写决策日志

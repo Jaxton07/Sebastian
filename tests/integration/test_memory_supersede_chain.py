@@ -46,10 +46,16 @@ async def db_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # EpisodeMemoryStore.search requires the FTS5 virtual table.
+        # FTS5 virtual tables required by memory stores.
         await conn.execute(
             sqlalchemy.text(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS episode_memories_fts "
+                "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
+            )
+        )
+        await conn.execute(
+            sqlalchemy.text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS profile_memories_fts "
                 "USING fts5(memory_id UNINDEXED, content_segmented, tokenize=unicode61)"
             )
         )
