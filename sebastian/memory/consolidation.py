@@ -325,8 +325,9 @@ class SessionConsolidationWorker:
                 for summary in result.summaries
             ]
 
-            all_decisions = await process_candidates(
+            pipeline_result = await process_candidates(
                 summary_candidates + result.proposed_artifacts,
+                result.proposed_slots if result.proposed_slots else [],
                 session_id=session_id,
                 agent_type=agent_type,
                 db_session=session,
@@ -343,9 +344,10 @@ class SessionConsolidationWorker:
                     "session_id": session_id,
                     "agent_type": agent_type,
                 },
+                proposed_by="consolidator",
             )
 
-            for d in all_decisions:
+            for d in pipeline_result.decisions:
                 if d.decision == MemoryDecisionType.DISCARD:
                     persisted_counts["discard"] += 1
                 elif d.candidate.kind == MemoryKind.SUMMARY:

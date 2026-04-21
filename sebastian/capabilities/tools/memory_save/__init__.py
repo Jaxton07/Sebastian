@@ -77,7 +77,7 @@ async def _do_save(content: str, session_id: str | None, agent_type: str) -> Non
         ]
 
     async with state.db_factory() as db_session:
-        decisions = await process_candidates(
+        result = await process_candidates(
             candidates,
             session_id=session_id or "",
             agent_type=agent_type,
@@ -94,7 +94,7 @@ async def _do_save(content: str, session_id: str | None, agent_type: str) -> Non
         )
         await db_session.commit()
 
-    trace("tool.memory_save.bg_done", decision_count=len(decisions))
+    trace("tool.memory_save.bg_done", decision_count=result.saved_count)
 
 
 def _log_bg_error(t: asyncio.Task[None]) -> None:

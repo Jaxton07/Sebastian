@@ -92,7 +92,7 @@ async def _run(candidates, *, session_id="s1", input_source=None):
 
     factory = await _make_db_factory()
     async with factory() as db_session:
-        decisions = await process_candidates(
+        pipeline_result = await process_candidates(
             candidates,
             session_id=session_id,
             agent_type="default",
@@ -108,7 +108,7 @@ async def _run(candidates, *, session_id="s1", input_source=None):
             input_source=input_source or {"type": "test"},
         )
         await db_session.commit()
-    return decisions, factory
+    return pipeline_result.decisions, factory
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,6 @@ async def test_process_candidates_input_source_written_to_decision_log() -> None
 @pytest.mark.asyncio
 async def test_process_candidates_does_not_commit(monkeypatch) -> None:
     """process_candidates must NOT call db_session.commit() — caller owns the transaction."""
-    from unittest.mock import AsyncMock, patch
 
     from sebastian.memory.decision_log import MemoryDecisionLogger
     from sebastian.memory.entity_registry import EntityRegistry
