@@ -76,7 +76,7 @@ fun AgentBindingsPage(
             // ── Orchestrator ──────────────────────────────────────────────
             if (orchestrator.isNotEmpty()) {
                 item { SectionHeader("Orchestrator") }
-                items(orchestrator, key = { it.agentType }) { agent ->
+                items(orchestrator, key = { "agent:${it.agentType}" }) { agent ->
                     AgentBindingRow(
                         headline = agent.displayName,
                         subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
@@ -93,7 +93,7 @@ fun AgentBindingsPage(
             // ── Memory Components ─────────────────────────────────────────
             if (state.memoryComponents.isNotEmpty()) {
                 item { SectionHeader("Memory Components") }
-                items(state.memoryComponents, key = { it.componentType }) { component ->
+                items(state.memoryComponents, key = { "mem:${it.componentType}" }) { component ->
                     AgentBindingRow(
                         headline = component.displayName,
                         subtitle = resolveSubtitle(component.boundProviderId, component.thinkingEffort, state.providers, defaultProvider?.name),
@@ -110,7 +110,7 @@ fun AgentBindingsPage(
             // ── Sub-Agents ────────────────────────────────────────────────
             if (subAgents.isNotEmpty()) {
                 item { SectionHeader("Sub-Agents") }
-                items(subAgents, key = { it.agentType }) { agent ->
+                items(subAgents, key = { "agent:${it.agentType}" }) { agent ->
                     AgentBindingRow(
                         headline = agent.displayName,
                         subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
@@ -134,16 +134,16 @@ private fun resolveSubtitle(
     defaultProviderName: String?,
 ): String {
     val bound = providers.firstOrNull { it.id == boundProviderId }
-    return if (bound != null) {
-        buildString {
+    return when {
+        boundProviderId == null -> "Use default · ${defaultProviderName ?: "—"}"
+        bound != null -> buildString {
             append(bound.name)
             if (thinkingEffort != ThinkingEffort.OFF) {
                 append(" · ")
                 append(thinkingEffort.displayLabel())
             }
         }
-    } else {
-        "Use default · ${defaultProviderName ?: "—"}"
+        else -> "Unknown provider"
     }
 }
 
