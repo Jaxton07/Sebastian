@@ -166,12 +166,34 @@ _EXTRACTOR_FIELD_TABLE = """\
 """
 
 
+_CONFIDENCE_SCORING_GUIDE = """\
+## 置信度评分指南
+
+confidence 字段反映你对该记忆内容准确性的把握程度：
+
+| 分值区间 | 适用场景 |
+|---|---|
+| 0.9 – 1.0 | 用户明确陈述的事实（"我喜欢X"、"我叫X"、"我在X工作"） |
+| 0.7 – 0.9 | 对话中直接体现但非明确声明（"每次都选X"、重复提及同一偏好） |
+| 0.5 – 0.7 | 从行为或上下文推断的偏好，有一定根据但非直述 |
+| 0.3 – 0.5 | 模糊线索或单次偶然提及，可信度较低 |
+| < 0.3 | 高度不确定的推断，几乎只有间接证据（建议不提取） |
+
+附加约束：
+- source=explicit 时，confidence 不应低于 0.8
+- source=inferred 时，confidence 上限建议不超过 0.75
+- 宁可少提取，不提取低质量记忆
+"""
+
+
 def build_extractor_prompt(known_slots_by_kind: dict[str, list[dict[str, str]]]) -> str:
     rules = build_slot_rules_section(known_slots_by_kind)
     return f"""\
 你是记忆提取助手。分析给定的对话内容，抽取出有记忆价值的信息。
 
 {_EXTRACTOR_FIELD_TABLE}
+
+{_CONFIDENCE_SCORING_GUIDE}
 
 {rules}
 """

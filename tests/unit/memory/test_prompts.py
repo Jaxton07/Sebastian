@@ -53,3 +53,16 @@ def test_embedded_examples_parse_as_extractor_output() -> None:
         parsed = ExtractorOutput.model_validate_json(example_json)
         assert isinstance(parsed.artifacts, list)
         assert isinstance(parsed.proposed_slots, list)
+
+
+def test_extractor_prompt_contains_confidence_guide() -> None:
+    """置信度评分指南必须出现在 extractor system prompt 中。"""
+    from sebastian.memory.prompts import build_extractor_prompt, group_slots_by_kind
+    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+
+    prompt = build_extractor_prompt(group_slots_by_kind(DEFAULT_SLOT_REGISTRY.list_all()))
+
+    assert "置信度评分指南" in prompt
+    assert "0.9" in prompt
+    assert "source=explicit" in prompt
+    assert "source=inferred" in prompt
