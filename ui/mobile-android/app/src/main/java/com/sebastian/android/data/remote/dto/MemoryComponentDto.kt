@@ -7,7 +7,7 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class MemoryComponentBindingDto(
-    @param:Json(name = "component_type") val componentType: String,
+    @param:Json(name = "component_type") val componentType: String? = null,
     @param:Json(name = "provider_id") val providerId: String?,
     @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
 )

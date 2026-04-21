@@ -68,7 +68,7 @@ class AgentRepositoryImpl @Inject constructor(
             // agentType field carries componentType — AgentBindingEditorViewModel only reads providerId/thinkingEffort,
             // so we reuse AgentBindingDto as a binding carrier here.
             AgentBindingDto(
-                agentType = dto.componentType,
+                agentType = dto.componentType ?: componentType,
                 providerId = dto.providerId,
                 thinkingEffort = dto.thinkingEffort,
             )
