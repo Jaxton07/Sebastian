@@ -37,8 +37,17 @@ def _keep_record(
 ) -> bool:
     """Return True if *record* should be included in retrieval results.
 
-    Shared by :class:`MemorySectionAssembler` (auto-inject) and the
-    ``memory_search`` tool so both paths apply identical filtering.
+    **Hard-line only — NOT for context_injection path.**
+
+    This function applies only the hard confidence floor
+    (``MIN_CONFIDENCE_HARD = 0.3``).  It does **not** apply the
+    auto-inject gate (``MIN_CONFIDENCE_AUTO_INJECT = 0.5``), so records
+    in the mid-band ``[0.3, 0.5)`` will pass here.
+
+    This is intentional: ``_keep_record`` is used by the ``memory_search``
+    tool (``access_purpose="tool_search"``), which must see mid-band records.
+    For context_injection filtering — where the 0.5 gate must be enforced —
+    use :meth:`MemorySectionAssembler.assemble` instead.
 
     The ``do_not_auto_inject`` tag is only a blocker when
     ``context.access_purpose == "context_injection"``; explicit tool-search

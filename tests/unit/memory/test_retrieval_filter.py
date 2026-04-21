@@ -99,3 +99,48 @@ def test_min_confidence_constant_fully_removed() -> None:
     import sebastian.memory.retrieval as ret_mod
 
     assert not hasattr(ret_mod, "MIN_CONFIDENCE")
+
+
+def test_hard_gate_at_boundary_0_3_context_injection() -> None:
+    """confidence == 0.3 passes hard gate but fails auto-inject gate for context_injection."""
+    # _keep_record at 0.3 should pass (>=, not <)
+    assert _keep_record(_rec(0.3), context=_ctx("context_injection")) is True
+    # But MemorySectionAssembler should drop it (0.3 < 0.5 auto-inject threshold)
+    plan = RetrievalPlan()
+    out = MemorySectionAssembler().assemble(
+        profile_records=[_rec(0.3)],
+        context_records=[],
+        episode_records=[],
+        relation_records=[],
+        plan=plan,
+        context=_ctx("context_injection"),
+    )
+    assert out == ""
+
+
+def test_auto_inject_boundary_0_5_context_injection() -> None:
+    """confidence == 0.5 exactly passes the auto-inject gate (strict < comparison)."""
+    plan = RetrievalPlan()
+    out = MemorySectionAssembler().assemble(
+        profile_records=[_rec(0.5)],
+        context_records=[],
+        episode_records=[],
+        relation_records=[],
+        plan=plan,
+        context=_ctx("context_injection"),
+    )
+    assert "x" in out
+
+
+def test_auto_inject_boundary_0_5_tool_search() -> None:
+    """confidence == 0.5 passes for tool_search (no auto-inject gate)."""
+    plan = RetrievalPlan()
+    out = MemorySectionAssembler().assemble(
+        profile_records=[_rec(0.5)],
+        context_records=[],
+        episode_records=[],
+        relation_records=[],
+        plan=plan,
+        context=_ctx("tool_search"),
+    )
+    assert "x" in out
