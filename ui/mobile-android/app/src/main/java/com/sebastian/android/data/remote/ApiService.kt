@@ -91,6 +91,13 @@ interface ApiService {
     @PATCH("api/v1/debug/logging")
     suspend fun patchLogState(@Body body: LogConfigPatchDto): LogStateDto
 
+    // Memory Settings
+    @GET("api/v1/memory/settings")
+    suspend fun getMemorySettings(): MemorySettingsDto
+
+    @PUT("api/v1/memory/settings")
+    suspend fun putMemorySettings(@Body body: MemorySettingsDto): MemorySettingsDto
+
     // Health
     @GET("api/v1/health")
     suspend fun health(): Map<String, Any>
