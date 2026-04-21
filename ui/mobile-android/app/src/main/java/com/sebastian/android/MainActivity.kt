@@ -50,6 +50,7 @@ import com.sebastian.android.ui.settings.AgentBindingEditorPage
 import com.sebastian.android.ui.settings.AgentBindingsPage
 import com.sebastian.android.ui.settings.AppearancePage
 import com.sebastian.android.ui.settings.DebugLoggingPage
+import com.sebastian.android.ui.settings.MemorySettingsPage
 import com.sebastian.android.ui.settings.ProviderFormPage
 import com.sebastian.android.ui.settings.ProviderListPage
 import com.sebastian.android.ui.settings.ConnectionPage
@@ -237,6 +238,9 @@ fun SebastianNavHost(
             composable<Route.SettingsDebugLogging> {
                 DebugLoggingPage(navController = navController)
             }
+            composable<Route.SettingsMemory> {
+                MemorySettingsPage(navController = navController)
+            }
             composable<Route.SettingsProvidersNew> {
                 ProviderFormPage(navController = navController, providerId = null)
             }
@@ -251,6 +255,7 @@ fun SebastianNavHost(
                 val route = backStackEntry.toRoute<Route.SettingsAgentBindingEditor>()
                 AgentBindingEditorPage(
                     agentType = route.agentType,
+                    isMemoryComponent = route.isMemoryComponent,
                     navController = navController,
                 )
             }

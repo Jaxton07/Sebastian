@@ -4,7 +4,60 @@
 
 ## [Unreleased]
 
+### Added
+- 动态 Slot 系统（Dynamic Slot System）：LLM 可在对话中提议新记忆 slot，经三段式命名校验后写入 `memory_slots` 表并热加载到 `SlotRegistry`；`SlotProposalHandler` 用 savepoint 隔离并发 race，冲突时自动复用已有赢家
+- `memory_save` tool 同步化：改为 await 等待并返回结构化 `MemorySaveResult`（`saved_count`、`proposed_slots_registered` 等），前台 Agent 可据此判断是否通知用户
+- 新增 3 个内建 seed slot：`user.profile.name` / `user.profile.location` / `user.profile.occupation`（总计 9 个内建 slot）
+- `write_router`：按 kind 分发 memory artifact 到 Profile/Episode/Entity/Relation 存储
+- `subject resolver`：替换硬编码 owner，按 scope/session/agent 派生 subject_id
+- `Context Lane`：检索注入近期时效性记忆
+- `Relation Lane`：检索注入当前有效关系候选
+- `memory_search` 返回结构化 citations（区分 current / historical）
+- 启动时 catch-up sweep 未沉淀 session，避免 gateway 崩溃丢失
+- 启动时 seed 内建 slots 并同步 jieba 词典
+- `MemoryError` 异常体系替换 SlotRegistry 裸异常
+- 执行 Consolidator 的 `proposed_actions` 中 EXPIRE 动作
+- `MemoryExtractor` 接入沉淀 worker 并携带 active/summary/slot/entity 上下文
+- `MemoryConsolidationScheduler.drain()` 公开 API 用于测试与优雅关停
+
+### Changed
+- `MemoryDecisionType` 枚举值统一为大写（ADD/SUPERSEDE/MERGE/EXPIRE/DISCARD）
+- `MemorySummary.scope` 改为 `MemoryScope` 枚举
+- `RelationCandidateRecord` 补齐 `valid_from` / `valid_until` / `updated_at` 字段
+
 ### Fixed
+- Context Lane 改为 query-aware FTS 检索，问"今天项目 A 情况"不再随机返回近期无关事实
+- `memory_search` 工具复用 Assembler `_keep_record` 过滤逻辑，与自动注入路径行为一致
+- `proposed_actions` 中非 EXPIRE 动作现在写入 DISCARD 审计日志，不再静默丢弃
+- `profile_store.expire()` 返回 rowcount，`write_router` 对 0 命中记录 `persist.expire_miss` trace
+- `search_active` 改为置信度优先排序，符合 artifact-model §9 可信度优先级原则
+- `RelationCandidateRecord` 补 `source` 字段，写入和检索链路完整保留来源语义
+- `search_active` 过滤过期记录，避免失效事实被注入 prompt
+- `memory_save` DISCARD 分支补写决策日志
+- 沉淀 summary 走 resolver 并写决策日志
+- Resolver 按 source / confidence 优先级正确输出 SUPERSEDE 或 DISCARD
+- FTS5 MATCH 查询按 phrase 转义，避免用户输入触发操作符解析错误
+- `MemoryExtractor` / `MemoryConsolidator` LLM 异常兜底，返回空结果避免 Worker 崩溃
+- 替换一批假阳性测试为真正断言 DB 状态
+- `EntityRegistry.lookup` 改走 SQL 索引，避免全表扫描
+- `decision_log` 透传 `model` 与 `session_id` 便于审计
+- `provenance` 注入 `session_id`，便于记忆回溯
+- 一键安装脚本在检测到残缺 `.venv` 目录时会重新创建/修复虚拟环境，避免激活脚本缺失导致安装中断。
+- current truth 检索补全 `valid_from/status/subject_id` 三项二次过滤，避免时效外记录注入 prompt
+- Episode Lane 改为 query-aware summary-first，先检索摘要再按需补 episode detail，降低 prompt 噪声
+- `ExtractorInput` 补 `task: Literal["extract_memory_artifacts"]` 契约字段，与 spec 对齐
+- `memory_decision_log` 新增 `input_source` 字段，明确区分 `memory_save_tool` 与 `session_consolidation` 两条写入路径
+- `memory_search` 工具新增 `citation_type` 字段（`current_truth` / `historical_summary` / `historical_evidence`），保留 `is_current` 向后兼容
+- 记忆注入在所有检索通道保留类型标签（Context/Episode/Relation 均显示 `[kind]` 前缀），避免注入内容类型混淆。
+- `memory_search` 主动检索覆盖 context/relation 通道，与自动注入路径保持 summary-first episode 策略一致；返回 `lane` 字段区分通道来源。
+- `memory_search` 使用 lane-aware effective limit：当请求 `limit` 小于已激活通道数时，会提高有效上限以保证每条 active lane 至少返回 1 条候选，避免高召回通道饿死其他通道。
+- 记忆存储补齐协议字段持久化：ProfileMemory 保存 `cardinality`/`resolution_policy`，EpisodeMemory 保存 `valid_from`/`valid_until`，RelationCandidate 保存 `policy_tags`；支持存量数据库幂等迁移。
+- `memory_save` provenance 在 session 上下文存在时注入 `evidence=[{"session_id": ...}]`，提升审计追踪可靠性。
+- Episode/Summary 精确去重：相同 content 的二次写入返回 DISCARD，避免历史证据重复堆积。
+- MERGE 最小执行路径：merge-policy slot 精确匹配时走 MERGE 决策（supersede 旧记录），不引入模糊语义合并。
+- EXPIRE 生命周期统一经 `write_router.persist_decision()` 路由，不再由 consolidation 直接操作 store。
+- `ConsolidatorInput.task` 收紧为 `Literal["consolidate_memory"]`，运行时拒绝非法任务值。
+- `RetrievalContext` 新增 `active_project_or_agent_context` 字段，`BaseAgent` 注入基本 agent 上下文；planner 后续阶段可消费。
 - App 与后端会校验 LLM Provider 的 Base URL 必须是 http(s) 地址，避免把 API Key 等非 URL 内容误保存到 Base URL。
 - `sebastian update` 在源码 checkout 也被当前 Python 环境导入时，仍会优先识别 `~/.sebastian/app` 安装目录，并显示安装目录中的真实版本号。
 

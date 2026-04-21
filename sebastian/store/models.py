@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sebastian.store.database import Base  # noqa: F401
@@ -97,6 +97,148 @@ class AgentLLMBindingRecord(Base):
         nullable=True,
     )
     thinking_effort: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class MemorySlotRecord(Base):
+    __tablename__ = "memory_slots"
+
+    slot_id: Mapped[str] = mapped_column(String, primary_key=True)
+    scope: Mapped[str] = mapped_column(String)
+    subject_kind: Mapped[str] = mapped_column(String)
+    cardinality: Mapped[str] = mapped_column(String)
+    resolution_policy: Mapped[str] = mapped_column(String)
+    kind_constraints: Mapped[list[str]] = mapped_column(JSON)
+    description: Mapped[str] = mapped_column(String)
+    is_builtin: Mapped[bool] = mapped_column(Boolean)
+    proposed_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    proposed_in_session: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ProfileMemoryRecord(Base):
+    __tablename__ = "profile_memories"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    subject_id: Mapped[str] = mapped_column(String, index=True)
+    scope: Mapped[str] = mapped_column(String, index=True)
+    slot_id: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String)
+    cardinality: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolution_policy: Mapped[str | None] = mapped_column(String, nullable=True)
+    content: Mapped[str] = mapped_column(String)
+    content_segmented: Mapped[str] = mapped_column(String, default="")
+    structured_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    source: Mapped[str] = mapped_column(String)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String, index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON)
+    policy_tags: Mapped[list[str]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    access_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class EpisodeMemoryRecord(Base):
+    __tablename__ = "episode_memories"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    subject_id: Mapped[str] = mapped_column(String, index=True)
+    scope: Mapped[str] = mapped_column(String, index=True)
+    session_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    kind: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(String)
+    content_segmented: Mapped[str] = mapped_column(String)
+    structured_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    source: Mapped[str] = mapped_column(String)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON)
+    links: Mapped[list[str]] = mapped_column(JSON)
+    policy_tags: Mapped[list[str]] = mapped_column(JSON)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    access_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class EntityRecord(Base):
+    __tablename__ = "entities"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String, index=True)
+    entity_type: Mapped[str] = mapped_column(String, index=True)
+    aliases: Mapped[list[str]] = mapped_column(JSON)
+    entity_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, name="metadata")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class RelationCandidateRecord(Base):
+    __tablename__ = "relation_candidates"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    subject_id: Mapped[str] = mapped_column(String, index=True)
+    predicate: Mapped[str] = mapped_column(String, index=True)
+    source_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_entity_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    content: Mapped[str] = mapped_column(String)
+    structured_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    confidence: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String, default="system_derived")
+    status: Mapped[str] = mapped_column(String, index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON)
+    policy_tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class MemoryDecisionLogRecord(Base):
+    __tablename__ = "memory_decision_log"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    decision: Mapped[str] = mapped_column(String, index=True)
+    subject_id: Mapped[str] = mapped_column(String, index=True)
+    scope: Mapped[str] = mapped_column(String, index=True)
+    slot_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    candidate: Mapped[dict[str, Any]] = mapped_column(JSON)
+    conflicts: Mapped[list[str]] = mapped_column(JSON)
+    reason: Mapped[str] = mapped_column(String)
+    old_memory_ids: Mapped[list[str]] = mapped_column(JSON)
+    new_memory_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    worker: Mapped[str] = mapped_column(String)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    rule_version: Mapped[str] = mapped_column(String)
+    input_source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class SessionConsolidationRecord(Base):
+    __tablename__ = "session_consolidations"
+
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_type: Mapped[str] = mapped_column(String, primary_key=True)
+    consolidated_at: Mapped[datetime] = mapped_column(DateTime)
+    worker_version: Mapped[str] = mapped_column(String, default="phase_c_v1")
+
+
+class AppSettingsRecord(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(UTC),

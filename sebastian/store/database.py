@@ -73,6 +73,20 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
     patches: list[tuple[str, str, str]] = [
         ("llm_providers", "thinking_capability", "VARCHAR(20)"),
         ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
+        ("memory_decision_log", "input_source", "TEXT"),
+        ("memory_decision_log", "session_id", "TEXT"),
+        ("profile_memories", "cardinality", "VARCHAR"),
+        ("profile_memories", "resolution_policy", "VARCHAR"),
+        ("profile_memories", "content_segmented", "VARCHAR DEFAULT ''"),
+        ("episode_memories", "valid_from", "DATETIME"),
+        ("episode_memories", "valid_until", "DATETIME"),
+        ("relation_candidates", "policy_tags", "TEXT"),
+        ("relation_candidates", "source", "VARCHAR DEFAULT 'system_derived'"),
+        ("relation_candidates", "valid_from", "DATETIME"),
+        ("relation_candidates", "valid_until", "DATETIME"),
+        ("relation_candidates", "updated_at", "DATETIME"),
+        ("memory_slots", "proposed_by", "TEXT"),
+        ("memory_slots", "proposed_in_session", "TEXT"),
     ]
     for table, column, ddl in patches:
         result = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
@@ -82,6 +96,25 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
             logger.info("Applied migration: %s.%s", table, column)
 
     await _drop_obsolete_columns(conn)
+    await _normalize_confidence_types(conn)
+
+
+async def _normalize_confidence_types(conn: Any) -> None:
+    """修复历史 str 型 confidence（SQLite dynamic typing）。
+
+    由于 SQLite 允许 REAL 列存储 text，早期写入路径可能留下 text 型数值，
+    导致读出后做 `<` / `-confidence` 比较时抛 TypeError。
+    逐表扫描 typeof(confidence) = 'text' 的行并 CAST 回 REAL。
+    idempotent：没有 text 行时空跑。
+    """
+    tables = ("profile_memories", "episode_memories", "relation_candidates")
+    for table in tables:
+        result = await conn.exec_driver_sql(
+            f"UPDATE {table} SET confidence = CAST(confidence AS REAL) "
+            f"WHERE typeof(confidence) = 'text'"
+        )
+        if result.rowcount:
+            logger.info("Normalized %d str confidence rows in %s", result.rowcount, table)
 
 
 async def _drop_obsolete_columns(conn: Any) -> None:

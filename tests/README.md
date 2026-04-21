@@ -68,6 +68,7 @@ pytest --cov=sebastian tests/
 |------------|--------|
 | 共享 Fixture（数据库、事件循环配置） | [conftest.py](conftest.py) |
 | 某个模块的单元测试 | [unit/](unit/) 下对应 `test_<module>.py` |
+| 安装、升级、运行时 CLI 行为 | [unit/runtime/](unit/runtime/) |
 | Gateway / API 集成行为 | [integration/](integration/) 下对应文件 |
 
 ---

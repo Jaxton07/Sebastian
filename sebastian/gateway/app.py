@@ -25,6 +25,7 @@ def _initialize_agent_instances(
     event_bus: EventBus,
     index_store: IndexStore,
     llm_registry: LLMProviderRegistry,
+    db_factory: Any = None,
 ) -> dict[str, BaseAgent]:
     """Create a singleton instance for each registered agent type."""
     instances: dict[str, BaseAgent] = {}
@@ -37,6 +38,7 @@ def _initialize_agent_instances(
             llm_registry=llm_registry,
             allowed_tools=cfg.allowed_tools,
             allowed_skills=cfg.allowed_skills,
+            db_factory=db_factory,
         )
         agent.name = cfg.agent_type
         instances[cfg.agent_type] = agent
@@ -54,10 +56,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.core.task_manager import TaskManager
     from sebastian.gateway.sse import SSEManager
     from sebastian.log import setup_logging
+    from sebastian.memory.entity_registry import EntityRegistry
+    from sebastian.memory.startup import (
+        bootstrap_slot_registry,
+        init_memory_storage,
+        seed_builtin_slots,
+    )
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import bus
-    from sebastian.store.database import get_session_factory, init_db
+    from sebastian.store.database import get_engine, get_session_factory, init_db
     from sebastian.store.index_store import IndexStore
     from sebastian.store.session_store import SessionStore
     from sebastian.store.todo_store import TodoStore
@@ -69,7 +77,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sse=settings.sebastian_log_sse,
     )
     await init_db()
+    await init_memory_storage(get_engine())
     db_factory = get_session_factory()
+
+    from sebastian.gateway.state import MemoryRuntimeSettings
+    from sebastian.store.app_settings_store import APP_SETTING_MEMORY_ENABLED, AppSettingsStore
+
+    async with db_factory() as _app_settings_session:
+        _app_store = AppSettingsStore(_app_settings_session)
+        _mem_val = await _app_store.get(APP_SETTING_MEMORY_ENABLED)
+    mem_enabled = (
+        (_mem_val.lower() == "true") if _mem_val is not None else settings.sebastian_memory_enabled
+    )
+    state.memory_settings = MemoryRuntimeSettings(enabled=mem_enabled)
+
+    async with db_factory() as _seed_session:
+        await seed_builtin_slots(_seed_session)
+        entity_registry = EntityRegistry(_seed_session)
+        try:
+            await entity_registry.sync_jieba_terms()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("jieba entity term sync failed at startup: %s", exc)
+        try:
+            # 把 Entity 名灌入 Planner relation 触发词缓存
+            from sebastian.memory.retrieval import DEFAULT_RETRIEVAL_PLANNER
+
+            await DEFAULT_RETRIEVAL_PLANNER.bootstrap_entity_triggers(entity_registry)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("planner entity trigger bootstrap failed at startup: %s", exc)
+
+    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+
+    async with db_factory() as _bootstrap_session:
+        await bootstrap_slot_registry(_bootstrap_session, DEFAULT_SLOT_REGISTRY)
+
     session_store = SessionStore(settings.sessions_dir)
     todo_store = TodoStore(settings.sessions_dir)
     index_store = IndexStore(settings.sessions_dir, session_store=session_store)
@@ -93,6 +134,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await connect_all(mcp_clients, registry)
 
     event_bus = bus
+    from sebastian.memory.consolidation import (
+        MemoryConsolidationScheduler,
+        MemoryConsolidator,
+        SessionConsolidationWorker,
+    )
+    from sebastian.memory.extraction import MemoryExtractor
+
+    consolidator = MemoryConsolidator(llm_registry)
+    extractor = MemoryExtractor(llm_registry)
+    consolidation_worker = SessionConsolidationWorker(
+        db_factory=db_factory,
+        consolidator=consolidator,
+        extractor=extractor,
+        session_store=session_store,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+    consolidation_scheduler = MemoryConsolidationScheduler(
+        event_bus=event_bus,
+        worker=consolidation_worker,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+    state.consolidation_scheduler = consolidation_scheduler
+    state.memory_extractor = extractor
+
+    # Catch-up sweep: consolidate sessions that completed while the gateway was down.
+    from sebastian.memory.consolidation import sweep_unconsolidated
+
+    await sweep_unconsolidated(
+        db_factory=db_factory,
+        worker=consolidation_worker,
+        index_store=index_store,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+
     conversation = ConversationManager(event_bus, db_factory=db_factory)
     task_manager = TaskManager(session_store, event_bus, index_store=index_store)
     sse_mgr = SSEManager(event_bus)
@@ -136,6 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_bus=state.event_bus,
         index_store=state.index_store,
         llm_registry=llm_registry,
+        db_factory=state.db_factory,
     )
 
     # 孤儿 session 目录提醒（agent 重命名后遗留数据）
@@ -214,6 +290,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     watchdog_task.cancel()
     await completion_notifier.aclose()
+    if state.consolidation_scheduler is not None:
+        await state.consolidation_scheduler.aclose()
     logger.info("Sebastian gateway shutdown")
 
 
@@ -226,6 +304,8 @@ def create_app() -> FastAPI:
         approvals,
         debug,
         llm_providers,
+        memory_components,
+        memory_settings,
         sessions,
         stream,
         turns,
@@ -249,6 +329,8 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/api/v1")
     app.include_router(llm_providers.router, prefix="/api/v1")
     app.include_router(debug.router, prefix="/api/v1")
+    app.include_router(memory_components.router, prefix="/api/v1")
+    app.include_router(memory_settings.router, prefix="/api/v1")
     return app
 
 

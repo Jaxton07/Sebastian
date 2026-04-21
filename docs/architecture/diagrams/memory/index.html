@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Sebastian Memory 架构图索引</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#0f1117; color:#e1e4e8; margin:0; padding:32px; }
+  h1 { color:#f0f6ff; font-size:1.4rem; margin-bottom:4px; }
+  .sub { color:#8b949e; font-size:0.85rem; margin-bottom:32px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:18px 20px; text-decoration:none; color:inherit; display:block; transition:border-color .15s; }
+  .card:hover { border-color:#58a6ff; }
+  .card-title { color:#79b8ff; font-size:1rem; font-weight:600; margin-bottom:6px; }
+  .card-desc { color:#8b949e; font-size:.82rem; line-height:1.5; }
+  .tag { display:inline-block; font-size:.7rem; padding:1px 7px; border-radius:10px; margin-top:10px; }
+  .v { background:#1a2a3a; color:#58a6ff; border:1px solid #1a4a6a; }
+  .planned { background:#2a2a1a; color:#e3b341; border:1px solid #6a5a1a; }
+</style>
+</head>
+<body>
+<h1>Sebastian Memory（记忆）架构图索引</h1>
+<p class="sub">docs/architecture/diagrams/memory/ · 与 docs/architecture/spec/memory/ 分层 Spec 对应</p>
+<div class="grid">
+  <a class="card" href="memory-full-arch.html">
+    <div class="card-title">全流程架构图 ★</div>
+    <div class="card-desc">系统层次总览、写入流水线（Write Pipeline）完整视图、四条检索通道（Retrieval Lane）详解、后台沉淀（Consolidation）触发链、Artifact（记忆产物）生命周期状态机。五节一图。</div>
+    <span class="tag v">v1.0</span>
+  </a>
+  <a class="card" href="memory-read-write-flow.html">
+    <div class="card-title">统一写入与检索装配链路 ★</div>
+    <div class="card-desc">专门解释 Capture → Extract → Normalize → Resolve → Persist、动态 Slot 注册，以及 Intent → Retrieval Plan → Assemble。按当前代码修正为 9 个内置 slot、同步 memory_save 和动态 slot 持久化。</div>
+    <span class="tag v">v1.0</span>
+  </a>
+  <a class="card" href="memory-sequence.html">
+    <div class="card-title">具体案例时序图 ★</div>
+    <div class="card-desc">三个完整案例：①偏好写入→Session 沉淀→跨会话注入；②SUPERSEDE（取代）覆盖更新路径；③memory_search 工具的 Lane-aware Budget（按通道分配预算）机制。</div>
+    <span class="tag v">v1.0</span>
+  </a>
+  <a class="card" href="overview.html">
+    <div class="card-title">总体架构（简版）</div>
+    <div class="card-desc">输入来源、统一写入协议（Write Protocol）、长期记忆存储（Long-term Memory Store）、读取路径的整体关系。</div>
+    <span class="tag v">v1.0</span> <span class="tag planned">planned</span>
+  </a>
+  <a class="card" href="write-pipeline.html">
+    <div class="card-title">写入与冲突决策</div>
+    <div class="card-desc">Extractor（提取器）输出 CandidateArtifact（候选记忆产物），Normalize（规范化）/Resolve（冲突解析）决定最终写入动作。</div>
+    <span class="tag v">v1.0</span> <span class="tag planned">planned</span>
+  </a>
+  <a class="card" href="retrieval.html">
+    <div class="card-title">读取与注入</div>
+    <div class="card-desc">Intent（意图）→ Retrieval Planner（检索规划器）→ 四条检索通道（Retrieval Lane）→ Assembler（上下文装配器）。</div>
+    <span class="tag v">v1.0</span> <span class="tag planned">planned</span>
+  </a>
+  <a class="card" href="consolidation.html">
+    <div class="card-title">后台沉淀与模型职责</div>
+    <div class="card-desc">Memory Extractor（记忆提取器）、Memory Consolidator（记忆沉淀器）、三类后台任务与 Decision Log（决策日志）。</div>
+    <span class="tag v">v1.0</span> <span class="tag planned">planned</span>
+  </a>
+</div>
+</body>
+</html>

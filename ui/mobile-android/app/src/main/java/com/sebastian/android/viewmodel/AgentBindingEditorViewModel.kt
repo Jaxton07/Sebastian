@@ -46,7 +46,8 @@ sealed interface EditorEvent {
 
 @HiltViewModel(assistedFactory = AgentBindingEditorViewModel.Factory::class)
 class AgentBindingEditorViewModel @AssistedInject constructor(
-    @Assisted private val agentType: String,
+    @Assisted("agentType") private val agentType: String,
+    @Assisted("isMemoryComponent") private val isMemoryComponent: Boolean,
     private val agentRepository: AgentRepository,
     private val settingsRepository: SettingsRepository,
     @ApplicationScope private val applicationScope: CoroutineScope,
@@ -54,7 +55,10 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
 
     @AssistedFactory
     interface Factory {
-        fun create(agentType: String): AgentBindingEditorViewModel
+        fun create(
+            @Assisted("agentType") agentType: String,
+            @Assisted("isMemoryComponent") isMemoryComponent: Boolean,
+        ): AgentBindingEditorViewModel
     }
 
     private val _uiState = MutableStateFlow(EditorUiState(agentType = agentType))
@@ -66,16 +70,16 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     private var putJob: Job? = null
     private var loadJob: Job? = null
     private var snapshot: EditorUiState? = null
-
-    // 仅在 debounce 已排队但 setBinding 调用尚未返回时为 true。
-    // onCleared 用它判断是否需要在 viewModelScope 已取消后补发末次写入。
     private var putPending: Boolean = false
 
     fun load() {
-        // 幂等：旋转/重组 重复触发时，正在进行的 load 不再重复拉；避免覆盖用户刚改的选择
         if (loadJob?.isActive == true) return
         loadJob = viewModelScope.launch {
-            val bindingR = agentRepository.getBinding(agentType)
+            val bindingR = if (isMemoryComponent) {
+                agentRepository.getMemoryComponentBinding(agentType)
+            } else {
+                agentRepository.getBinding(agentType)
+            }
             val providersR = settingsRepository.getProviders()
             val err = bindingR.exceptionOrNull() ?: providersR.exceptionOrNull()
             if (err != null) {
@@ -130,11 +134,15 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
             delay(300)
             val s = _uiState.value
             _uiState.update { it.copy(isSaving = true) }
-            val r = agentRepository.setBinding(
-                agentType,
-                s.selectedProvider?.id,
-                s.thinkingEffort,
-            )
+            val r = if (isMemoryComponent) {
+                agentRepository.setMemoryComponentBinding(
+                    agentType, s.selectedProvider?.id, s.thinkingEffort,
+                )
+            } else {
+                agentRepository.setBinding(
+                    agentType, s.selectedProvider?.id, s.thinkingEffort,
+                )
+            }
             putPending = false
             _uiState.update { it.copy(isSaving = false) }
             r.onFailure {
@@ -147,13 +155,16 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        // ViewModel.clear() 先取消 viewModelScope 再调用 onCleared，所以此时 putJob 已死。
-        // 用 putPending 判断 debounce 窗口内的末次写入是否还没真正发出去，
-        // 切到进程存活期的 applicationScope 补发。
         if (putPending) {
             val s = _uiState.value
             applicationScope.launch {
-                agentRepository.setBinding(agentType, s.selectedProvider?.id, s.thinkingEffort)
+                if (isMemoryComponent) {
+                    agentRepository.setMemoryComponentBinding(
+                        agentType, s.selectedProvider?.id, s.thinkingEffort,
+                    )
+                } else {
+                    agentRepository.setBinding(agentType, s.selectedProvider?.id, s.thinkingEffort)
+                }
             }
         }
     }
@@ -163,10 +174,8 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
         capability: ThinkingCapability?,
     ): Pair<ThinkingEffort, Boolean> {
         val steps = capability?.let { effortStepsFor(it) } ?: return Pair(effort, false)
-        // NONE / ALWAYS_ON 无档位可选，保持传入值不触发 PUT
         if (steps.isEmpty()) return Pair(effort, false)
         if (effort !in steps) {
-            // 钳到最高合法档位
             val fallback = steps.lastOrNull { it != ThinkingEffort.OFF } ?: ThinkingEffort.OFF
             return Pair(fallback, true)
         }

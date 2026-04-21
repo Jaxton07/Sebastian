@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
     from sebastian.store.index_store import IndexStore
@@ -34,6 +36,7 @@ from sebastian.core.stream_events import (
     ToolResult as StreamToolResult,
 )
 from sebastian.core.types import ToolResult
+from sebastian.memory.depth_guard import is_memory_eligible
 from sebastian.memory.episodic_memory import EpisodicMemory
 from sebastian.memory.working_memory import WorkingMemory
 from sebastian.permissions.gate import PolicyGate
@@ -107,8 +110,10 @@ class BaseAgent(ABC):
         allowed_skills: list[str] | None = None,
         index_store: IndexStore | None = None,
         llm_registry: LLMProviderRegistry | None = None,
+        db_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._gate = gate
+        self._db_factory = db_factory
         self._current_task_goals: dict[str, str] = {}  # session_id → goal
         self._current_depth: dict[str, int] = {}  # session_id → depth
         self._session_store = session_store
@@ -228,6 +233,64 @@ class BaseAgent(ABC):
             "to update — pass the complete new list, not just changed items.)"
         )
         return "\n".join(lines)
+
+    async def _memory_section(
+        self,
+        session_id: str,
+        agent_context: str,
+        user_message: str,
+    ) -> str:
+        """Return assembled memory context string. Empty string on any failure or if disabled.
+
+        depth 守卫（spec §5 / artifact-model.md §10.4）：长期记忆只注入给 depth=1
+        的 Sebastian 本体。depth != 1（包括未初始化 → None）一律 fail-closed 返回 "".
+        """
+        if not is_memory_eligible(self._current_depth.get(session_id)):
+            return ""
+
+        if self._db_factory is None:
+            return ""
+        try:
+            import sebastian.gateway.state as state
+
+            if not state.memory_settings.enabled:
+                return ""
+        except (ImportError, AttributeError):
+            return ""
+        try:
+            from sebastian.memory.retrieval import RetrievalContext, retrieve_memory_section
+            from sebastian.memory.subject import resolve_subject
+            from sebastian.memory.trace import trace
+            from sebastian.memory.types import MemoryScope
+
+            subject_id = await resolve_subject(
+                MemoryScope.USER,
+                session_id=session_id,
+                agent_type=agent_context,
+            )
+            ctx = RetrievalContext(
+                subject_id=subject_id,
+                session_id=session_id,
+                agent_type=agent_context,
+                user_message=user_message,
+                active_project_or_agent_context={"agent_type": agent_context},
+            )
+            async with self._db_factory() as session:
+                section = await retrieve_memory_section(ctx, db_session=session)
+            trace(
+                "memory_section.injected",
+                session_id=session_id,
+                agent_type=agent_context,
+                subject_id=subject_id,
+                section_chars=len(section),
+            )
+            return section
+        except Exception:
+            logger.warning(
+                "Memory section retrieval failed, continuing without memory context",
+                exc_info=True,
+            )
+            return ""
 
     def _knowledge_section(self) -> str:
         kdir = self._knowledge_dir()
@@ -409,9 +472,16 @@ class BaseAgent(ABC):
         full_text = ""
         assistant_blocks: list[dict[str, Any]] = []
         todo_section = await self._session_todos_section(session_id, agent_context)
-        effective_system_prompt = (
-            f"{self.system_prompt}\n\n{todo_section}" if todo_section else self.system_prompt
+        last_user_msg = messages[-1].get("content", "") if messages else ""
+        memory_section = await self._memory_section(
+            session_id, agent_context, user_message=last_user_msg
         )
+        sections = [self.system_prompt]
+        if memory_section:
+            sections.append(memory_section)
+        if todo_section:
+            sections.append(todo_section)
+        effective_system_prompt = "\n\n".join(sections)
         gen = self._loop.stream(
             effective_system_prompt, messages, task_id=task_id, thinking_effort=thinking_effort
         )
@@ -504,6 +574,7 @@ class BaseAgent(ABC):
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:  # pragma: no cover - exercised via async failure paths
+                        logger.exception("Tool %s dispatch failed", event.name)
                         error = str(exc)
                         record["result"] = error
                         await self._publish(

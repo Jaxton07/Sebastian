@@ -8,9 +8,9 @@
 
 **Tech Stack:** Kotlin + Jetpack Compose + Hilt + Kotlin Coroutines/Flow + OkHttp SSE + Android `NotificationManager`; 测试 JUnit4 + Mockito-Kotlin + Turbine。
 
-**后端改动：** 无（`GET /approvals`、`GET /sessions/{id}/recent`、`session.completed` / `session.failed` 事件均已存在）。spec 中的 `session_state` 字段推迟到 [multi-device-session-state-sync spec](../specs/2026-04-14-multi-device-session-state-sync-design.md) 的正式实施计划。
+**后端改动：** 无（`GET /approvals`、`GET /sessions/{id}/recent`、`session.completed` / `session.failed` 事件均已存在）。spec 中的 `session_state` 字段推迟到 [multi-device-session-state-sync spec](../../../specs/2026-04-14-multi-device-session-state-sync-design.md) 的正式实施计划。
 
-**参考 spec：** [`docs/superpowers/specs/2026-04-15-app-state-recovery-and-local-notification-design.md`](../specs/2026-04-15-app-state-recovery-and-local-notification-design.md)
+**参考 spec：** [`docs/superpowers/specs/2026-04-15-app-state-recovery-and-local-notification-design.md`](../../../specs/2026-04-15-app-state-recovery-and-local-notification-design.md)
 
 ---
 
@@ -1756,7 +1756,7 @@ EOF
 
 ### 2026-04-16: Chat reconcile 实现路径调整
 
-详见 [spec amendment](../specs/2026-04-15-app-state-recovery-and-local-notification-design.md#amendments)。
+详见 [spec amendment](../../../specs/2026-04-15-app-state-recovery-and-local-notification-design.md#amendments)。
 
 落地差异：
 - 原 plan Task 4（`ChatViewModel.replaceMessages`）+ Task 5 的 chat 分支

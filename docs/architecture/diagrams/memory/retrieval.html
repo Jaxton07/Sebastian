@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Memory 读取与注入</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f1117;color:#e1e4e8;margin:0;padding:24px}
+  h1{color:#f0f6ff;font-size:1.6rem;margin-bottom:4px}.subtitle{color:#8b949e;font-size:.9rem;margin-bottom:32px}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;margin-bottom:32px}
+  .desc{color:#8b949e;font-size:.85rem;margin-bottom:16px;line-height:1.5}.mermaid{background:#161b22}
+</style>
+</head>
+<body>
+<h1>Memory（记忆）读取与注入</h1>
+<p class="subtitle">对应 Spec: docs/architecture/spec/memory/retrieval.md</p>
+<div class="card">
+  <p class="desc">读取不做统一 top-k，而是 Intent（意图）→ Retrieval Planner（检索规划器）→ 四条 lane（检索通道）→ Assembler（上下文装配器）。</p>
+  <div class="mermaid">
+graph TB
+    UMSG["当前用户消息"] --> INT["Intent（意图）判定"]
+    SCTX["session_context（会话上下文）"] --> INT
+    RCTX["reader_agent_type（读取者 agent）\nreader_session_id（读取者会话）\naccess_purpose（访问目的）"] --> INT
+
+    INT --> PLAN["Retrieval Planner（检索规划器）\n生成 lane 预算 + policy 过滤"]
+
+    subgraph LANES["四条 Retrieval Lane（检索通道）"]
+        PL["Profile Lane（画像通道）\n稳定偏好 / 当前有效事实"]
+        CL["Context Lane（上下文通道）\n与本轮问题强相关的动态事实"]
+        EL["Episode Lane（经历通道）\n先 summary（摘要）再 episode（经历）下钻"]
+        RL["Relation Lane（关系通道）\n实体关系 / 时间性状态"]
+    end
+
+    PLAN --> PL & CL & EL & RL
+
+    subgraph FILTER["Assembler（上下文装配器）统一过滤"]
+        F1["status / validity（状态 / 有效期）"]
+        F2["scope / subject（作用域 / 主体）"]
+        F3["policy_tags（策略标签）"]
+        F4["confidence threshold（置信度阈值）"]
+        F5["reader_agent_type / access_purpose"]
+    end
+
+    PL --> FILTER
+    CL --> FILTER
+    EL --> FILTER
+    RL --> FILTER
+
+    FILTER --> OUT["分区注入\nWhat I know about the user\nRelevant current context\nRelevant past episodes\nImportant relationships"]
+    OUT --> SYS["system prompt / messages context"]
+
+    style LANES fill:#1a1a2a,stroke:#3d3d7a
+    style FILTER fill:#2a2a1a,stroke:#7a7a3d
+    style OUT fill:#1a2a1a,stroke:#3d7a3d
+  </div>
+</div>
+<script>
+mermaid.initialize({startOnLoad:true,theme:'dark',themeVariables:{primaryColor:'#2d3748',primaryTextColor:'#e2e8f0',primaryBorderColor:'#4a5568',lineColor:'#68d391',secondaryColor:'#1a202c',tertiaryColor:'#2d3748',background:'#161b22',mainBkg:'#161b22',nodeBorder:'#4a5568',clusterBkg:'#1a202c',titleColor:'#90cdf4',edgeLabelBackground:'#2d3748'},flowchart:{curve:'basis',useMaxWidth:true}});
+</script>
+</body>
+</html>

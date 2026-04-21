@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin + Jetpack Compose + Material3 + Canvas DrawScope + JUnit4
 
-**相关 spec:** [2026-04-16-agent-pill-dynamic-island-animation-design.md](../specs/2026-04-16-agent-pill-dynamic-island-animation-design.md)
+**相关 spec:** [2026-04-16-agent-pill-dynamic-island-animation-design.md](../../../specs/2026-04-16-agent-pill-dynamic-island-animation-design.md)
 
 ---
 

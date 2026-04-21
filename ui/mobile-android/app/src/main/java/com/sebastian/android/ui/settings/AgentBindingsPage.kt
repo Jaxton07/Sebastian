@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,11 +25,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.sebastian.android.data.model.AgentInfo
+import com.sebastian.android.data.model.MemoryComponentInfo
+import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.model.displayLabel
 import com.sebastian.android.ui.common.ToastCenter
@@ -69,35 +72,78 @@ fun AgentBindingsPage(
         val defaultProvider = state.providers.firstOrNull { it.isDefault }
 
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+
+            // ── Orchestrator ──────────────────────────────────────────────
             if (orchestrator.isNotEmpty()) {
                 item { SectionHeader("Orchestrator") }
-                items(orchestrator, key = { it.agentType }) { agent ->
-                    AgentRow(
-                        agent = agent,
-                        providers = state.providers,
-                        defaultProviderName = defaultProvider?.name,
+                items(orchestrator, key = { "agent:${it.agentType}" }) { agent ->
+                    AgentBindingRow(
+                        headline = agent.displayName,
+                        subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
                         icon = Icons.Outlined.AutoAwesome,
                         onClick = {
-                            navController.navigate(Route.SettingsAgentBindingEditor(agent.agentType))
+                            navController.navigate(
+                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false)
+                            )
                         },
                     )
                 }
             }
+
+            // ── Memory Components ─────────────────────────────────────────
+            if (state.memoryComponents.isNotEmpty()) {
+                item { SectionHeader("Memory Components") }
+                items(state.memoryComponents, key = { "mem:${it.componentType}" }) { component ->
+                    AgentBindingRow(
+                        headline = component.displayName,
+                        subtitle = resolveSubtitle(component.boundProviderId, component.thinkingEffort, state.providers, defaultProvider?.name),
+                        icon = Icons.Outlined.Psychology,
+                        onClick = {
+                            navController.navigate(
+                                Route.SettingsAgentBindingEditor(component.componentType, isMemoryComponent = true)
+                            )
+                        },
+                    )
+                }
+            }
+
+            // ── Sub-Agents ────────────────────────────────────────────────
             if (subAgents.isNotEmpty()) {
                 item { SectionHeader("Sub-Agents") }
-                items(subAgents, key = { it.agentType }) { agent ->
-                    AgentRow(
-                        agent = agent,
-                        providers = state.providers,
-                        defaultProviderName = defaultProvider?.name,
+                items(subAgents, key = { "agent:${it.agentType}" }) { agent ->
+                    AgentBindingRow(
+                        headline = agent.displayName,
+                        subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
                         icon = Icons.Outlined.Extension,
                         onClick = {
-                            navController.navigate(Route.SettingsAgentBindingEditor(agent.agentType))
+                            navController.navigate(
+                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false)
+                            )
                         },
                     )
                 }
             }
         }
+    }
+}
+
+private fun resolveSubtitle(
+    boundProviderId: String?,
+    thinkingEffort: ThinkingEffort,
+    providers: List<Provider>,
+    defaultProviderName: String?,
+): String {
+    val bound = providers.firstOrNull { it.id == boundProviderId }
+    return when {
+        boundProviderId == null -> "Use default · ${defaultProviderName ?: "—"}"
+        bound != null -> buildString {
+            append(bound.name)
+            if (thinkingEffort != ThinkingEffort.OFF) {
+                append(" · ")
+                append(thinkingEffort.displayLabel())
+            }
+        }
+        else -> "Unknown provider"
     }
 }
 
@@ -112,26 +158,12 @@ private fun SectionHeader(title: String) {
 }
 
 @Composable
-private fun AgentRow(
-    agent: AgentInfo,
-    providers: List<com.sebastian.android.data.model.Provider>,
-    defaultProviderName: String?,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun AgentBindingRow(
+    headline: String,
+    subtitle: String,
+    icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    val bound = providers.firstOrNull { it.id == agent.boundProviderId }
-    val subtitle = if (bound != null) {
-        buildString {
-            append(bound.name)
-            if (agent.thinkingEffort != ThinkingEffort.OFF) {
-                append(" · ")
-                append(agent.thinkingEffort.displayLabel())
-            }
-        }
-    } else {
-        "Use default · ${defaultProviderName ?: "—"}"
-    }
-
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -140,7 +172,7 @@ private fun AgentRow(
     ) {
         ListItem(
             leadingContent = { Icon(icon, contentDescription = null) },
-            headlineContent = { Text(agent.displayName) },
+            headlineContent = { Text(headline) },
             supportingContent = { Text(subtitle) },
         )
     }

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     sebastian_owner_name: str = "Owner"
     sebastian_data_dir: str = str(Path.home() / ".sebastian")
     sebastian_sandbox_enabled: bool = False
+    sebastian_memory_enabled: bool = True
 
     # Gateway
     sebastian_gateway_host: str = "0.0.0.0"

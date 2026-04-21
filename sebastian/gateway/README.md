@@ -60,6 +60,7 @@ state.conversation.request_approval(...)
 state.todo_store                       # TodoStore 实例
 state.db_factory                       # SQLAlchemy async session factory
 state.llm_registry                     # LLMProviderRegistry 实例
+state.memory_extractor                 # MemoryExtractor 实例（memory_save 后台任务使用；None 表示未初始化）
 state.get_owner_store()                # OwnerStore（需要 DB session）
 
 # 认证依赖

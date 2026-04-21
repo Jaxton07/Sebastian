@@ -26,7 +26,15 @@ def serve(
 
     h = host or settings.sebastian_gateway_host
     p = port or settings.sebastian_gateway_port
-    version = importlib.metadata.version("sebastian")
+    import tomllib
+    from pathlib import Path
+
+    _pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    if _pyproject.exists():
+        with _pyproject.open("rb") as _f:
+            version = tomllib.load(_f)["project"]["version"]
+    else:
+        version = importlib.metadata.version("sebastian")
     log_file = settings.data_dir / "logs" / "main.log"
 
     # --- startup banner ---
