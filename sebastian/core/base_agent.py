@@ -574,6 +574,7 @@ class BaseAgent(ABC):
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:  # pragma: no cover - exercised via async failure paths
+                        logger.exception("Tool %s dispatch failed", event.name)
                         error = str(exc)
                         record["result"] = error
                         await self._publish(

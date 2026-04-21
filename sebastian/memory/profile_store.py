@@ -194,7 +194,7 @@ class ProfileMemoryStore:
                     )
                 )
                 records = list(rows.all())
-                records.sort(key=lambda r: (rank_by_id[r.id], -(r.confidence or 0.0)))
+                records.sort(key=lambda r: (rank_by_id[r.id], -float(r.confidence or 0.0)))
                 return records[:limit]
 
         # Fallback: confidence-then-recency

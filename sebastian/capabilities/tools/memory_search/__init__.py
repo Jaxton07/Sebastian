@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sebastian.core.tool import tool
@@ -9,6 +10,8 @@ from sebastian.memory.subject import resolve_subject
 from sebastian.memory.trace import preview_text, record_ref, trace
 from sebastian.memory.types import MemoryScope, MemorySource
 from sebastian.permissions.types import PermissionTier
+
+logger = logging.getLogger(__name__)
 
 
 @tool(
@@ -28,8 +31,18 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         return ToolResult(ok=False, error="记忆功能当前已关闭，无法查询记忆。")
 
     if not hasattr(state, "db_factory") or state.db_factory is None:
-        return ToolResult(ok=False, error="记忆存储不可用")
+        return ToolResult(ok=False, error="记忆存储暂时不可用，请稍后再试。")
 
+    try:
+        return await _do_search(query, limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("memory_search failed")
+        trace("tool.memory_search.error", reason=str(exc))
+        return ToolResult(ok=False, error="记忆查询失败，请告知用户并建议其排查后台日志。")
+
+
+async def _do_search(query: str, limit: int) -> ToolResult:
+    import sebastian.gateway.state as state
     from sebastian.memory.entity_registry import EntityRegistry
     from sebastian.memory.episode_store import EpisodeMemoryStore
     from sebastian.memory.profile_store import ProfileMemoryStore
