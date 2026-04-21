@@ -59,7 +59,13 @@ async def test_success_returns_structured_result(tmp_memory_env) -> None:
 
 @pytest.mark.asyncio
 async def test_timeout_returns_ok_false(tmp_memory_env) -> None:
-    """超时路径：返回 ok=False，error 含 '超时'。"""
+    """超时路径：返回 ok=False，error 给出“稍后再试”类可重试提示。
+
+    历史：memory_save 早期会把技术词“超时”直接抛给 agent，430500c 统一为
+    不暴露内部细节的用户可见文案，但保留与其它异常的语义区分——timeout 的
+    文案包含“稍后再试”，generic exception 的文案指向“排查后台日志”。本测试
+    断言这条可观测语义，不再绑死在“超时”这个技术词上。
+    """
 
     async def slow_extract(*args, **kwargs):
         await asyncio.sleep(20)
@@ -72,7 +78,7 @@ async def test_timeout_returns_ok_false(tmp_memory_env) -> None:
             result = await memory_save(content="x")
 
     assert result.ok is False
-    assert "超时" in (result.error or "")
+    assert "稍后再试" in (result.error or "")
 
 
 @pytest.mark.asyncio
