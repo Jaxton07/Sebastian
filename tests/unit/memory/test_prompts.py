@@ -38,14 +38,8 @@ def test_consolidator_prompt_includes_extractor_sections_plus_summary() -> None:
 
 def test_extractor_prompt_no_pinned_example() -> None:
     """spec §10.2：Extractor LLM 不得提议 pinned，prompt 中不应出现诱导字样。"""
-    import inspect
-
-    import sebastian.memory.prompts as prompts_mod
-
-    # Read the module source file directly — robust regardless of export style
-    source = inspect.getsource(prompts_mod)
-
-    assert "pinned" not in source.lower(), (
+    prompt = build_extractor_prompt(group_slots_by_kind(_BUILTIN_SLOTS))
+    assert "pinned" not in prompt.lower(), (
         "Extractor prompt 仍含 'pinned' 字样，违反 artifact-model.md §10.2"
     )
 
