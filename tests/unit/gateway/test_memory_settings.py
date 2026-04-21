@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 def _build_app(authenticated: bool = True) -> FastAPI:
@@ -20,6 +23,18 @@ def _build_app(authenticated: bool = True) -> FastAPI:
 
     app.include_router(memory_settings.router, prefix="/api/v1")
     return app
+
+
+@pytest.fixture
+async def db_factory() -> AsyncIterator[async_sessionmaker]:
+    from sebastian.store.models import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    yield factory
+    await engine.dispose()
 
 
 def test_default_memory_enabled_setting_is_true() -> None:
@@ -57,11 +72,12 @@ async def test_get_memory_settings_returns_enabled_by_default() -> None:
 
 
 @pytest.mark.asyncio
-async def test_put_memory_settings_can_disable_memory() -> None:
+async def test_put_memory_settings_can_disable_memory(db_factory) -> None:
     import sebastian.gateway.state as state
     from sebastian.gateway.state import MemoryRuntimeSettings
 
     state.memory_settings = MemoryRuntimeSettings(enabled=True)
+    state.db_factory = db_factory
     app = _build_app()
     transport = ASGITransport(app=app)
 
@@ -74,11 +90,12 @@ async def test_put_memory_settings_can_disable_memory() -> None:
 
 
 @pytest.mark.asyncio
-async def test_put_memory_settings_can_re_enable_memory() -> None:
+async def test_put_memory_settings_can_re_enable_memory(db_factory) -> None:
     import sebastian.gateway.state as state
     from sebastian.gateway.state import MemoryRuntimeSettings
 
     state.memory_settings = MemoryRuntimeSettings(enabled=False)
+    state.db_factory = db_factory
     app = _build_app()
     transport = ASGITransport(app=app)
 

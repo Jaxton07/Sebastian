@@ -28,6 +28,7 @@ def serve(
     p = port or settings.sebastian_gateway_port
     import tomllib
     from pathlib import Path
+
     _pyproject = Path(__file__).parent.parent / "pyproject.toml"
     if _pyproject.exists():
         with _pyproject.open("rb") as _f:

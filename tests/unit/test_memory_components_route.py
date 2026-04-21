@@ -56,6 +56,7 @@ def client(mock_registry: MagicMock, monkeypatch: pytest.MonkeyPatch) -> TestCli
 
 # ── GET /memory/components ──────────────────────────────────────────────────
 
+
 def test_list_returns_both_components_with_null_binding(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
@@ -72,9 +73,7 @@ def test_list_returns_both_components_with_null_binding(
         assert "description" in c
 
 
-def test_list_shows_existing_binding(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
+def test_list_shows_existing_binding(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.list_bindings = AsyncMock(
         return_value=[_make_binding(MEMORY_EXTRACTOR_BINDING, provider_id="pid-abc")]
     )
@@ -86,6 +85,7 @@ def test_list_shows_existing_binding(
 
 
 # ── GET /memory/components/{type}/llm-binding ───────────────────────────────
+
 
 def test_get_binding_no_row_returns_null_provider(
     client: TestClient, mock_registry: MagicMock
@@ -104,6 +104,7 @@ def test_get_binding_unknown_type_returns_404(client: TestClient) -> None:
 
 
 # ── PUT /memory/components/{type}/llm-binding ───────────────────────────────
+
 
 def test_put_resets_effort_when_provider_changes(
     client: TestClient, mock_registry: MagicMock
@@ -167,9 +168,7 @@ def test_put_clears_effort_for_always_on_capability(
     assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] is None
 
 
-def test_put_unknown_provider_returns_400(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
+def test_put_unknown_provider_returns_400(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.get_record = AsyncMock(return_value=None)
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
@@ -188,12 +187,9 @@ def test_put_unknown_component_returns_404(client: TestClient) -> None:
 
 # ── DELETE /memory/components/{type}/llm-binding ────────────────────────────
 
-def test_delete_returns_204_and_calls_clear(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
-    resp = client.delete(
-        f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding"
-    )
+
+def test_delete_returns_204_and_calls_clear(client: TestClient, mock_registry: MagicMock) -> None:
+    resp = client.delete(f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding")
     assert resp.status_code == 204
     mock_registry.clear_binding.assert_awaited_once_with(MEMORY_EXTRACTOR_BINDING)
 

@@ -43,11 +43,10 @@ class FakeConsolidator:
             summaries=[
                 MemorySummary(
                     content="补齐摘要",
-                    subject_id="owner",
                     scope=MemoryScope.USER,
                 )
             ],
-            proposed_artifacts=[],
+            artifacts=[],
             proposed_actions=[],
         )
 

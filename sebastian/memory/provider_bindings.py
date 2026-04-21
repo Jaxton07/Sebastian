@@ -5,10 +5,12 @@ from __future__ import annotations
 MEMORY_EXTRACTOR_BINDING = "memory_extractor"
 MEMORY_CONSOLIDATOR_BINDING = "memory_consolidator"
 
-MEMORY_COMPONENT_TYPES: frozenset[str] = frozenset({
-    MEMORY_EXTRACTOR_BINDING,
-    MEMORY_CONSOLIDATOR_BINDING,
-})
+MEMORY_COMPONENT_TYPES: frozenset[str] = frozenset(
+    {
+        MEMORY_EXTRACTOR_BINDING,
+        MEMORY_CONSOLIDATOR_BINDING,
+    }
+)
 
 MEMORY_COMPONENT_META: dict[str, dict[str, str]] = {
     MEMORY_EXTRACTOR_BINDING: {

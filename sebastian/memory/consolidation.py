@@ -12,7 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.memory.depth_guard import is_memory_eligible
-from sebastian.memory.extraction import ExtractorInput, ExtractorOutput, MemoryExtractor, _strip_code_fence
+from sebastian.memory.extraction import (
+    ExtractorInput,
+    ExtractorOutput,
+    MemoryExtractor,
+    _strip_code_fence,
+)
 from sebastian.memory.prompts import build_consolidator_prompt, group_slots_by_kind
 from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
 from sebastian.memory.subject import resolve_subject
@@ -605,7 +610,8 @@ async def sweep_unconsolidated(
 
     entries = await index_store.list_all()
     completed = [
-        e for e in entries
+        e
+        for e in entries
         if e.get("status") == "completed" and is_memory_eligible(e.get("depth", 1))
     ]
     if not completed:
