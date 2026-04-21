@@ -176,6 +176,32 @@ async def _do_search(query: str, limit: int) -> ToolResult:
     episode_records = [r for r in episode_records if _keep_record(r, context=retrieval_ctx)]
     relation_records = [r for r in relation_records if _keep_record(r, context=retrieval_ctx)]
 
+    # Cross-lane dedup by record id.
+    #
+    # 同一条 profile 画像记录可能同时命中 profile_lane (search_active) 和
+    # context_lane (search_recent_context 的 recency fallback)，两次出现会
+    # 让 LLM 和 UI 都看到重复。按 lane 优先级 profile > context > episode >
+    # relation 保留首次出现的记录。
+    seen_ids: set[str] = set()
+
+    def _dedup(records: list[Any]) -> list[Any]:
+        out: list[Any] = []
+        for r in records:
+            rid = getattr(r, "id", None)
+            if rid is None:
+                out.append(r)
+                continue
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+            out.append(r)
+        return out
+
+    profile_records = _dedup(profile_records)
+    context_records = _dedup(context_records)
+    episode_records = _dedup(episode_records)
+    relation_records = _dedup(relation_records)
+
     items: list[dict[str, Any]] = []
     for record in profile_records:
         items.append(

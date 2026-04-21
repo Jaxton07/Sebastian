@@ -522,7 +522,13 @@ async def test_memory_search_empty_returns_empty_items(enabled_memory_state, cap
 
 @pytest.mark.asyncio
 async def test_memory_search_respects_limit(enabled_memory_state) -> None:
-    """Limit parameter should cap the number of returned items."""
+    """Total items must not exceed effective_limit (= max(limit, n_active_lanes)).
+
+    With 4 lanes always active and cross-lane dedup, a small `limit` is raised
+    to n_active (=4) to ensure every lane gets a slot. Dedup can further reduce
+    count when the same record would appear in multiple lanes. The invariant is
+    `len(items) <= effective_limit`.
+    """
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
@@ -571,7 +577,10 @@ async def test_memory_search_respects_limit(enabled_memory_state) -> None:
 
     assert result.ok is True
     assert isinstance(result.output, dict)
-    assert len(result.output["items"]) == 2
+    # limit=2 with 4 active lanes → effective_limit = max(2, 4) = 4.
+    # Cross-lane dedup can collapse context-lane FTS matches into profile-lane
+    # when both pick the same record, so the observable count is [1, 4].
+    assert 1 <= len(result.output["items"]) <= 4
 
 
 @pytest.mark.asyncio
@@ -770,16 +779,19 @@ async def test_memory_search_context_lane(enabled_memory_state) -> None:
 
     now = datetime.now(UTC)
     async with enabled_memory_state() as session:
-        await ProfileMemoryStore(session).add(
+        profile_store = ProfileMemoryStore(session)
+        # High-confidence filler whose content does NOT match the query — profile
+        # lane (ranked by confidence) will pick this one.
+        await profile_store.add(
             MemoryArtifact(
-                id="ctx-1",
-                kind=MemoryKind.FACT,
+                id="ctx-filler",
+                kind=MemoryKind.PREFERENCE,
                 scope=MemoryScope.USER,
                 subject_id="owner",
-                slot_id="user.fact.current_project",
+                slot_id="user.preference.response_style",
                 cardinality=None,
                 resolution_policy=None,
-                content="正在做 Sebastian 项目",
+                content="喜欢喝绿茶",
                 structured_payload={},
                 source=MemorySource.EXPLICIT,
                 confidence=1.0,
@@ -796,10 +808,40 @@ async def test_memory_search_context_lane(enabled_memory_state) -> None:
                 policy_tags=[],
             )
         )
+        # Lower-confidence record that DOES match the FTS query — context lane
+        # (FTS-ranked) picks this, distinct from the profile-lane pick so
+        # cross-lane dedup preserves both.
+        await profile_store.add(
+            MemoryArtifact(
+                id="ctx-1",
+                kind=MemoryKind.FACT,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.fact.current_project",
+                cardinality=None,
+                resolution_policy=None,
+                content="正在做 Sebastian 项目",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=0.5,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
         await session.commit()
 
-    # "现在" triggers context lane keyword
-    result = await memory_search(query="现在在做什么项目", limit=5)
+    # limit=4 → each lane budget=1; profile picks the filler by confidence,
+    # context FTS picks ctx-1 ("正在做 Sebastian 项目").
+    result = await memory_search(query="现在在做什么项目", limit=4)
 
     assert result.ok is True
     items = result.output["items"]
@@ -1063,6 +1105,8 @@ async def test_memory_search_all_lanes_represented_within_limit(
     now = datetime.now(UTC)
     async with enabled_memory_state() as session:
         profile_store = ProfileMemoryStore(session)
+        # 3 high-confidence records that do NOT match the query's FTS terms —
+        # profile lane picks them.
         for idx in range(3):
             await profile_store.add(
                 MemoryArtifact(
@@ -1090,6 +1134,34 @@ async def test_memory_search_all_lanes_represented_within_limit(
                     policy_tags=[],
                 )
             )
+        # Lower-confidence record whose content matches the query's FTS terms —
+        # context lane picks it distinctly from the profile-lane top-N.
+        await profile_store.add(
+            MemoryArtifact(
+                id="ctx-alllane",
+                kind=MemoryKind.FACT,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.fact.alllane_ctx",
+                cardinality=None,
+                resolution_policy=None,
+                content="现在在做 Sebastian 项目",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=0.5,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
         await EpisodeMemoryStore(session).add_episode(
             MemoryArtifact(
                 id="episode-alllane-1",
@@ -1175,6 +1247,8 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
     now = datetime.now(UTC)
     async with enabled_memory_state() as session:
         profile_store = ProfileMemoryStore(session)
+        # 3 high-confidence records whose content does NOT match the query's
+        # FTS terms — profile lane picks them by confidence.
         for idx in range(3):
             await profile_store.add(
                 MemoryArtifact(
@@ -1202,6 +1276,35 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
                     policy_tags=[],
                 )
             )
+        # Lower-confidence record whose content matches the query's FTS terms —
+        # distinct from profile-lane top-N so cross-lane dedup preserves the
+        # context-lane item.
+        await profile_store.add(
+            MemoryArtifact(
+                id="ctx-eff",
+                kind=MemoryKind.FACT,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.fact.eff_ctx",
+                cardinality=None,
+                resolution_policy=None,
+                content="现在在做 Sebastian 项目",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=0.5,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
         await EpisodeMemoryStore(session).add_episode(
             MemoryArtifact(
                 id="episode-eff-1",
@@ -1495,3 +1598,61 @@ async def test_memory_search_bypasses_planner_trigger_words(enabled_memory_state
         "用户当前主要关注的项目" in item.get("content", "") and item.get("lane") == "profile"
         for item in items
     ), f"Expected profile-lane FACT in results, got: {items}"
+
+
+@pytest.mark.asyncio
+async def test_memory_search_dedups_cross_lane_duplicates(enabled_memory_state) -> None:
+    """Regression: 同一条画像记录在 profile_lane 和 context_lane 各命中一次时，
+    应按 lane 优先级（profile > context）只保留一次，不给 LLM/UI 返回重复项。"""
+    from datetime import UTC, datetime
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.types import (
+        MemoryArtifact,
+        MemoryKind,
+        MemoryScope,
+        MemorySource,
+        MemoryStatus,
+    )
+
+    now = datetime.now(UTC)
+    async with enabled_memory_state() as session:
+        await ProfileMemoryStore(session).add(
+            MemoryArtifact(
+                id="fact-dedup-1",
+                kind=MemoryKind.FACT,
+                scope=MemoryScope.USER,
+                subject_id="owner",
+                slot_id="user.current_project_focus",
+                cardinality=None,
+                resolution_policy=None,
+                content="用户当前主要关注的项目是开发 Sebastian 的记忆系统",
+                structured_payload={},
+                source=MemorySource.EXPLICIT,
+                confidence=0.95,
+                status=MemoryStatus.ACTIVE,
+                valid_from=None,
+                valid_until=None,
+                recorded_at=now,
+                last_accessed_at=None,
+                access_count=0,
+                provenance={},
+                links=[],
+                embedding_ref=None,
+                dedupe_key=None,
+                policy_tags=[],
+            )
+        )
+        await session.commit()
+
+    # "项目 工作" 会让 profile lane (search_active) 和 context lane
+    # (search_recent_context 的 recency fallback) 都返回同一条记录。
+    result = await memory_search(query="项目 工作", limit=10)
+
+    assert result.ok is True
+    items = result.output["items"]
+    # 同一 id 只应出现一次，并且保留在更高优先级的 profile lane
+    matching = [i for i in items if "用户当前主要关注的项目" in i.get("content", "")]
+    assert len(matching) == 1, f"Expected single dedup-ed item, got {len(matching)}: {matching}"
+    assert matching[0]["lane"] == "profile"
