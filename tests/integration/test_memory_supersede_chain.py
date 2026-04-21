@@ -182,10 +182,12 @@ async def test_supersede_chain_from_memory_save_to_search(enabled_memory_state) 
         assert log.slot_id == _SLOT_ID
 
     # --- Step 4: memory_search must return the new row only ----------------
-    # "项目" matches content; profile lane is always on for non-small-talk
-    # queries, so the superseded row would surface here if search_active
-    # failed to filter by status.
-    search_result = await memory_search(query="项目", limit=5)
+    # "我的项目进展" matches content; under jieba planner, profile lane
+    # requires explicit trigger words (e.g. "我的") to activate — plain
+    # "项目" only hits RELATION_LANE_STATIC_WORDS, not PROFILE_LANE_WORDS.
+    # The superseded row would surface here if search_active failed to
+    # filter by status.
+    search_result = await memory_search(query="我的项目进展", limit=5)
     assert search_result.ok is True
     assert isinstance(search_result.output, dict)
 
