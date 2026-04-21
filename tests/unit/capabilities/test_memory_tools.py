@@ -1130,7 +1130,8 @@ async def test_memory_search_all_lanes_represented_within_limit(
         )
         await session.commit()
 
-    # "现在"→context, "上次"→episode, "项目"→relation, "喜欢"→profile (jieba planner requires explicit profile-lane keyword)
+    # jieba planner requires explicit trigger words per lane
+    # "现在"→context, "上次"→episode, "项目"→relation, "喜欢"→profile
     result = await memory_search(query="现在上次项目我喜欢", limit=5)
 
     assert result.ok is True

@@ -63,6 +63,4 @@ def test_no_cross_lane_overlap() -> None:
     for i in range(len(lanes)):
         for j in range(i + 1, len(lanes)):
             overlap = lanes[i] & lanes[j]
-            assert not overlap, (
-                f"Lane {i} 和 Lane {j} 存在重叠词: {overlap}"
-            )
+            assert not overlap, f"Lane {i} 和 Lane {j} 存在重叠词: {overlap}"
