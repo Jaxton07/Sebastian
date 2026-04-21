@@ -302,7 +302,7 @@ Assembler 在最终注入前，必须统一执行以下过滤：
 
 标有 `pinned` 的记录不受 per-lane limit 剪裁，强制进入注入结果。
 
-**实现状态**：`pinned` 豁免逻辑当前尚未在 `MemorySectionAssembler` 中实现，为待补功能。实现时应在 assembler 中先单独收集 `pinned` 记录，再对剩余记录应用 limit，最后合并输出；`pinned` 总数上限为 10 条，超出时按 confidence 降序截断（见 artifact-model.md §10.1）。
+**实现状态**：`pinned` 豁免逻辑为**独立未来 spec** 范围，当前 Retrieval Fixes spec（[docs/superpowers/specs/2026-04-20-memory-retrieval-fixes-design.md](../../../superpowers/specs/2026-04-20-memory-retrieval-fixes-design.md)）明确**不实现**。任何 pinned 相关代码改动必须等独立 spec 批准；原因与触发条件见该 spec §13.1。
 
 ### 7.5 `memory_search` 工具的 effective limit
 

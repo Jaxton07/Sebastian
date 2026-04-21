@@ -515,7 +515,7 @@ async def register_or_reuse(self, proposed: ProposedSlot, ...) -> SlotDefinition
 | evidence | array | 是 | 至少 1 项 {"quote": "...原文片段..."}；pipeline 会补 session_id |
 | valid_from | ISO-8601 string \| null | 是 | 记忆起效时间，一般 null |
 | valid_until | ISO-8601 string \| null | 是 | 失效时间，一般 null |
-| policy_tags | array<string> | 是 | 策略标签，一般 []；"pinned" 表示用户显式要求钉住 |
+| policy_tags | array<string> | 是 | 策略标签，一般 []，不要主动设置任何值 |
 | needs_review | bool | 是 | 不确定时填 true |
 
 ## ProposedSlot 字段（提议新 slot 时才输出）

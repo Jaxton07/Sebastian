@@ -1419,7 +1419,7 @@ _EXTRACTOR_FIELD_TABLE = """\
 | evidence | array | [{"quote": "..."}] |
 | valid_from | ISO-8601 \\| null | 一般 null |
 | valid_until | ISO-8601 \\| null | 一般 null |
-| policy_tags | array<string> | 一般 []；"pinned" 表示钉住 |
+| policy_tags | array<string> | 一般 []，不要主动设置任何值 |
 | needs_review | bool | 不确定时 true |
 
 ## ProposedSlot 字段
