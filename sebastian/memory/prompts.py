@@ -180,8 +180,8 @@ confidence 字段反映你对该记忆内容准确性的把握程度：
 | < 0.3 | 高度不确定的推断，几乎只有间接证据（建议不提取） |
 
 附加约束：
-- source=explicit 时，confidence 不应低于 0.8
-- source=inferred 时，confidence 上限建议不超过 0.75
+- source=explicit 时，confidence 不应低于 0.9
+- source=inferred 时，confidence 不应超过 0.75
 - 宁可少提取，不提取低质量记忆
 """
 
