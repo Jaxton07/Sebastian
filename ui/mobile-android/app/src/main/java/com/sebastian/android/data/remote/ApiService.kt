@@ -98,6 +98,24 @@ interface ApiService {
     @PUT("api/v1/memory/settings")
     suspend fun putMemorySettings(@Body body: MemorySettingsDto): MemorySettingsDto
 
+    // Memory Components
+    @GET("api/v1/memory/components")
+    suspend fun listMemoryComponents(): MemoryComponentsResponse
+
+    @GET("api/v1/memory/components/{componentType}/llm-binding")
+    suspend fun getMemoryComponentBinding(
+        @Path("componentType") componentType: String,
+    ): MemoryComponentBindingDto
+
+    @PUT("api/v1/memory/components/{componentType}/llm-binding")
+    suspend fun setMemoryComponentBinding(
+        @Path("componentType") componentType: String,
+        @Body body: SetBindingRequest,
+    ): MemoryComponentBindingDto
+
+    @DELETE("api/v1/memory/components/{componentType}/llm-binding")
+    suspend fun clearMemoryComponentBinding(@Path("componentType") componentType: String)
+
     // Health
     @GET("api/v1/health")
     suspend fun health(): Map<String, Any>
