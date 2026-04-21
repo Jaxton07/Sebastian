@@ -82,6 +82,8 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
         ("episode_memories", "valid_until", "DATETIME"),
         ("relation_candidates", "policy_tags", "TEXT"),
         ("relation_candidates", "source", "VARCHAR DEFAULT 'system_derived'"),
+        ("relation_candidates", "valid_from", "DATETIME"),
+        ("relation_candidates", "valid_until", "DATETIME"),
         ("memory_slots", "proposed_by", "TEXT"),
         ("memory_slots", "proposed_in_session", "TEXT"),
     ]
