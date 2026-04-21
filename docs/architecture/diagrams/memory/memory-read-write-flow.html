@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Memory 统一写入与检索装配链路</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1117;
+    --panel: #161b22;
+    --panel-2: #1a202c;
+    --border: #30363d;
+    --text: #e1e4e8;
+    --muted: #8b949e;
+    --blue: #79b8ff;
+    --green: #68d391;
+    --amber: #e3b341;
+    --red: #f85149;
+    --violet: #b794f4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+    line-height: 1.55;
+  }
+  h1 { color: #f0f6ff; font-size: 1.6rem; margin: 0 0 4px; }
+  h2 {
+    color: var(--blue);
+    font-size: 1.15rem;
+    margin: 32px 0 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 { color: #c9d1d9; font-size: 0.98rem; margin: 18px 0 8px; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #c9d1d9;
+    font-size: 0.86em;
+  }
+  .subtitle { color: var(--muted); font-size: 0.9rem; margin: 0 0 16px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .desc { color: var(--muted); font-size: 0.88rem; margin: 0 0 16px; }
+  .mermaid {
+    background: var(--panel);
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+  }
+  .note-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .note {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: var(--muted);
+    font-size: 0.84rem;
+  }
+  .note strong { color: var(--text); }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    background: #0d1117;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .green { background: #3d7a3d; }
+  .amber { background: #9a7020; }
+  .red { background: #8a2020; }
+  .blue { background: #1f6feb; }
+  .violet { background: #7a3d7a; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; min-width: 820px; font-size: 0.85rem; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { text-align: left; color: #f0f6ff; background: #0d1117; }
+  td { color: #c9d1d9; }
+  tr:last-child td { border-bottom: 0; }
+  .muted { color: var(--muted); }
+  .warn { color: var(--amber); }
+  .ok { color: var(--green); }
+  .source-map {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .source-map a {
+    display: block;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #c9d1d9;
+    font-size: 0.84rem;
+  }
+  .source-map span { display: block; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Memory 统一写入与检索装配链路</h1>
+<p class="subtitle">
+  对应 Spec：<a href="../../spec/memory/write-pipeline.md">write-pipeline.md</a> /
+  <a href="../../spec/memory/retrieval.md">retrieval.md</a> /
+  <a href="../../spec/memory/artifact-model.md">artifact-model.md</a> ·
+  对应代码：<code>sebastian/memory/</code> · 2026-04-21
+</p>
+
+<div class="pill-row">
+  <span class="pill"><span class="dot green"></span>当前实现：Profile / Episode / Entity / Relation candidate 写入可用</span>
+  <span class="pill"><span class="dot green"></span>动态 Slot：<code>memory_slots</code> 持久化 + 运行时热注册</span>
+  <span class="pill"><span class="dot amber"></span>Context / Relation 检索仍是轻量实现</span>
+  <span class="pill"><span class="dot red"></span>Cross-Session / Full Maintenance deferred</span>
+</div>
+
+<h2>0. 一句话总览</h2>
+<div class="card">
+  <p class="desc">
+    Sebastian Memory 不是把自然语言直接塞进一张表，也不是统一 search top-k 后丢给 LLM。
+    写入侧先把输入转成 <code>CandidateArtifact</code>，再通过 slot / subject / resolver 决定是否落库；
+    读取侧先判断当前用户消息意图，规划四条 lane 的检索预算，再按语义分区装配进 system prompt。
+  </p>
+  <div class="mermaid">
+flowchart LR
+    W["写入侧<br/>Capture → Extract → Normalize → Resolve → Persist"] --> S[("长期记忆存储<br/>Profile / Episode / Entity / Relation<br/>Slot Definitions / Decision Log")]
+    S --> R["读取侧<br/>Intent → Retrieval Plan → Fetch Lanes → Assemble"]
+    R --> P["System Prompt Memory Section<br/>Current Truth 与 Historical Evidence 分区注入"]
+
+    style W fill:#1a2a1a,stroke:#3d7a3d
+    style S fill:#1a202c,stroke:#4a5568
+    style R fill:#1a2a2a,stroke:#3a7a7a
+    style P fill:#2a1a2a,stroke:#7a3d7a
+  </div>
+  <div class="note-grid">
+    <div class="note"><strong>Artifact 是协议，不是表。</strong> <code>fact</code>、<code>preference</code>、<code>episode</code>、<code>summary</code>、<code>entity</code>、<code>relation</code> 都先统一成候选产物，再由路由层分发。</div>
+    <div class="note"><strong>Slot 是冲突域。</strong> <code>slot_id + cardinality + resolution_policy</code> 决定新事实能否并存、取代、合并或丢弃。</div>
+    <div class="note"><strong>LLM 只提议。</strong> Extractor / Consolidator 不直接写库；数据库状态迁移由 Normalize / Resolve / Persist 控制。</div>
+  </div>
+</div>
+
+<h2>1. Capture → Extract → Normalize → Resolve → Persist</h2>
+<div class="card">
+  <p class="desc">
+    统一写入链路由 <code>process_candidates()</code> 收口。显式 <code>memory_save</code> 和会话结束后的
+    <code>SessionConsolidationWorker</code> 都会进入这条管线；差异只在 Capture / Extract 的上下文不同。
+  </p>
+  <div class="mermaid">
+flowchart TD
+    subgraph ENTRY["写入入口"]
+        MS["memory_save(content)<br/>用户明确要求记住<br/>同步等待 extractor + pipeline + commit"]
+        SC["SESSION_COMPLETED<br/>SessionConsolidationWorker<br/>后台异步沉淀"]
+    end
+
+    CAP["Capture 捕获<br/>输入文本 / session messages<br/>agent_type / session_id / active memories / entity snapshot"]
+    EXT["Extract 提取<br/>MemoryExtractor → ExtractorOutput<br/>MemoryConsolidator → ConsolidationResult"]
+    PS["ProposedSlot[] 可选<br/>若现有 slot 不覆盖语义，LLM 可提议新 slot"]
+    NOR["Normalize 规范化<br/>resolve_subject(scope, session_id, agent_type)<br/>validate candidate against SlotRegistry"]
+    RES["Resolve 冲突解析<br/>resolve_candidate()<br/>不调用 LLM，不写 DB"]
+    DEC{{"ResolveDecision"}}
+    PERSIST["Persist 持久化<br/>write_router.persist_decision()"]
+    LOG[("Decision Log<br/>所有 ADD / SUPERSEDE / MERGE / EXPIRE / DISCARD 都记录")]
+
+    subgraph DECISIONS["决策类型"]
+        ADD["ADD 新增"]
+        SUP["SUPERSEDE 取代旧 active 记录"]
+        MER["MERGE 精确匹配合并路径"]
+        EXP["EXPIRE 过期已有 memory_id"]
+        DIS["DISCARD 丢弃但记日志"]
+    end
+
+    subgraph STORES["物理存储路由"]
+        PROF["Profile Store<br/>fact / preference"]
+        EPI["Episode Store<br/>episode / summary"]
+        ENT["Entity Registry<br/>entity"]
+        REL["relation_candidates<br/>relation"]
+    end
+
+    MS --> CAP
+    SC --> CAP
+    CAP --> EXT
+    EXT --> PS
+    EXT --> NOR
+    PS -. "先注册或复用" .-> NOR
+    NOR --> RES --> DEC
+    DEC --> ADD & SUP & MER & EXP & DIS
+    ADD & SUP & MER & EXP --> PERSIST
+    DIS --> LOG
+    PERSIST --> PROF & EPI & ENT & REL
+    PERSIST --> LOG
+
+    style ENTRY fill:#1a202c,stroke:#4a5568
+    style PS fill:#1a2a2a,stroke:#3a7a7a
+    style DEC fill:#2a1a2a,stroke:#7a3d7a
+    style STORES fill:#2a1a1a,stroke:#7a3d3d
+    style LOG fill:#3a1a1a,stroke:#aa5555
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>阶段</th>
+          <th>做什么</th>
+          <th>当前实现位置</th>
+          <th>关键约束</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Capture</td>
+          <td>捕获原始输入与运行上下文。显式保存是一条自然语言；会话沉淀是整段 session messages 加既有记忆快照。</td>
+          <td><code>memory_save._do_save()</code><br><code>SessionConsolidationWorker.consolidate_session()</code></td>
+          <td>只收集上下文，不决定写入结果。</td>
+        </tr>
+        <tr>
+          <td>Extract</td>
+          <td>调用 LLM，把自然语言提炼成 <code>CandidateArtifact[]</code>，可附带 <code>ProposedSlot[]</code>。</td>
+          <td><code>MemoryExtractor</code><br><code>MemoryConsolidator</code></td>
+          <td>失败返回空结果；LLM 不直接写 DB。</td>
+        </tr>
+        <tr>
+          <td>Normalize</td>
+          <td>解析 <code>subject_id</code>，注册或复用动态 slot，校验 fact / preference 是否绑定合法 slot。</td>
+          <td><code>process_candidates()</code><br><code>resolve_subject()</code><br><code>SlotRegistry.validate_candidate()</code></td>
+          <td><code>subject_hint</code> 当前不参与 subject 解析，避免主体污染。</td>
+        </tr>
+        <tr>
+          <td>Resolve</td>
+          <td>根据 slot 的 cardinality / resolution_policy 和已有 active 记录，生成 ADD / SUPERSEDE / MERGE / EXPIRE / DISCARD。</td>
+          <td><code>resolver.resolve_candidate()</code></td>
+          <td>纯确定性逻辑；不调用 LLM，不写数据库。</td>
+        </tr>
+        <tr>
+          <td>Persist</td>
+          <td>按 artifact kind 路由到 Profile / Episode / Entity / Relation candidate，并写 Decision Log。</td>
+          <td><code>write_router.persist_decision()</code><br><code>MemoryDecisionLogger.append()</code></td>
+          <td><code>DISCARD</code> 不写业务表，但必须写审计日志。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<h2>2. 动态 Slot 注册</h2>
+<div class="card">
+  <p class="desc">
+    Slot 定义从代码常量升级为 <code>memory_slots</code> 持久化注册表。内置 9 个 seed slot 仍保留在
+    <code>slots.py</code>，启动时写入 DB，再从 DB bootstrap 到运行时 <code>DEFAULT_SLOT_REGISTRY</code>。
+    LLM 可以提出新 slot，但必须通过校验与注册流程后才会成为可用冲突域。
+  </p>
+  <div class="mermaid">
+sequenceDiagram
+    participant LLM as Extractor / Consolidator
+    participant Tool as memory_save / Worker
+    participant Handler as SlotProposalHandler
+    participant DB as memory_slots
+    participant Registry as DEFAULT_SLOT_REGISTRY
+    participant Pipe as process_candidates
+
+    LLM->>Tool: ExtractorOutput(artifacts, proposed_slots)
+    Tool->>Handler: validate_proposed_slot(proposed)
+    alt proposed slot 合法
+        Tool->>Pipe: candidates + proposed_slots
+        Pipe->>Handler: register_or_reuse()
+        Handler->>Registry: get(slot_id)
+        alt registry 已有
+            Registry-->>Handler: 复用已有 SlotDefinition
+        else registry 不存在
+            Handler->>DB: INSERT memory_slots inside savepoint
+            alt INSERT 成功
+                Handler->>Registry: register(schema)
+            else IntegrityError 并发冲突
+                Handler->>DB: get(slot_id) 读取赢家
+                Handler->>Registry: register(winner)
+            end
+        end
+        Handler-->>Pipe: SlotDefinition
+        Pipe->>Pipe: validate_candidate() 继续写入链路
+    else proposed slot 非法
+        Tool-->>LLM: 注入拒绝原因，最多重试 1 次
+        Pipe->>Pipe: 被拒 slot 对应 candidate 降级 slot_id=None
+        Pipe->>Pipe: fact/preference 无 slot 将被 DISCARD
+    end
+  </div>
+  <div class="note-grid">
+    <div class="note"><strong>命名规则：</strong><code>{scope}.{category}.{attribute}</code> 三段式，纯小写 + 下划线，总长不超过 64。</div>
+    <div class="note"><strong>字段组合：</strong><code>kind_constraints</code> 不能为空；禁止 <code>single + append_only</code>；<code>time_bound</code> 至少适用于 fact 或 preference。</div>
+    <div class="note"><strong>并发保护：</strong><code>register_or_reuse()</code> 使用 savepoint；并发 INSERT 冲突时读取 DB 赢家并同步内存 registry。</div>
+    <div class="note"><strong>启动恢复：</strong><code>seed_builtin_slots()</code> 幂等写 seed；<code>bootstrap_slot_registry()</code> 加载 builtin + dynamic。</div>
+  </div>
+</div>
+
+<h2>3. Intent → Retrieval Plan → Assemble</h2>
+<div class="card">
+  <p class="desc">
+    读取侧入口是 <code>BaseAgent._memory_section()</code>。它在每轮构造 system prompt 前调用
+    <code>retrieve_memory_section()</code>。当前 planner 是轻量规则：jieba 分词 + 词库交集 + Entity Registry 动态实体触发词。
+  </p>
+  <div class="mermaid">
+flowchart TD
+    USER["当前用户消息<br/>RetrievalContext.user_message"]
+    GUARD["入口守卫<br/>memory enabled / db_factory / subject_id"]
+    INTENT["Intent 判定<br/>small-talk 短路<br/>profile / context / episode / relation 词库命中"]
+    PLAN["RetrievalPlan<br/>哪些 lane 打开 + 每条 lane limit"]
+
+    subgraph LANES["四条 Retrieval Lane"]
+        PROFILE["Profile Lane<br/>search_active()<br/>长期画像 / 偏好 / 当前有效事实"]
+        CONTEXT["Context Lane<br/>search_recent_context()<br/>最近 7 天 + query-aware FTS / fallback"]
+        EPISODE["Episode Lane<br/>summary-first FTS<br/>不足再下钻 episode detail"]
+        RELATION["Relation Lane<br/>list_relations()<br/>Entity trigger 激活，候选关系查询"]
+    end
+
+    FILTER["Assembler 过滤<br/>status / subject_id / valid_from / valid_until<br/>policy_tags / confidence 双阈值"]
+    SECTION["Prompt 分区装配<br/>Current facts about user<br/>Current context<br/>Important relationships<br/>Historical evidence"]
+
+    USER --> GUARD --> INTENT --> PLAN
+    PLAN --> PROFILE & CONTEXT & EPISODE & RELATION
+    PROFILE & CONTEXT & EPISODE & RELATION --> FILTER --> SECTION
+
+    style LANES fill:#1a202c,stroke:#4a5568
+    style FILTER fill:#2a2a1a,stroke:#7a7a3d
+    style SECTION fill:#1a2a1a,stroke:#3d7a3d
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Lane</th>
+          <th>语义职责</th>
+          <th>查询策略</th>
+          <th>为什么这样做</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Profile</td>
+          <td>这个人长期是什么样：身份、偏好、稳定事实。</td>
+          <td>纯 SQL：<code>status=active</code> + 有效期过滤，按 confidence / recency 排序，默认 top 5。</td>
+          <td>画像抽象度高，字面 FTS 召回差；现阶段不引入 embedding，所以用小预算高置信注入。</td>
+        </tr>
+        <tr>
+          <td>Context</td>
+          <td>最近正在发生什么，尤其是当前项目或当前阶段。</td>
+          <td>Profile 表中的近期事实：jieba + FTS 优先，无命中时按 7 天窗口 fallback。</td>
+          <td>动态事实通常有较强字面相关性，适合 query-aware 检索。</td>
+        </tr>
+        <tr>
+          <td>Episode</td>
+          <td>过去发生过什么、上次讨论到哪里、历史决策依据。</td>
+          <td>Episode Store：先查 summary，summary 不够再查 episode detail。</td>
+          <td>summary 是高密度历史证据；detail 只在需要时补充，避免 prompt 噪声。</td>
+        </tr>
+        <tr>
+          <td>Relation</td>
+          <td>实体之间的关系，如用户、家人、项目、agent、工具。</td>
+          <td>Entity 触发词激活，查询 <code>relation_candidates</code>；实体名和 aliases 同步进 jieba 用户词典。</td>
+          <td>关系层仍在增强期，先保留候选层和检索挂点，后续可升级图查询。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<h2>4. Current Truth 与 Historical Evidence 的边界</h2>
+<div class="card">
+  <p class="desc">
+    Assembler 不把所有记忆压成一段自然语言摘要，而是保留分区和 kind 标签。这样 Agent 能知道哪些是当前有效事实，
+    哪些只是历史证据，避免把“上次发生过”误当成“现在仍然如此”。
+  </p>
+  <div class="mermaid">
+flowchart LR
+    subgraph CURRENT["Current Truth 当前真值"]
+        PF["Profile: fact / preference<br/>status=active<br/>valid_from <= now<br/>valid_until is null or > now"]
+        CT["Context: recent active fact<br/>current state / project focus"]
+        RL["Relation: active relation candidate<br/>confidence >= threshold"]
+    end
+
+    subgraph HIST["Historical Evidence 历史证据"]
+        SM["summary<br/>会话或阶段摘要"]
+        EP["episode<br/>具体经历 / 任务过程 / 决策历史"]
+    end
+
+    CURRENT --> PROMPT["Memory Section"]
+    HIST --> PROMPT
+    PROMPT --> LLM["Agent 回答时自行判断相关性<br/>但不会混淆当前事实与历史证据"]
+
+    style CURRENT fill:#1a2a1a,stroke:#3d7a3d
+    style HIST fill:#2a1a1a,stroke:#7a3d3d
+    style PROMPT fill:#1a2a2a,stroke:#3a7a7a
+  </div>
+  <div class="note-grid">
+    <div class="note"><strong>自动注入门槛：</strong>检索硬阈值 <code>confidence &gt;= 0.3</code>；自动注入路径额外要求 <code>confidence &gt;= 0.5</code>。</div>
+    <div class="note"><strong>policy_tags：</strong><code>do_not_auto_inject</code> 阻止自动注入；<code>access:*</code> 和 <code>agent:*</code> 用于目的和 agent 类型过滤。</div>
+    <div class="note"><strong>subject 隔离：</strong>Assembler 会二次检查 <code>subject_id</code>，防止跨主体串记忆。</div>
+  </div>
+</div>
+
+<h2>5. 两个典型例子</h2>
+<div class="card">
+  <h3>例子 A：用户说“帮我记住，我以后希望你用中文简洁回答”</h3>
+  <div class="mermaid">
+sequenceDiagram
+    participant User as 用户
+    participant Agent as Agent
+    participant Save as memory_save
+    participant Ext as MemoryExtractor
+    participant Pipe as process_candidates
+    participant Res as Resolver
+    participant Store as Profile Store
+    participant Log as Decision Log
+
+    User->>Agent: 帮我记住，我以后希望你用中文简洁回答
+    Agent->>Save: memory_save(content)
+    Save->>Ext: ExtractorInput(conversation_window, known_slots)
+    Ext-->>Save: CandidateArtifact(preference, slot=user.preference.response_style)
+    Save->>Pipe: candidates + proposed_slots
+    Pipe->>Pipe: resolve_subject(USER) => owner
+    Pipe->>Pipe: validate_candidate(slot exists, kind allowed)
+    Pipe->>Res: resolve_candidate()
+    Res-->>Pipe: SUPERSEDE or ADD
+    Pipe->>Store: add / supersede profile_memories
+    Pipe->>Log: append decision
+    Save-->>Agent: MemorySaveResult(saved_count, discarded_count, summary)
+  </div>
+
+  <h3>例子 B：下一轮用户问“你觉得我这段代码怎么写比较好？”</h3>
+  <div class="mermaid">
+sequenceDiagram
+    participant Agent as BaseAgent
+    participant Mem as _memory_section()
+    participant Planner as RetrievalPlanner
+    participant Profile as Profile Lane
+    participant Asm as Assembler
+    participant LLM as LLM
+
+    Agent->>Mem: before system prompt
+    Mem->>Planner: plan(user_message)
+    Planner-->>Mem: profile_lane=true
+    Mem->>Profile: search_active(subject_id=owner, limit=5)
+    Profile-->>Mem: 用户偏好中文简洁回答
+    Mem->>Asm: assemble(records)
+    Asm-->>Agent: ## Current facts about user<br/>- [preference] ...
+    Agent->>LLM: system prompt + memory section + user message
+    LLM-->>Agent: 按用户偏好组织回答
+  </div>
+</div>
+
+<h2>6. 代码与文档映射</h2>
+<div class="card">
+  <p class="desc">如果要继续实现或重构，优先沿这张映射表定位入口，避免在旧兼容层上误改。</p>
+  <div class="source-map">
+    <a href="../../../../sebastian/memory/README.md">sebastian/memory/README.md<span>模块职责、当前实现状态、修改导航。</span></a>
+    <a href="../../../../sebastian/memory/data-flow.md">sebastian/memory/data-flow.md<span>读写链路说明。注意后半段关于动态 slot 的描述已落后，应以当前代码与最新 spec 为准。</span></a>
+    <a href="../../spec/memory/write-pipeline.md">spec/memory/write-pipeline.md<span>Capture → Extract → Normalize → Resolve → Persist 设计约束。</span></a>
+    <a href="../../spec/memory/retrieval.md">spec/memory/retrieval.md<span>Intent → Retrieval Planner → Assembler、四条 lane 与 confidence 阈值。</span></a>
+    <a href="../../../../sebastian/memory/pipeline.py">sebastian/memory/pipeline.py<span><code>process_candidates()</code>：统一写入入口。</span></a>
+    <a href="../../../../sebastian/memory/resolver.py">sebastian/memory/resolver.py<span><code>resolve_candidate()</code>：冲突解析和决策生成。</span></a>
+    <a href="../../../../sebastian/memory/retrieval.py">sebastian/memory/retrieval.py<span>Planner、四 lane fetch、Assembler。</span></a>
+    <a href="../../../../sebastian/memory/slot_proposals.py">sebastian/memory/slot_proposals.py<span>动态 slot 校验、注册、并发 race 处理。</span></a>
+    <a href="../../../../sebastian/memory/startup.py">sebastian/memory/startup.py<span>FTS 初始化、内置 slot seed、registry bootstrap。</span></a>
+    <a href="../../../../sebastian/capabilities/tools/memory_save/__init__.py">memory_save 工具<span>显式记忆保存入口，当前是同步等待真实保存结果。</span></a>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#2d3748',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#4a5568',
+      lineColor: '#68d391',
+      secondaryColor: '#1a202c',
+      tertiaryColor: '#2d3748',
+      background: '#161b22',
+      mainBkg: '#161b22',
+      nodeBorder: '#4a5568',
+      clusterBkg: '#1a202c',
+      titleColor: '#90cdf4',
+      edgeLabelBackground: '#2d3748',
+      labelTextColor: '#e2e8f0',
+      noteBorderColor: '#f6ad55',
+      noteBkgColor: '#2d3748',
+      noteTextColor: '#e2e8f0'
+    },
+    flowchart: {
+      curve: 'basis',
+      useMaxWidth: true,
+      htmlLabels: true,
+      nodeSpacing: 38,
+      rankSpacing: 48
+    },
+    sequence: {
+      useMaxWidth: true,
+      showSequenceNumbers: false
+    }
+  });
+</script>
+</body>
+</html>
