@@ -76,3 +76,10 @@ def test_default_planner_singleton_is_module_level() -> None:
     from sebastian.memory.retrieval import DEFAULT_RETRIEVAL_PLANNER
 
     assert isinstance(DEFAULT_RETRIEVAL_PLANNER, MemoryRetrievalPlanner)
+
+
+def test_sentence_with_both_recommend_verb_and_letter_noun() -> None:
+    """含独立推荐动词 + 推荐信名词的句子：profile_lane 应激活（推荐动词命中）。"""
+    planner = MemoryRetrievalPlanner()
+    plan = planner.plan(_ctx("帮我推荐一封好书，然后附上推荐信模板"))
+    assert plan.profile_lane is True

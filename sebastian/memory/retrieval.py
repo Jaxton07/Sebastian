@@ -118,11 +118,12 @@ class MemoryRetrievalPlanner:
 
     async def bootstrap_entity_triggers(self, registry: EntityRegistry) -> None:
         """启动期调用：把 Entity Registry 全量 name/aliases 合并进 relation 触发词。"""
-        entity_names = await registry.list_all_names_and_aliases()  # type: ignore[attr-defined]
+        entity_names = await registry.list_all_names_and_aliases()  # type: ignore[attr-defined]  # added in Task 3
         self._relation_trigger_set = RELATION_LANE_STATIC_WORDS | frozenset(entity_names)
 
     async def reload_entity_triggers(self, registry: EntityRegistry) -> None:
-        """Entity 写入末尾调用，刷新触发词缓存。"""
+        """Entity 写入末尾调用，刷新触发词缓存。与 bootstrap_entity_triggers 行为相同，
+        命名区分是为了调用场景语义清晰（写入触发 vs 启动初始化）。"""
         await self.bootstrap_entity_triggers(registry)
 
     def plan(self, context: RetrievalContext) -> RetrievalPlan:
