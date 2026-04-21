@@ -247,14 +247,15 @@ class SessionConsolidationWorker:
             slot_handler = SlotProposalHandler(store=slot_store, registry=DEFAULT_SLOT_REGISTRY)
 
             async def _attempt_register(output: ExtractorOutput) -> list[tuple[str, str]]:
+                # 只做格式校验，不写 DB。
+                # 实际注册延迟到 process_candidates，届时只注册被 candidate 引用的 slot，
+                # 避免在 consolidator 失败时留下无对应记忆的孤儿 slot。
+                from sebastian.memory.slot_proposals import validate_proposed_slot
+
                 rejected: list[tuple[str, str]] = []
                 for p in output.proposed_slots:
                     try:
-                        await slot_handler.register_or_reuse(
-                            p,
-                            proposed_by="extractor",
-                            proposed_in_session=session_id,
-                        )
+                        validate_proposed_slot(p)
                     except InvalidSlotProposalError as exc:
                         rejected.append((p.slot_id, str(exc)))
                 return rejected

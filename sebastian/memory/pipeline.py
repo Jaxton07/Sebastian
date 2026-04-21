@@ -89,6 +89,8 @@ async def process_candidates(
     failed_slot_ids: set[str] = set()
 
     # Step 1: process proposed_slots before candidates
+    # 只注册被至少一个 candidate 引用的 slot，避免在 consolidator 失败（candidates 为空）
+    # 时留下无对应记忆的孤儿 slot。
     if proposed_slots:
         if slot_proposal_handler is None:
             raise ValueError(
@@ -96,30 +98,37 @@ async def process_candidates(
                 " 但 slot_proposal_handler 为 None；"
                 " 调用方必须传入 SlotProposalHandler 实例"
             )
-        else:
-            for p in proposed_slots:
-                try:
-                    schema = await slot_proposal_handler.register_or_reuse(
-                        p,
-                        proposed_by=proposed_by,
-                        proposed_in_session=session_id,
-                    )
-                    registered.append(schema.slot_id)
-                    logger.info(
-                        "slot.proposal.accepted slot_id=%s proposed_by=%s session=%s",
-                        schema.slot_id,
-                        proposed_by,
-                        session_id,
-                    )
-                except InvalidSlotProposalError as exc:
-                    rejected.append({"slot_id": p.slot_id, "reason": str(exc)})
-                    failed_slot_ids.add(p.slot_id)
-                    logger.warning(
-                        "slot.proposal.rejected slot_id=%s reason=%s proposed_by=%s",
-                        p.slot_id,
-                        exc,
-                        proposed_by,
-                    )
+        referenced_slot_ids = {c.slot_id for c in candidates if c.slot_id is not None}
+        for p in proposed_slots:
+            if p.slot_id not in referenced_slot_ids:
+                logger.debug(
+                    "slot.proposal.skipped_no_candidate slot_id=%s proposed_by=%s",
+                    p.slot_id,
+                    proposed_by,
+                )
+                continue
+            try:
+                schema = await slot_proposal_handler.register_or_reuse(
+                    p,
+                    proposed_by=proposed_by,
+                    proposed_in_session=session_id,
+                )
+                registered.append(schema.slot_id)
+                logger.info(
+                    "slot.proposal.accepted slot_id=%s proposed_by=%s session=%s",
+                    schema.slot_id,
+                    proposed_by,
+                    session_id,
+                )
+            except InvalidSlotProposalError as exc:
+                rejected.append({"slot_id": p.slot_id, "reason": str(exc)})
+                failed_slot_ids.add(p.slot_id)
+                logger.warning(
+                    "slot.proposal.rejected slot_id=%s reason=%s proposed_by=%s",
+                    p.slot_id,
+                    exc,
+                    proposed_by,
+                )
 
     # Step 2: downgrade candidates whose proposed slot was rejected
     effective_candidates: list[CandidateArtifact] = []

@@ -72,10 +72,8 @@ async def test_worker_merges_extractor_and_consolidator_proposed_slots(
         proposed_slots=[extractor_slot],
     )
     fake_consolidation_result = ConsolidationResult(
-        summaries=[
-            MemorySummary(content="test summary", subject_id="owner", session_id="test-session")
-        ],
-        proposed_artifacts=[],
+        summaries=[MemorySummary(content="test summary")],
+        artifacts=[],
         proposed_actions=[],
         proposed_slots=[consolidator_slot],
     )
@@ -222,10 +220,13 @@ async def test_worker_proposed_by_is_consolidator(
 
 
 @pytest.mark.asyncio
-async def test_worker_proposed_slot_persisted_in_db(
+async def test_worker_proposed_slot_persisted_only_when_artifact_references_it(
     tmp_memory_env,
 ) -> None:
-    """consolidate_session() 全链路运行后 memory_slots 表出现 proposed_slot 对应行。
+    """slot 只有在 consolidator 输出了引用该 slot 的 artifact 时才落库。
+
+    - user.hobby.reading：consolidator 有对应 artifact → 应落库
+    - user.hobby.orphan：只在 proposed_slots 里，无对应 artifact → 不应落库
 
     不 mock process_candidates，让完整 pipeline 执行，验证 DB 落库断言。
     使用隔离的 SlotRegistry，避免污染模块级 DEFAULT_SLOT_REGISTRY 单例。
@@ -238,18 +239,20 @@ async def test_worker_proposed_slot_persisted_in_db(
     factory = tmp_memory_env
 
     extractor_slot = _make_proposed_slot("user.hobby.reading")
+    orphan_slot = _make_proposed_slot("user.hobby.orphan")
 
-    # Extractor 返回一个 proposed_slot（无 artifact，不干扰 profile 表）
     fake_extractor_output = ExtractorOutput(
         artifacts=[],
-        proposed_slots=[extractor_slot],
+        proposed_slots=[extractor_slot, orphan_slot],
     )
-    # Consolidator 返回空结果，把验证焦点集中在 extractor proposed_slot
-    fake_consolidation_result = ConsolidationResult()
+    # Consolidator 返回一个引用 user.hobby.reading 的 artifact，
+    # 以及 orphan_slot 的 proposed_slot（但无对应 artifact）
+    fake_consolidation_result = ConsolidationResult(
+        artifacts=[_make_candidate(slot_id="user.hobby.reading")],
+        proposed_slots=[extractor_slot, orphan_slot],
+    )
 
     mock_extractor = MagicMock(spec=MemoryExtractor)
-    # extract_with_slot_retry 的 attempt_register 参数由 worker 传入；
-    # 这里直接返回 fake_extractor_output，模拟 LLM 提取完毕（attempt_register 回调由真实代码调用）
     mock_extractor.extract_with_slot_retry = AsyncMock(return_value=fake_extractor_output)
 
     mock_consolidator = MagicMock(spec=MemoryConsolidator)
@@ -267,22 +270,26 @@ async def test_worker_proposed_slot_persisted_in_db(
         memory_settings_fn=lambda: True,
     )
 
-    # 用隔离的 registry 替换全局单例，避免跨测试状态污染
     isolated_registry = SlotRegistry(slots=list(_BUILTIN_SLOTS))
     with patch("sebastian.memory.slots.DEFAULT_SLOT_REGISTRY", isolated_registry):
         await worker.consolidate_session("test-session-db", "default")
 
-    # 断言 memory_slots 表已有 proposed slot 对应行
     async with factory() as db_session:
-        rows = (
+        reading_rows = (
             await db_session.scalars(
                 select(MemorySlotRecord).where(MemorySlotRecord.slot_id == "user.hobby.reading")
             )
         ).all()
+        orphan_rows = (
+            await db_session.scalars(
+                select(MemorySlotRecord).where(MemorySlotRecord.slot_id == "user.hobby.orphan")
+            )
+        ).all()
 
-    assert len(rows) == 1, f"memory_slots 表中未找到 user.hobby.reading；rows={rows}"
-    assert rows[0].slot_id == "user.hobby.reading"
-    assert rows[0].is_builtin is False
-    # proposed_by reflects the registration path: extractor slots reach DB via
-    # process_candidates which is called with proposed_by="consolidator"
-    assert rows[0].proposed_by in ("extractor", "consolidator")
+    assert len(reading_rows) == 1, (
+        f"user.hobby.reading（有对应 artifact）应落库；rows={reading_rows}"
+    )
+    assert reading_rows[0].is_builtin is False
+    assert len(orphan_rows) == 0, (
+        f"user.hobby.orphan（无对应 artifact）不应落库；rows={orphan_rows}"
+    )
