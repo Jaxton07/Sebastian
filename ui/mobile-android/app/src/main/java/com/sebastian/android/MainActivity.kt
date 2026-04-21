@@ -255,6 +255,7 @@ fun SebastianNavHost(
                 val route = backStackEntry.toRoute<Route.SettingsAgentBindingEditor>()
                 AgentBindingEditorPage(
                     agentType = route.agentType,
+                    isMemoryComponent = route.isMemoryComponent,
                     navController = navController,
                 )
             }

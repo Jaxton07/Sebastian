@@ -51,12 +51,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun AgentBindingEditorPage(
     agentType: String,
+    isMemoryComponent: Boolean = false,
     navController: NavController,
 ) {
     val vm: AgentBindingEditorViewModel =
         hiltViewModel<AgentBindingEditorViewModel, AgentBindingEditorViewModel.Factory>(
             key = agentType,
-            creationCallback = { factory -> factory.create(agentType) },
+            creationCallback = { factory -> factory.create(agentType, isMemoryComponent) },
         )
     val state by vm.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
