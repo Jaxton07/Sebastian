@@ -474,8 +474,9 @@ async def test_memory_search_returns_structured_items(enabled_memory_state, capl
         await EpisodeMemoryStore(session).add_episode(episode_artifact)
         await session.commit()
 
-    # Query contains episode-lane keyword "上次" so both lanes activate.
-    result = await memory_search(query="上次讨论")
+    # Query must contain both an episode-lane keyword ("上次") and a profile-lane
+    # keyword ("喜欢") so that both lanes activate simultaneously under the jieba planner.
+    result = await memory_search(query="上次我喜欢")
 
     assert result.ok is True
     assert isinstance(result.output, dict)
@@ -1129,8 +1130,8 @@ async def test_memory_search_all_lanes_represented_within_limit(
         )
         await session.commit()
 
-    # "现在"→context, "上次"→episode, "项目"→relation, profile is always on
-    result = await memory_search(query="现在上次项目讨论", limit=5)
+    # "现在"→context, "上次"→episode, "项目"→relation, "喜欢"→profile (jieba planner requires explicit profile-lane keyword)
+    result = await memory_search(query="现在上次项目我喜欢", limit=5)
 
     assert result.ok is True
     items = result.output["items"]
@@ -1242,7 +1243,8 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
 
     # limit=2, but 4 lanes are activated → effective_limit = max(2, 4) = 4
     # Each lane gets exactly 1 slot; total should be 4, not 2
-    result = await memory_search(query="现在上次项目讨论", limit=2)
+    # "现在"→context, "上次"→episode, "项目"→relation, "喜欢"→profile
+    result = await memory_search(query="现在上次项目我喜欢", limit=2)
 
     assert result.ok is True
     items = result.output["items"]
