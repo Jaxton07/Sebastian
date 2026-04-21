@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sebastian.store.database import Base  # noqa: F401
@@ -232,3 +232,11 @@ class SessionConsolidationRecord(Base):
     agent_type: Mapped[str] = mapped_column(String, primary_key=True)
     consolidated_at: Mapped[datetime] = mapped_column(DateTime)
     worker_version: Mapped[str] = mapped_column(String, default="phase_c_v1")
+
+
+class AppSettingsRecord(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
