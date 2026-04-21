@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import sqlalchemy
@@ -24,7 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import sebastian.gateway.state as state_module
 from sebastian.capabilities.tools.memory_save import memory_save
 from sebastian.capabilities.tools.memory_search import memory_search
+from sebastian.memory.extraction import ExtractorOutput
 from sebastian.memory.types import (
+    CandidateArtifact,
     MemoryDecisionType,
     MemoryKind,
     MemoryScope,
@@ -74,6 +76,8 @@ async def enabled_memory_state(
     fake_settings.enabled = True
     monkeypatch.setattr(state_module, "memory_settings", fake_settings, raising=False)
     monkeypatch.setattr(state_module, "db_factory", db_factory, raising=False)
+    fake_llm_registry = MagicMock()
+    monkeypatch.setattr(state_module, "llm_registry", fake_llm_registry, raising=False)
     return db_factory
 
 
@@ -117,11 +121,32 @@ async def test_supersede_chain_from_memory_save_to_search(enabled_memory_state) 
         await session.commit()
 
     # --- Step 2: memory_save a new value for the same SINGLE slot ----------
-    save_result = await memory_save(
+    # Patch extractor to return a candidate targeting the same slot so the
+    # pipeline can detect and execute the SUPERSEDE resolution.
+    new_candidate = CandidateArtifact(
+        kind=MemoryKind.FACT,
         content=new_content,
+        structured_payload={},
+        subject_hint="owner",
+        scope=MemoryScope.USER,
         slot_id=_SLOT_ID,
-        scope="user",
+        cardinality=None,
+        resolution_policy=None,
+        confidence=0.95,
+        source=MemorySource.EXPLICIT,
+        evidence=[],
+        valid_from=None,
+        valid_until=None,
+        policy_tags=[],
+        needs_review=False,
     )
+    fake_output = ExtractorOutput(artifacts=[new_candidate], proposed_slots=[])
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(
+            "sebastian.memory.extraction.MemoryExtractor.extract_with_slot_retry",
+            AsyncMock(return_value=fake_output),
+        )
+        save_result = await memory_save(content=new_content)
     assert save_result.ok is True, f"memory_save failed: {save_result.error}"
 
     # --- Step 3: assert SUPERSEDE bookkeeping ------------------------------

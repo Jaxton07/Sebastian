@@ -6,103 +6,12 @@ import logging
 import sebastian.gateway.state as state
 from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
+from sebastian.memory.constants import MEMORY_SAVE_TIMEOUT_SECONDS
+from sebastian.memory.feedback import MemorySaveResult, render_memory_save_summary
 from sebastian.memory.trace import preview_text, trace
 from sebastian.permissions.types import PermissionTier
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Pending task registry — used by drain_pending_saves() in tests
-# ---------------------------------------------------------------------------
-
-_pending_tasks: set[asyncio.Task[None]] = set()
-
-
-async def drain_pending_saves() -> None:
-    """Wait for all in-flight background save tasks to complete.
-
-    Intended for use in tests only. In production, background tasks complete
-    independently and callers must not block on them.
-    """
-    pending = list(_pending_tasks)
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
-
-
-# ---------------------------------------------------------------------------
-# Background save task
-# ---------------------------------------------------------------------------
-
-
-async def _do_save(content: str, session_id: str | None, agent_type: str) -> None:
-    """Background task: extract candidate artifacts via LLM, then persist them."""
-    from sebastian.memory.decision_log import MemoryDecisionLogger
-    from sebastian.memory.entity_registry import EntityRegistry
-    from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.extraction import ExtractorInput
-    from sebastian.memory.pipeline import process_candidates
-    from sebastian.memory.profile_store import ProfileMemoryStore
-    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
-    from sebastian.memory.subject import resolve_subject
-    from sebastian.memory.types import MemoryScope
-
-    extractor = getattr(state, "memory_extractor", None)
-    if extractor is None:
-        trace("tool.memory_save.bg_skip", reason="no_extractor")
-        return
-
-    subject_id = await resolve_subject(
-        MemoryScope.USER,
-        session_id=session_id or "",
-        agent_type=agent_type,
-    )
-
-    extractor_input = ExtractorInput(
-        subject_context={"subject_id": subject_id, "agent_type": agent_type},
-        conversation_window=[{"role": "user", "content": content}],
-        known_slots=[s.model_dump() for s in DEFAULT_SLOT_REGISTRY.list_all()],
-    )
-    extractor_output = await extractor.extract(extractor_input)
-    candidates = extractor_output.artifacts
-
-    if not candidates:
-        trace("tool.memory_save.bg_skip", reason="extractor_empty")
-        return
-
-    # Inject session evidence so provenance is traceable per session
-    if session_id is not None:
-        candidates = [
-            c.model_copy(update={"evidence": [{"session_id": session_id}]})
-            for c in candidates
-        ]
-
-    async with state.db_factory() as db_session:
-        result = await process_candidates(
-            candidates,
-            session_id=session_id or "",
-            agent_type=agent_type,
-            db_session=db_session,
-            profile_store=ProfileMemoryStore(db_session),
-            episode_store=EpisodeMemoryStore(db_session),
-            entity_registry=EntityRegistry(db_session),
-            decision_logger=MemoryDecisionLogger(db_session),
-            slot_registry=DEFAULT_SLOT_REGISTRY,
-            worker_id="memory_save_tool",
-            model_name=None,
-            rule_version="phase_b_v1",
-            input_source={"type": "memory_save_tool", "session_id": session_id},
-        )
-        await db_session.commit()
-
-    trace("tool.memory_save.bg_done", decision_count=result.saved_count)
-
-
-def _log_bg_error(t: asyncio.Task[None]) -> None:
-    if t.cancelled():
-        return
-    exc = t.exception()
-    if exc is not None:
-        logger.error("memory_save background task failed: %s", exc, exc_info=exc)
 
 
 # ---------------------------------------------------------------------------
@@ -133,13 +42,100 @@ async def memory_save(content: str) -> ToolResult:
     session_id: str | None = getattr(state, "current_session_id", None) or None
     agent_type: str = getattr(state, "current_agent_type", "default") or "default"
 
-    task: asyncio.Task[None] = asyncio.create_task(
-        _do_save(content, session_id, agent_type),
-        name=f"memory_save_{session_id}",
-    )
-    _pending_tasks.add(task)
-    task.add_done_callback(_pending_tasks.discard)
-    task.add_done_callback(_log_bg_error)
+    try:
+        result = await asyncio.wait_for(
+            _do_save(content, session_id, agent_type),
+            timeout=MEMORY_SAVE_TIMEOUT_SECONDS,
+        )
+        trace("tool.memory_save.done", saved=result.saved_count)
+        return ToolResult(ok=True, output=result.model_dump())
+    except TimeoutError:
+        trace("tool.memory_save.timeout")
+        return ToolResult(ok=False, error="记忆处理超时，未能保存。")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("memory_save failed")
+        trace("tool.memory_save.error", reason=str(exc))
+        return ToolResult(ok=False, error=f"保存失败：{exc}")
 
-    trace("tool.memory_save.dispatched", session_id=session_id)
-    return ToolResult(ok=True, output={"message": "已记住，正在后台保存。"})
+
+async def _do_save(content: str, session_id: str | None, agent_type: str) -> MemorySaveResult:
+    from sebastian.memory.decision_log import MemoryDecisionLogger
+    from sebastian.memory.entity_registry import EntityRegistry
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.errors import InvalidSlotProposalError
+    from sebastian.memory.extraction import ExtractorInput, ExtractorOutput, MemoryExtractor
+    from sebastian.memory.pipeline import process_candidates
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.slot_definition_store import SlotDefinitionStore
+    from sebastian.memory.slot_proposals import SlotProposalHandler, validate_proposed_slot
+    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+
+    extractor = MemoryExtractor(state.llm_registry)
+    known_slots = [
+        {
+            "slot_id": s.slot_id,
+            "scope": s.scope.value,
+            "subject_kind": s.subject_kind,
+            "cardinality": s.cardinality.value,
+            "resolution_policy": s.resolution_policy.value,
+            "kind_constraints": [k.value for k in s.kind_constraints],
+            "description": s.description,
+        }
+        for s in DEFAULT_SLOT_REGISTRY.list_all()
+    ]
+
+    async with state.db_factory() as db_session:
+        slot_store = SlotDefinitionStore(db_session)
+        handler = SlotProposalHandler(store=slot_store, registry=DEFAULT_SLOT_REGISTRY)
+
+        async def attempt_register(output: ExtractorOutput) -> list[tuple[str, str]]:
+            """回调：预检 proposed_slots；返回被拒的 (slot_id, reason) 列表。
+
+            只做校验，不真正注册（真正注册在 process_candidates 里统一做）。
+            """
+            rejected: list[tuple[str, str]] = []
+            for p in output.proposed_slots:
+                try:
+                    validate_proposed_slot(p)
+                except InvalidSlotProposalError as exc:
+                    rejected.append((p.slot_id, str(exc)))
+            return rejected
+
+        extractor_output = await extractor.extract_with_slot_retry(
+            ExtractorInput(
+                subject_context={"agent_type": agent_type},
+                conversation_window=[{"role": "user", "content": content}],
+                known_slots=known_slots,
+            ),
+            attempt_register=attempt_register,
+        )
+
+        result = await process_candidates(
+            candidates=extractor_output.artifacts,
+            proposed_slots=extractor_output.proposed_slots,
+            session_id=session_id or "",
+            agent_type=agent_type,
+            db_session=db_session,
+            profile_store=ProfileMemoryStore(db_session),
+            episode_store=EpisodeMemoryStore(db_session),
+            entity_registry=EntityRegistry(db_session),
+            decision_logger=MemoryDecisionLogger(db_session),
+            slot_registry=DEFAULT_SLOT_REGISTRY,
+            slot_proposal_handler=handler,
+            worker_id="memory_save_tool",
+            model_name=None,
+            rule_version="spec-a-v1",
+            input_source={"type": "memory_save_tool", "session_id": session_id},
+            proposed_by="extractor",
+        )
+        await db_session.commit()
+
+    save_result = MemorySaveResult(
+        saved_count=result.saved_count,
+        discarded_count=result.discarded_count,
+        proposed_slots_registered=result.proposed_slots_registered,
+        proposed_slots_rejected=result.proposed_slots_rejected,
+        summary="",
+    )
+    save_result.summary = render_memory_save_summary(save_result)
+    return save_result
