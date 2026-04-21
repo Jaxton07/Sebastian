@@ -710,7 +710,7 @@ Consolidator prompt 在 Extractor 部分基础上追加：
   "artifacts": [...],
   "proposed_slots": [...],
   "summaries": [{"content": "...", "scope": "session"}],
-  "proposed_actions": [{"action": "EXPIRE", "old_memory_id": "...", "reason": "..."}]
+  "proposed_actions": [{"action": "EXPIRE", "memory_id": "...", "reason": "..."}]
 }
 ```
 
