@@ -219,3 +219,65 @@ async def test_worker_proposed_by_is_consolidator(
         await worker.consolidate_session("test-session-3", "default")
 
     assert captured_kwargs.get("proposed_by") == "consolidator"
+
+
+@pytest.mark.asyncio
+async def test_worker_proposed_slot_persisted_in_db(
+    tmp_memory_env,
+) -> None:
+    """consolidate_session() 全链路运行后 memory_slots 表出现 proposed_slot 对应行。
+
+    不 mock process_candidates，让完整 pipeline 执行，验证 DB 落库断言。
+    """
+    from sqlalchemy import select
+
+    from sebastian.store.models import MemorySlotRecord
+
+    factory = tmp_memory_env
+
+    extractor_slot = _make_proposed_slot("user.hobby.reading")
+
+    # Extractor 返回一个 proposed_slot（无 artifact，不干扰 profile 表）
+    fake_extractor_output = ExtractorOutput(
+        artifacts=[],
+        proposed_slots=[extractor_slot],
+    )
+    # Consolidator 返回空结果，把验证焦点集中在 extractor proposed_slot
+    fake_consolidation_result = ConsolidationResult()
+
+    mock_extractor = MagicMock(spec=MemoryExtractor)
+    # extract_with_slot_retry 的 attempt_register 参数由 worker 传入；
+    # 这里直接返回 fake_extractor_output，模拟 LLM 提取完毕（attempt_register 回调由真实代码调用）
+    mock_extractor.extract_with_slot_retry = AsyncMock(return_value=fake_extractor_output)
+
+    mock_consolidator = MagicMock(spec=MemoryConsolidator)
+    mock_consolidator.consolidate = AsyncMock(return_value=fake_consolidation_result)
+    mock_consolidator.last_resolved = None
+
+    mock_session_store = MagicMock()
+    mock_session_store.get_messages = AsyncMock(return_value=[{"role": "user", "content": "hi"}])
+
+    worker = SessionConsolidationWorker(
+        db_factory=factory,
+        consolidator=mock_consolidator,
+        extractor=mock_extractor,
+        session_store=mock_session_store,
+        memory_settings_fn=lambda: True,
+    )
+
+    await worker.consolidate_session("test-session-db", "default")
+
+    # 断言 memory_slots 表已有 proposed slot 对应行
+    async with factory() as db_session:
+        rows = (
+            await db_session.scalars(
+                select(MemorySlotRecord).where(MemorySlotRecord.slot_id == "user.hobby.reading")
+            )
+        ).all()
+
+    assert len(rows) == 1, f"memory_slots 表中未找到 user.hobby.reading；rows={rows}"
+    assert rows[0].slot_id == "user.hobby.reading"
+    assert rows[0].is_builtin is False
+    # proposed_by reflects the registration path: extractor slots reach DB via
+    # process_candidates which is called with proposed_by="consolidator"
+    assert rows[0].proposed_by in ("extractor", "consolidator")
