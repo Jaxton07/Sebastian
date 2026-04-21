@@ -27,6 +27,7 @@ build/
 *.swp
 .claude/settings.local.json
 .claude/worktrees/
+.codex/
 
 # OS
 .DS_Store
