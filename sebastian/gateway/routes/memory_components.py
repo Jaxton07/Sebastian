@@ -45,7 +45,10 @@ async def list_memory_components(
                 "component_type": component_type,
                 "display_name": meta["display_name"],
                 "description": meta["description"],
-                "binding": _binding_to_dict(component_type, binding)
+                "binding": {
+                    "provider_id": binding.provider_id,
+                    "thinking_effort": binding.thinking_effort,
+                }
                 if binding is not None
                 else None,
             }

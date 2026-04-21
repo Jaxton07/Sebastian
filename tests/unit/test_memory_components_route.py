@@ -152,6 +152,21 @@ def test_put_clears_effort_for_none_capability(
     assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] is None
 
 
+def test_put_clears_effort_for_always_on_capability(
+    client: TestClient, mock_registry: MagicMock
+) -> None:
+    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "pid-1")
+    mock_registry.get_record = AsyncMock(return_value=_make_provider_record("pid-1", "always_on"))
+    mock_registry.get_binding = AsyncMock(return_value=existing)
+    mock_registry.set_binding = AsyncMock(return_value=existing)
+    resp = client.put(
+        f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
+        json={"provider_id": "pid-1", "thinking_effort": "high"},
+    )
+    assert resp.status_code == 200
+    assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] is None
+
+
 def test_put_unknown_provider_returns_400(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
