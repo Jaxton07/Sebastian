@@ -33,7 +33,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
     from sebastian.memory.entity_registry import EntityRegistry
     from sebastian.memory.episode_store import EpisodeMemoryStore
     from sebastian.memory.profile_store import ProfileMemoryStore
-    from sebastian.memory.retrieval import MemoryRetrievalPlanner, RetrievalContext, _keep_record
+    from sebastian.memory.retrieval import DEFAULT_RETRIEVAL_PLANNER, RetrievalContext, _keep_record
 
     ctx = get_tool_context()
     session_id = ctx.session_id if ctx else "unknown"
@@ -51,7 +51,7 @@ async def memory_search(query: str, limit: int = 5) -> ToolResult:
         access_purpose="tool_search",
     )
 
-    planner = MemoryRetrievalPlanner()
+    planner = DEFAULT_RETRIEVAL_PLANNER
     plan = planner.plan(retrieval_ctx)
 
     # Lane-aware budget allocation.
