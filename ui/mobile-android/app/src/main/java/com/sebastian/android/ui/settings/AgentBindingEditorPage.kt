@@ -56,7 +56,7 @@ fun AgentBindingEditorPage(
 ) {
     val vm: AgentBindingEditorViewModel =
         hiltViewModel<AgentBindingEditorViewModel, AgentBindingEditorViewModel.Factory>(
-            key = agentType,
+            key = "$agentType-$isMemoryComponent",
             creationCallback = { factory -> factory.create(agentType, isMemoryComponent) },
         )
     val state by vm.uiState.collectAsState()
