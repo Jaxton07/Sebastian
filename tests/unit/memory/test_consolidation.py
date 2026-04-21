@@ -440,12 +440,15 @@ class TestMemoryConsolidatorConsolidate:
         assert len(provider.calls) == 1
         call = provider.calls[0]
 
-        # system prompt must mention the output schema and instruct JSON-only output
+        # system prompt must contain the shared consolidator prompt sections
         system: str = call["system"]
-        assert "ConsolidationResult" in system, (
-            f"system prompt does not mention 'ConsolidationResult': {system!r}"
+        assert "Consolidator 额外任务" in system, (
+            f"system prompt missing 'Consolidator 额外任务': {system!r}"
         )
-        assert "json" in system.lower(), f"system prompt does not mention JSON format: {system!r}"
+        assert "proposed_slots" in system, f"system prompt missing 'proposed_slots': {system!r}"
+        assert "CandidateArtifact 字段" in system, (
+            f"system prompt missing 'CandidateArtifact 字段': {system!r}"
+        )
 
         # messages[0] content must be valid JSON carrying the expected ConsolidatorInput fields
         messages: list[dict[str, Any]] = call["messages"]

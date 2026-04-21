@@ -12,16 +12,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.memory.extraction import ExtractorInput, MemoryExtractor
+from sebastian.memory.prompts import build_consolidator_prompt, group_slots_by_kind
 from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
 from sebastian.memory.subject import resolve_subject
 from sebastian.memory.trace import record_ref, trace
 from sebastian.memory.types import (
     CandidateArtifact,
+    Cardinality,
     MemoryDecisionType,
     MemoryKind,
     MemoryScope,
     MemorySource,
+    ProposedSlot,
+    ResolutionPolicy,
     ResolveDecision,
+    SlotDefinition,
 )
 from sebastian.memory.write_router import persist_decision
 from sebastian.protocol.events.types import Event, EventType
@@ -61,6 +66,7 @@ class ConsolidationResult(BaseModel):
     summaries: list[MemorySummary] = []
     proposed_artifacts: list[CandidateArtifact] = []
     proposed_actions: list[ProposedAction] = []
+    proposed_slots: list[ProposedSlot] = []
 
 
 class MemoryConsolidator:
@@ -83,13 +89,10 @@ class MemoryConsolidator:
         """
         resolved = await self._registry.get_provider(MEMORY_CONSOLIDATOR_BINDING)
         self.last_resolved = resolved
-        system = (
-            "You are a memory consolidation assistant. "
-            "Analyze the session and produce a ConsolidationResult. "
-            "Respond with ONLY valid JSON: "
-            '{"summaries": [...], "proposed_artifacts": [...], "proposed_actions": [...]}. '
-            "No explanation, no markdown, no code blocks. Only JSON."
+        known_slots_by_kind = group_slots_by_kind(
+            _slot_dicts_to_definitions(consolidator_input.slot_definitions)
         )
+        system = build_consolidator_prompt(known_slots_by_kind)
         messages = [{"role": "user", "content": consolidator_input.model_dump_json()}]
         empty = ConsolidationResult()
 
@@ -589,3 +592,27 @@ async def sweep_unconsolidated(
                 agent_type,
                 exc,
             )
+
+
+def _slot_dicts_to_definitions(slot_dicts: list[dict[str, Any]]) -> list[SlotDefinition]:
+    """将 ConsolidatorInput.slot_definitions（dict 列表）转换为 SlotDefinition 列表。
+
+    字段顺序和枚举值与 SlotDefinition.model_dump() 输出一致。
+    """
+    result: list[SlotDefinition] = []
+    for d in slot_dicts:
+        try:
+            result.append(
+                SlotDefinition(
+                    slot_id=d["slot_id"],
+                    scope=d["scope"],
+                    subject_kind=d["subject_kind"],
+                    cardinality=Cardinality(d["cardinality"]),
+                    resolution_policy=ResolutionPolicy(d["resolution_policy"]),
+                    kind_constraints=[MemoryKind(k) for k in d.get("kind_constraints", [])],
+                    description=d.get("description", ""),
+                )
+            )
+        except (KeyError, ValueError) as exc:
+            logger.warning("_slot_dicts_to_definitions: skipping malformed slot dict: %s", exc)
+    return result
