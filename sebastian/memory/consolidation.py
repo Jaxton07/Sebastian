@@ -289,7 +289,7 @@ class SessionConsolidationWorker:
                         "slot_id": r.slot_id,
                         "kind": r.kind,
                         "content": r.content,
-                        "confidence": r.confidence,
+                        "confidence": float(r.confidence) if r.confidence is not None else None,
                         "source": r.source,
                     }
                     for r in active_rows

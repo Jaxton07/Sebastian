@@ -99,7 +99,7 @@ async def persist_decision(
                 target_entity_id=payload.get("target_entity_id"),
                 content=artifact.content,
                 structured_payload=payload,
-                confidence=artifact.confidence,
+                confidence=float(artifact.confidence),
                 source=artifact.source.value,
                 status=artifact.status.value,
                 valid_from=artifact.valid_from,

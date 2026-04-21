@@ -207,7 +207,7 @@ class EpisodeMemoryStore:
             content_segmented=segment_for_fts(artifact.content),
             structured_payload=artifact.structured_payload,
             source=artifact.source.value,
-            confidence=artifact.confidence,
+            confidence=float(artifact.confidence),
             status=MemoryStatus.ACTIVE.value,
             recorded_at=artifact.recorded_at,
             valid_from=artifact.valid_from,
