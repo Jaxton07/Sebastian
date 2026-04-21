@@ -91,9 +91,10 @@ async def process_candidates(
     # Step 1: process proposed_slots before candidates
     if proposed_slots:
         if slot_proposal_handler is None:
-            logger.warning(
-                "pipeline.proposed_slots_skipped reason=no_handler count=%d",
-                len(proposed_slots),
+            raise ValueError(
+                f"process_candidates: proposed_slots 非空（{len(proposed_slots)} 个）"
+                " 但 slot_proposal_handler 为 None；"
+                " 调用方必须传入 SlotProposalHandler 实例"
             )
         else:
             for p in proposed_slots:

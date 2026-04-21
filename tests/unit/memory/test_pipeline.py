@@ -211,3 +211,84 @@ async def test_process_candidates_does_not_commit(monkeypatch) -> None:
         )
 
     assert commit_calls == [], "process_candidates must not commit — caller owns the transaction"
+
+
+@pytest.mark.asyncio
+async def test_process_candidates_proposed_slots_without_handler_raises() -> None:
+    """proposed_slots 非空但 slot_proposal_handler=None 时应抛 ValueError。"""
+    from sebastian.memory.decision_log import MemoryDecisionLogger
+    from sebastian.memory.entity_registry import EntityRegistry
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.pipeline import process_candidates
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+    from sebastian.memory.types import (
+        Cardinality,
+        MemoryKind,
+        MemoryScope,
+        ProposedSlot,
+        ResolutionPolicy,
+    )
+
+    proposed = ProposedSlot(
+        slot_id="user.test.slot",
+        scope=MemoryScope.USER,
+        subject_kind="user",
+        cardinality=Cardinality.SINGLE,
+        resolution_policy=ResolutionPolicy.SUPERSEDE,
+        kind_constraints=[MemoryKind.FACT],
+        description="test",
+    )
+
+    factory = await _make_db_factory()
+    async with factory() as db_session:
+        with pytest.raises(ValueError, match="slot_proposal_handler"):
+            await process_candidates(
+                [],
+                proposed_slots=[proposed],
+                session_id="s1",
+                agent_type="default",
+                db_session=db_session,
+                profile_store=ProfileMemoryStore(db_session),
+                episode_store=EpisodeMemoryStore(db_session),
+                entity_registry=EntityRegistry(db_session),
+                decision_logger=MemoryDecisionLogger(db_session),
+                slot_registry=DEFAULT_SLOT_REGISTRY,
+                slot_proposal_handler=None,
+                worker_id="test",
+                model_name=None,
+                rule_version="test_v1",
+                input_source={"type": "test"},
+            )
+
+
+@pytest.mark.asyncio
+async def test_process_candidates_empty_proposed_slots_handler_none_allowed() -> None:
+    """proposed_slots=[] 时 handler=None 不应抛错（向下兼容）。"""
+    from sebastian.memory.decision_log import MemoryDecisionLogger
+    from sebastian.memory.entity_registry import EntityRegistry
+    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.pipeline import process_candidates
+    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+
+    factory = await _make_db_factory()
+    async with factory() as db_session:
+        result = await process_candidates(
+            [],
+            proposed_slots=[],
+            session_id="s1",
+            agent_type="default",
+            db_session=db_session,
+            profile_store=ProfileMemoryStore(db_session),
+            episode_store=EpisodeMemoryStore(db_session),
+            entity_registry=EntityRegistry(db_session),
+            decision_logger=MemoryDecisionLogger(db_session),
+            slot_registry=DEFAULT_SLOT_REGISTRY,
+            slot_proposal_handler=None,
+            worker_id="test",
+            model_name=None,
+            rule_version="test_v1",
+            input_source={"type": "test"},
+        )
+    assert result.decisions == []
