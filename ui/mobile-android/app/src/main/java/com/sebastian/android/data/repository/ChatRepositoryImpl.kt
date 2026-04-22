@@ -6,6 +6,7 @@ import com.sebastian.android.data.model.StreamEvent
 import com.sebastian.android.data.remote.ApiService
 import com.sebastian.android.data.remote.SseClient
 import com.sebastian.android.data.remote.dto.SendTurnRequest
+import com.sebastian.android.data.remote.dto.toMessagesFromTimeline
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +24,12 @@ class ChatRepositoryImpl @Inject constructor(
         sseClient.globalStream(baseUrl, lastEventId)
 
     override suspend fun getMessages(sessionId: String): Result<List<Message>> = runCatching {
-        apiService.getSession(sessionId).messages.mapIndexed { index, dto -> dto.toDomain(sessionId, index) }
+        val response = apiService.getSession(sessionId, includeArchived = true)
+        if (response.timelineItems.isNotEmpty()) {
+            response.timelineItems.toMessagesFromTimeline()
+        } else {
+            response.messages.mapIndexed { index, dto -> dto.toDomain(sessionId, index) }
+        }
     }
 
     override suspend fun sendTurn(sessionId: String?, content: String): Result<String> = runCatching {
