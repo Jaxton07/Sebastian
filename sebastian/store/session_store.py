@@ -65,13 +65,16 @@ class SessionStore:
         self._db_factory = db_factory
         if db_factory is not None:
             from sebastian.store.session_records import SessionRecordsStore
+            from sebastian.store.session_tasks import SessionTaskStore
             from sebastian.store.session_timeline import SessionTimelineStore
 
             self._records: SessionRecordsStore | None = SessionRecordsStore(db_factory)
             self._timeline: SessionTimelineStore | None = SessionTimelineStore(db_factory)
+            self._tasks: SessionTaskStore | None = SessionTaskStore(db_factory)
         else:
             self._records = None
             self._timeline = None
+            self._tasks = None
 
     async def create_session(self, session: Session) -> Session:
         if self._records is not None:
@@ -337,6 +340,8 @@ class SessionStore:
         task: Task,
         agent_type: str = "sebastian",
     ) -> Task:
+        if self._tasks is not None:
+            return await self._tasks.create(task, agent_type)
         async with self._session_lock(task.session_id, agent_type):
             directory = _session_dir_by_id(self._dir, task.session_id, agent_type)
             tasks_dir = directory / "tasks"
@@ -354,6 +359,8 @@ class SessionStore:
         task_id: str,
         agent_type: str = "sebastian",
     ) -> Task | None:
+        if self._tasks is not None:
+            return await self._tasks.get(session_id, task_id, agent_type)
         directory = _session_dir_by_id(
             self._dir,
             session_id,
@@ -371,6 +378,8 @@ class SessionStore:
         session_id: str,
         agent_type: str = "sebastian",
     ) -> list[Task]:
+        if self._tasks is not None:
+            return await self._tasks.list_tasks(session_id, agent_type)
         directory = _session_dir_by_id(
             self._dir,
             session_id,
@@ -393,6 +402,9 @@ class SessionStore:
         status: TaskStatus,
         agent_type: str = "sebastian",
     ) -> None:
+        if self._tasks is not None:
+            await self._tasks.update_status(session_id, task_id, status, agent_type)
+            return
         async with self._session_lock(session_id, agent_type):
             task = await self.get_task(session_id, task_id, agent_type)
             if task is None:
@@ -425,6 +437,9 @@ class SessionStore:
         checkpoint: Checkpoint,
         agent_type: str = "sebastian",
     ) -> None:
+        if self._tasks is not None:
+            await self._tasks.append_checkpoint(session_id, checkpoint, agent_type)
+            return
         directory = _session_dir_by_id(
             self._dir,
             session_id,
@@ -441,6 +456,8 @@ class SessionStore:
         task_id: str,
         agent_type: str = "sebastian",
     ) -> list[Checkpoint]:
+        if self._tasks is not None:
+            return await self._tasks.get_checkpoints(session_id, task_id, agent_type)
         directory = _session_dir_by_id(
             self._dir,
             session_id,
