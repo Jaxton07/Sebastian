@@ -35,6 +35,7 @@ import kotlinx.coroutines.test.setMain
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doSuspendableAnswer
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -876,6 +877,76 @@ class ChatViewModelTest {
         // No events received — cursor should be null for reconnect
         val firstCallCursor = capturedLastEventIds.firstOrNull()
         assertNull("Existing session first connect should use null cursor", firstCallCursor)
+    }
+
+    // ── Task 8: provisional session for SubAgent ─────────────────────────────
+
+    @Test
+    fun `new agent session generates client id before sse and createAgentSession`() = vmTest {
+        val capturedStreamIds = mutableListOf<String?>()
+        val capturedCreateSessionIds = mutableListOf<String?>()
+
+        whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenAnswer { inv ->
+            capturedStreamIds.add(inv.getArgument(1))
+            sseFlow
+        }
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+            Result.success(com.sebastian.android.data.model.Session(id = "agent-s1", title = "Test", agentType = "research"))
+        )
+
+        viewModel.sendAgentMessage("research", "find sources")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        // SSE started with non-null client session id
+        assertTrue(capturedStreamIds.isNotEmpty())
+        val sseId = capturedStreamIds.last()
+        assertFalse("SSE session id must not be null", sseId == null)
+
+        // createAgentSession received the same id
+        runBlocking { verify(sessionRepository).createAgentSession(eq("research"), anyOrNull(), anyOrNull()) }
+    }
+
+    @Test
+    fun `new agent session failure removes user bubble and clears active session`() = vmTest {
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+            Result.failure(RuntimeException("server error"))
+        )
+
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            viewModel.sendAgentMessage("research", "hello")
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            var foundRollback = false
+            while (!foundRollback) {
+                val state = awaitItem()
+                if (state.composerState == ComposerState.IDLE_EMPTY && state.activeSessionId == null) {
+                    foundRollback = true
+                    assertTrue("User bubble must be removed on failure", state.messages.none { it.role == MessageRole.USER })
+                }
+            }
+            assertTrue(foundRollback)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `new agent session failure emits uiEffects for rollback`() = vmTest {
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+            Result.failure(RuntimeException("server error"))
+        )
+
+        val effects = mutableListOf<ChatUiEffect>()
+        val job = launch { viewModel.uiEffects.collect { effects.add(it) } }
+
+        viewModel.sendAgentMessage("research", "find sources")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        assertTrue("Must emit RestoreComposerText", effects.any { it is ChatUiEffect.RestoreComposerText })
+        assertTrue("Must emit ShowToast", effects.any { it is ChatUiEffect.ShowToast })
+
+        job.cancel()
     }
 
     @Test
