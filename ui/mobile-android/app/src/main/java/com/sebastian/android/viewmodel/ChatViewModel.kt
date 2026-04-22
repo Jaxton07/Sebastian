@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -145,9 +146,11 @@ class ChatViewModel @Inject constructor(
             _uiState.update { it.copy(isServerNotConfigured = false, connectionFailed = false) }
             val lastEventId = if (replayFromStart) "0" else null
             try {
-                chatRepository.sessionStream(baseUrl, sessionId, lastEventId).collect { event ->
-                    handleEvent(event)
-                }
+                chatRepository.sessionStream(baseUrl, sessionId, lastEventId)
+                    .map { it.event }
+                    .collect { event ->
+                        handleEvent(event)
+                    }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

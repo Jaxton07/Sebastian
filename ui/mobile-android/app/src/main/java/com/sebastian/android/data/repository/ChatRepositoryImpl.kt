@@ -2,9 +2,9 @@ package com.sebastian.android.data.repository
 
 import com.sebastian.android.data.model.ApprovalSnapshot
 import com.sebastian.android.data.model.Message
-import com.sebastian.android.data.model.StreamEvent
 import com.sebastian.android.data.remote.ApiService
 import com.sebastian.android.data.remote.SseClient
+import com.sebastian.android.data.remote.SseEnvelope
 import com.sebastian.android.data.remote.dto.SendTurnRequest
 import com.sebastian.android.data.remote.dto.toMessagesFromTimeline
 import kotlinx.coroutines.flow.Flow
@@ -17,10 +17,10 @@ class ChatRepositoryImpl @Inject constructor(
     private val sseClient: SseClient,
 ) : ChatRepository {
 
-    override fun sessionStream(baseUrl: String, sessionId: String, lastEventId: String?): Flow<StreamEvent> =
+    override fun sessionStream(baseUrl: String, sessionId: String, lastEventId: String?): Flow<SseEnvelope> =
         sseClient.sessionStream(baseUrl, sessionId, lastEventId)
 
-    override fun globalStream(baseUrl: String, lastEventId: String?): Flow<StreamEvent> =
+    override fun globalStream(baseUrl: String, lastEventId: String?): Flow<SseEnvelope> =
         sseClient.globalStream(baseUrl, lastEventId)
 
     override suspend fun getMessages(sessionId: String): Result<List<Message>> = runCatching {
