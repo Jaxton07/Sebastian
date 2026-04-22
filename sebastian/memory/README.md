@@ -26,7 +26,6 @@ memory/
 ├── decision_log.py          # MemoryDecisionLogger：把 ResolveDecision 写入 memory_decision_log
 ├── entity_registry.py       # EntityRegistry：实体 CRUD（entities 表）
 ├── episode_store.py         # EpisodeMemoryStore：经历写入、FTS 检索；ensure_episode_fts 建表
-├── episodic_memory.py       # [DEPRECATED] EpisodicMemory：会话历史兼容层，运行时已不使用，BaseAgent 直接调 SessionStore
 ├── errors.py                # 记忆系统异常体系（InvalidCandidateError / InvalidSlotProposalError 等）
 ├── feedback.py              # MemorySaveResult + render_memory_save_summary()：memory_save 结果摘要渲染
 ├── profile_store.py         # ProfileMemoryStore：画像 CRUD、search_active、supersede
@@ -59,7 +58,7 @@ memory/
 | [segmentation.py](segmentation.py) | 提供基于 `jieba.cut_for_search()` 的 FTS5 中文分词辅助：`segment_for_fts()`、`terms_for_query()`、`add_entity_terms()` |
 | [decision_log.py](decision_log.py) | 提供 `MemoryDecisionLogger.append()`，把 `ResolveDecision` 写入 `MemoryDecisionLogRecord` |
 
-> Phase B 已完成注入：每次 LLM turn 前，`BaseAgent._memory_section()` 通过 `retrieve_memory_section()` 拉取画像和经历记录，拼入 system prompt。`episodic_memory.py` 已 deprecated，不要扩展它；session 消息历史统一由 `SessionStore` timeline 管理。
+> Phase B 已完成注入：每次 LLM turn 前，`BaseAgent._memory_section()` 通过 `retrieve_memory_section()` 拉取画像和经历记录，拼入 system prompt。Session 消息历史统一由 `SessionStore` timeline 管理。
 
 ## Phase C LLM 沉淀组件
 
@@ -167,7 +166,7 @@ LLM 在对话中可提议新的记忆 slot，提议经校验后写入 `memory_sl
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 任务临时状态的存取（set/get/clear） | [working_memory.py](working_memory.py) |
-| session 对话历史的写入与读取（append_message / get_context_messages） | `SessionStore`（见 [store/README.md](../store/README.md)）；[episodic_memory.py](episodic_memory.py) 已 deprecated |
+| session 对话历史的写入与读取（append_message / get_context_messages） | `SessionStore`（见 [store/README.md](../store/README.md)） |
 | 统一记忆入口（同时访问 working + 会话历史兼容层） | [store.py](store.py) |
 | 记忆 artifact、slot、决策等数据结构 | [types.py](types.py) |
 | slot 定义、内置 slot、候选 artifact slot 校验 | [slots.py](slots.py) |

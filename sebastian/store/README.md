@@ -6,7 +6,7 @@
 
 SQLite 是 session 数据的唯一主存储（通过 `SessionStore` facade 访问）。`SessionStore` 在生产模式下（`db_factory` 已注入）将读写委托给四个 SQLite helper：`SessionRecordsStore`、`SessionTimelineStore`、`SessionTaskStore`、`SessionTodoStore`。文件系统 JSON 路径（`sessions_dir`）已 **deprecated**，仅作历史兼容保留。
 
-`IndexStore`（`index_store.py`）已标记为 **DEPRECATED**——不再用于运行时，session 列表和子 session 查询均已切换至 `SessionStore`。
+（`IndexStore` 和 `index_store.py` 已于迁移后删除，session 列表和子 session 查询均由 `SessionStore` 管理。）
 
 ## 目录结构
 
@@ -21,10 +21,9 @@ store/
 ├── session_context.py       # build_legacy_messages()：将 timeline_items 投影为旧 messages 格式
 ├── session_tasks.py         # SessionTaskStore：tasks / checkpoints 表 CRUD
 ├── session_todos.py         # SessionTodoStore：per-session todos 的 SQLite 读写
-├── index_store.py           # [DEPRECATED] IndexStore：index.json 文件索引，运行时已不使用
 ├── event_log.py             # EventLog：将 Event 对象追加写入 SQLite events 表，用于历史查询
 ├── task_store.py            # [DEPRECATED] TaskStore：原文件系统 task 写入辅助，已由 session_tasks.py 替代
-├── todo_store.py            # TodoStore：per-session todos，当 db_factory 已注入时委托给 SessionTodoStore
+├── todo_store.py            # TodoStore：per-session todos，委托给 SessionTodoStore（SQLite-only）
 └── migrations/
     └── __init__.py          # Alembic 迁移脚本目录（schema 变更在此新增 migration）
 ```

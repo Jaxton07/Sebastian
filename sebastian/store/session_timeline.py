@@ -278,7 +278,10 @@ class SessionTimelineStore:
             )
             if not include_archived:
                 q = q.where(SessionItemRecord.archived.is_(False))
-            q = q.order_by(SessionItemRecord.seq.asc())
+            q = q.order_by(
+                SessionItemRecord.effective_seq.asc(),
+                SessionItemRecord.seq.asc(),
+            )
             result = await db.execute(q)
             return [_record_to_dict(r) for r in result.scalars()]
 
@@ -336,7 +339,6 @@ class SessionTimelineStore:
         session_id: str,
         agent_type: str,
         after_seq: int,
-        include_kinds: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Return items with seq > after_seq, excluding thinking/raw_block by default."""
         excluded = _CONTEXT_EXCLUDED_KINDS
@@ -351,7 +353,5 @@ class SessionTimelineStore:
                 )
                 .order_by(SessionItemRecord.seq.asc())
             )
-            if include_kinds is not None:
-                q = q.where(SessionItemRecord.kind.in_(include_kinds))
             result = await db.execute(q)
             return [_record_to_dict(r) for r in result.scalars()]

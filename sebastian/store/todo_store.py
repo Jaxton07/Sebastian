@@ -1,69 +1,31 @@
-# mypy: disable-error-code=import-untyped
-
 from __future__ import annotations
 
-import json
-import os
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
-
-import aiofiles
 
 from sebastian.core.types import TodoItem
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from sebastian.store.session_todos import SessionTodoStore
-
 
 class TodoStore:
-    """per-session todo 存储。
-
-    当 db_factory 非 None 时写 SQLite session_todos 表；否则退回文件路径（向后兼容）。
-    """
+    """per-session todo 存储（SQLite-backed）。"""
 
     def __init__(
         self,
-        sessions_dir: Path | None = None,
-        db_factory: async_sessionmaker[AsyncSession] | None = None,
+        db_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        self._dir = sessions_dir
-        self._db_todo: SessionTodoStore | None = None
-        if db_factory is not None:
-            from sebastian.store.session_todos import SessionTodoStore as _SessionTodoStore
+        from sebastian.store.session_todos import SessionTodoStore
 
-            self._db_todo = _SessionTodoStore(db_factory)
-
-    def _todos_path(self, agent_type: str, session_id: str) -> Path:
-        assert self._dir is not None, "sessions_dir required for file-backed TodoStore"
-        return self._dir / agent_type / session_id / "todos.json"
+        self._db_todo = SessionTodoStore(db_factory)
 
     async def read_updated_at(self, agent_type: str, session_id: str) -> str | None:
         """返回该 session todos 的最后写入时间（ISO 8601 字符串），无记录时返回 None。"""
-        if self._db_todo is not None:
-            dt = await self._db_todo.read_updated_at(agent_type, session_id)
-            return dt.isoformat() if dt is not None else None
-        path = self._todos_path(agent_type, session_id)
-        if not path.exists():
-            return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return data.get("updated_at")
-        except (OSError, ValueError):
-            return None
+        dt = await self._db_todo.read_updated_at(agent_type, session_id)
+        return dt.isoformat() if dt is not None else None
 
     async def read(self, agent_type: str, session_id: str) -> list[TodoItem]:
-        if self._db_todo is not None:
-            return await self._db_todo.read(agent_type, session_id)
-        path = self._todos_path(agent_type, session_id)
-        if not path.exists():
-            return []
-        async with aiofiles.open(path) as f:
-            raw = await f.read()
-        data = json.loads(raw)
-        return [TodoItem(**item) for item in data.get("todos", [])]
+        return await self._db_todo.read(agent_type, session_id)
 
     async def write(
         self,
@@ -71,19 +33,4 @@ class TodoStore:
         session_id: str,
         todos: list[TodoItem],
     ) -> None:
-        if self._db_todo is not None:
-            await self._db_todo.write(agent_type, session_id, todos)
-            return
-        path = self._todos_path(agent_type, session_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        payload = {
-            "todos": [item.model_dump(mode="json", by_alias=True) for item in todos],
-            "updated_at": datetime.now(UTC).isoformat(),
-        }
-        serialized = json.dumps(payload, ensure_ascii=False, indent=2)
-
-        tmp_path = path.with_suffix(".json.tmp")
-        async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
-            await f.write(serialized)
-        os.replace(tmp_path, path)
+        await self._db_todo.write(agent_type, session_id, todos)

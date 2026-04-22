@@ -256,3 +256,40 @@ async def test_get_context_items_excludes_system_event(store, session_in_db):
     ctx = await store.get_context_timeline_items(session_in_db.id, "sebastian")
     kinds = [i["kind"] for i in ctx]
     assert "system_event" not in kinds, f"system_event should not be in context: {kinds}"
+
+
+@pytest.mark.asyncio
+async def test_get_timeline_items_orders_by_effective_seq_then_seq(store, session_in_db):
+    """get_timeline_items 按 (effective_seq, seq) 排序，context_summary 出现在原位。
+
+    场景：5 条普通消息 seq=1..5（effective_seq 同 seq）；
+    再插入一条 context_summary，effective_seq=3，seq=6。
+    排序后该 summary 应紧跟 seq=3 的消息之后，出现在 seq=4 的消息之前。
+    """
+    from typing import Any
+    # 写 5 条普通 item（seq=1..5，effective_seq 同 seq）
+    items = [{"kind": "user_message", "role": "user", "content": f"msg{i}"} for i in range(5)]
+    await store.append_timeline_items(session_in_db.id, "sebastian", items)
+
+    # 插入一条 effective_seq=3 的 context_summary（seq=6，但逻辑位置在 seq=3 处）
+    summary: dict[str, Any] = {
+        "kind": "context_summary",
+        "role": None,
+        "content": "summary",
+        "effective_seq": 3,
+        "payload": {"source_seq_start": 1, "source_seq_end": 3},
+    }
+    await store.append_timeline_items(session_in_db.id, "sebastian", [summary])
+
+    all_items = await store.get_timeline_items(session_in_db.id, "sebastian")
+    kinds = [i["kind"] for i in all_items]
+    # summary（effective_seq=3, seq=6）排在 seq=3 的 user_message 之后、seq=4 之前
+    summary_idx = next(i for i, item in enumerate(all_items) if item["kind"] == "context_summary")
+    msg4_idx = next(
+        i for i, item in enumerate(all_items)
+        if item["kind"] == "user_message" and item["seq"] == 4
+    )
+    assert summary_idx < msg4_idx, (
+        f"context_summary (effective_seq=3) should appear before seq=4 item; "
+        f"got order: {[(item['kind'], item['seq']) for item in all_items]}"
+    )
