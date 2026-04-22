@@ -529,9 +529,12 @@ class ChatViewModel @Inject constructor(
             // keep user bubble for editing/retry.
             sendTurnJob?.cancel()
             sendTurnJob = null
+            sseJob?.cancel()
+            sseJob = null
             isProvisionalSession = false
             _uiState.update {
                 it.copy(
+                    activeSessionId = null,
                     composerState = ComposerState.IDLE_READY,
                     agentAnimState = AgentAnimState.IDLE,
                 )
