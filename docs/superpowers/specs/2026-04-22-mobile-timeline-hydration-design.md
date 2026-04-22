@@ -63,10 +63,25 @@ SSE race：App 生成 session id，先订阅 session stream，再发起 turn。W
 SubAgent 新建接口 `POST /api/v1/agents/{agent_type}/sessions` 增加可选
 `session_id`：
 
-- 不传：保持旧行为，由后端生成。
-- 传入且不存在：用该 id 创建 SubAgent session。
-- 传入但已存在：返回 `409 Conflict`。该接口语义是新建 session，已有 session 的
-  turn 继续走 `POST /api/v1/sessions/{session_id}/turns`。
+请求 body 为：
+
+```json
+{
+  "content": "用户发给 SubAgent 的初始目标",
+  "session_id": "client-generated-id 或 null"
+}
+```
+
+`content` 仍为必填。
+
+- 不传 `session_id`：保持旧行为，由后端生成。
+- 传入且不存在：用该 id 创建 SubAgent session，并启动初始 turn。
+- 传入且已存在，且该 session 的 `agent_type` 和 `goal` 与请求匹配：返回 `200` 和已有
+  `session_id`，不重复启动初始 turn。该语义用于处理 App provisional create 响应丢失后的
+  安全重试。
+- 传入且已存在，但 agent 或 goal/content 不匹配：返回 `409 Conflict`。
+
+已有 session 的后续 turn 继续走 `POST /api/v1/sessions/{session_id}/turns`。
 
 `GET /api/v1/sessions/{session_id}/stream` 明确允许订阅尚未落库的 session id。当前
 `SSEManager` 按事件 data 过滤，不校验 session 存在性；后续不应在该路由新增存在性
@@ -131,6 +146,13 @@ Mapper 先按 `seq ASC` 排序，再投影到 `Message`：
     `turn_id` 或 `provider_call_index`，退化为 `timeline-${sessionId}-${firstSeq}`。
   - summary message：`timeline-${sessionId}-summary-${seq}`。
 - Hydrated `Message.createdAt` 使用该 message 组内第一条 timeline item 的 `created_at`。
+- Hydrated `ContentBlock.blockId` 也必须稳定可复算：
+  - thinking/text/tool_call 有 `turn_id + provider_call_index + block_index` 时：
+    `timeline-${sessionId}-${turnId}-${providerCallIndex}-${blockIndex}`。
+  - tool block 优先使用 tool_call item 的 block id；只有孤立 tool_result 时使用
+    `timeline-${sessionId}-tool-result-${seq}`。
+  - summary block：`timeline-${sessionId}-summary-block-${seq}`。
+  - 缺少 turn/block 坐标的普通 block 退化为 `timeline-${sessionId}-block-${seq}`。
 - `thinking`：`ContentBlock.ThinkingBlock(done=true, text=content,
   durationMs=payload.duration_ms)`。
 - `assistant_message`：`ContentBlock.TextBlock(done=true, text=content)`。
