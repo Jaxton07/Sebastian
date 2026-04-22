@@ -291,6 +291,32 @@ class SessionStore:
             raise RuntimeError("get_recent_timeline_items requires db_factory")
         return await self._timeline.get_recent_items(session_id, agent_type, limit=limit)
 
+    async def get_context_messages(
+        self,
+        session_id: str,
+        agent_type: str,
+        provider_format: str,
+        include_thinking: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Project timeline items into provider-specific message dicts.
+
+        Args:
+            session_id: Session identifier.
+            agent_type: Agent type (e.g. "sebastian").
+            provider_format: "anthropic" or "openai".
+            include_thinking: Include thinking blocks (Anthropic only).
+
+        Requires db_factory.
+        """
+        if self._timeline is None:
+            raise NotImplementedError("get_context_messages requires db_factory")
+        if include_thinking:
+            items = await self._timeline.get_context_items_with_thinking(session_id, agent_type)
+        else:
+            items = await self._timeline.get_context_items(session_id, agent_type)
+        from sebastian.store.session_context import build_context_messages
+        return build_context_messages(items, provider_format, include_thinking=include_thinking)
+
     async def get_messages_since(
         self,
         session_id: str,

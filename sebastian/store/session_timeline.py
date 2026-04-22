@@ -278,6 +278,32 @@ class SessionTimelineStore:
         rows.sort(key=lambda r: r.seq)
         return [_record_to_dict(r) for r in rows]
 
+    async def get_context_items_with_thinking(
+        self,
+        session_id: str,
+        agent_type: str,
+    ) -> list[dict[str, Any]]:
+        """Like get_context_items but includes thinking items (for include_thinking=True path).
+
+        raw_block is still excluded.
+        """
+        excluded = frozenset({"raw_block"})
+        async with self._db() as db:
+            result = await db.execute(
+                select(SessionItemRecord)
+                .where(
+                    SessionItemRecord.session_id == session_id,
+                    SessionItemRecord.agent_type == agent_type,
+                    SessionItemRecord.archived.is_(False),
+                    SessionItemRecord.kind.not_in(excluded),
+                )
+                .order_by(
+                    SessionItemRecord.effective_seq.asc(),
+                    SessionItemRecord.seq.asc(),
+                )
+            )
+            return [_record_to_dict(r) for r in result.scalars()]
+
     async def get_items_since(
         self,
         session_id: str,
