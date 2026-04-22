@@ -41,7 +41,7 @@ class ChatRepositoryImplTest {
     private fun makeMessageDto(role: String = "user", content: String = "hi") =
         MessageDto(role = role, content = content)
 
-    // ── 1. include_archived=true が必ずリクエストに含まれること ──────────────
+    // ── 1. include_archived=true 必须包含在请求中 ──────────────────────────────
 
     @Test
     fun `getMessagesCallsIncludeArchivedTrue`() = runTest {

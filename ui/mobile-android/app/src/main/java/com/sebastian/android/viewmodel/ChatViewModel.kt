@@ -69,9 +69,9 @@ class ChatViewModel @Inject constructor(
     private val _uiEffects = MutableSharedFlow<ChatUiEffect>(extraBufferCapacity = 4)
     val uiEffects: SharedFlow<ChatUiEffect> = _uiEffects.asSharedFlow()
 
-    private val lastDeliveredSseEventIds = mutableMapOf<String, String>()
+    private val lastDeliveredSseEventIds = ConcurrentHashMap<String, String>()
     internal var sessionIdProvider: () -> String = { UUID.randomUUID().toString() }
-    private var isProvisionalSession = false
+    @Volatile private var isProvisionalSession = false
 
     private val pendingDeltas = ConcurrentHashMap<String, StringBuilder>()
 
@@ -591,6 +591,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun retryConnection() {
+        if (_uiState.value.activeSessionId == null) return
         _uiState.update { it.copy(connectionFailed = false) }
         startSseCollection()
     }
