@@ -60,10 +60,11 @@ data/
 
 领域模型（UI 层直接使用，不含网络字段）。
 
-- **`ContentBlock`**：sealed class，三种子类型：
+- **`ContentBlock`**：sealed class，四种子类型：
   - `TextBlock`：文本块，含原始 `text: String`，由 `MarkdownView` 负责渲染
   - `ThinkingBlock`：思考块，支持展开/折叠（`expanded`）
   - `ToolBlock`：工具调用块，含 `status: ToolStatus`（PENDING / RUNNING / DONE / FAILED）
+  - `SummaryBlock`：上下文压缩摘要块，对应 timeline 中的 `context_summary` 行，渲染为折叠卡片"Compressed summary"
 - **`StreamEvent`**：sealed class，映射 SSE 帧的所有事件类型（TurnReceived / TextDelta / ToolRunning / ApprovalRequested 等）
 - **`Message`**：包含 `blocks: List<ContentBlock>`，支持多块混合内容
 - **`ApprovalSnapshot`**：REST 快照用的待审批条目（字段与 `GlobalApproval` 对齐，独立存放以避免 repository 反向依赖 viewmodel 包）
@@ -79,6 +80,9 @@ data/
   - `globalStream(baseUrl, lastEventId)`：全局事件流
   - 内置指数退避重连（1s / 2s / 4s，最多 3 次），Last-Event-ID 跨连接持久化
 - **`dto/`**：DTO + 解析逻辑，`SseFrameDto.kt` 中的 `SseFrameParser.parse()` 将 JSON 字符串解析为 `StreamEvent`；`AgentDto.kt` 含 `AgentListResponse`；`AgentBindingDto.kt` 含 `SetBindingRequest` / `AgentBindingDto`；`LogStateDto.kt` 含 `LogStateDto` / `LogConfigPatchDto`
+- **`TimelineItemDto`**：镜像后端 session timeline 行（`seq`、`role`、`block_type`、`content`、`tool_name` 等字段），通过 `GET /api/v1/sessions/{id}?include_archived=true` 响应中的 `timeline_items` 数组返回
+- **`TimelineMapper`**：唯一将 `TimelineItemDto` 列表转换为 `List<Message>` 的入口；`context_summary` 块映射为 `ContentBlock.SummaryBlock`，archived 原始行正常渲染，不做隐藏或置灰
+- **`SseEnvelope`**：`data class SseEnvelope(val eventId: String?, val event: StreamEvent)`，在 `SseClient` 内部将 SSE `id:` 字段与解析后的事件一起传递，供 `ChatViewModel` 追踪 `lastDeliveredSseEventIds` 回放游标
 
 ### `repository/`
 
@@ -105,6 +109,8 @@ App 状态对账层。
 | 修改本地 Token 存储 | `local/SecureTokenStore.kt` |
 | 修改设置持久化字段 | `local/SettingsDataStore.kt` + `repository/SettingsRepositoryImpl.kt` |
 | 新增消息内容块类型 | `model/ContentBlock.kt` + `model/StreamEvent.kt` + `remote/dto/SseFrameDto.kt` |
+| 修改 timeline 解析逻辑 | `remote/dto/TimelineItemDto.kt` + `remote/dto/TimelineMapper.kt` |
+| 修改 SSE 事件 ID 传递 | `remote/SseClient.kt`（`SseEnvelope` 包装层） |
 | 修改 Repository 接口 | 对应 `repository/XxxRepository.kt` + `XxxRepositoryImpl.kt` + `di/RepositoryModule.kt` |
 | 修改审批对账逻辑 | `sync/AppStateReconciler.kt` |
 | 修改全局 SSE 广播 | `remote/GlobalSseDispatcher.kt` |

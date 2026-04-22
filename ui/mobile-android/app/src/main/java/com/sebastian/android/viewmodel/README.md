@@ -58,6 +58,12 @@ Agent LLM 绑定主列表页的 ViewModel，仅负责数据加载：
 4. **三态连接错误**：`isServerNotConfigured` / `isOffline` / `connectionFailed`，优先级从高到低
 5. **全局审批**：审批事件由 `GlobalApprovalViewModel` 统一处理，不再由 `ChatViewModel` 管理
 
+**Timeline Hydration 相关行为**：
+
+- **客户端先行 Session ID**：新 Session 创建时由 App 生成 `UUID` 作为 `session_id`，SSE 先以该 ID 订阅，首条 turn POST 时携带同一 `session_id`，防止流事件在 REST 返回前丢失
+- **`lastDeliveredSseEventIds`**：`Map<sessionId, String>` 短期回放游标，记录每个 session 最后收到的 SSE `event id`；切换 session 或断线重连时作为 `Last-Event-ID` 头传给服务端，服务端可补发漏掉的事件；REST timeline 仍是持久化权威来源
+- **`ChatUiEffect`**：`sealed class`（`RestoreComposerText` / `ShowToast`），通过 `SharedFlow` 发一次性 UI 副作用；`RestoreComposerText` 在发送失败时将用户已输入的文本回填到 Composer，`ShowToast` 用于错误提示
+
 > 滚动跟随语义由 UI 层（`MessageList`）自行维护（`atBottom` / `isUserDragging` / `userAway` 三层模型），
 > ViewModel 不再持有 `ScrollFollowState` 字段或相关回调。
 
@@ -120,6 +126,8 @@ ViewModel (sendMessage / switchSession / ...)
 |---------|--------|
 | 改主对话消息处理逻辑 | `ChatViewModel.handleEvent()` |
 | 改 SSE 重连/断线逻辑 | `ChatViewModel.startSseCollection()` / `observeNetwork()` |
+| 改 SSE 回放游标逻辑 | `ChatViewModel`（`lastDeliveredSseEventIds` 字段） |
+| 改发送失败回滚/提示 | `ChatViewModel`（`ChatUiEffect.RestoreComposerText` / `ShowToast`） |
 | 改全局审批处理 | `GlobalApprovalViewModel.grantApproval()` / `denyApproval()` |
 | 改 Agent LLM 绑定主列表加载 | `AgentBindingsViewModel.load()` |
 | 改单个 Agent 绑定编辑（Provider + Thinking） | `AgentBindingEditorViewModel.selectProvider()` / `setEffort()` |
