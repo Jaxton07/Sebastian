@@ -40,6 +40,8 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import com.sebastian.android.viewmodel.ChatUiEffect
+import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
@@ -607,7 +609,8 @@ class ChatViewModelTest {
 
             val pending = awaitItem()
             assertEquals(ComposerState.PENDING, pending.composerState)
-            assertNull(pending.activeSessionId)
+            // Provisional session: activeSessionId is now the client-generated UUID (not null)
+            assertFalse("provisional session id must be set", pending.activeSessionId == null)
 
             viewModel.cancelTurn()
             dispatcher.scheduler.advanceTimeBy(50)
@@ -759,6 +762,120 @@ class ChatViewModelTest {
             val state = awaitItem()
             assertEquals(ComposerState.PENDING, state.composerState)
         }
+    }
+
+    // ── Task 7: provisional session + SSE cursor ──────────────────────────────
+
+    @Test
+    fun `new main session generates client id before sse and sendTurn`() = vmTest {
+        val capturedStreamIds = mutableListOf<String?>()
+        // Install a fixed client session id so we can verify SSE + sendTurn use the same one
+        val fixedClientId = "client-uuid-test-123"
+        viewModel.sessionIdProvider = { fixedClientId }
+        whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenAnswer { inv ->
+            capturedStreamIds.add(inv.getArgument(1))
+            sseFlow
+        }
+        // sendTurn mock must return success with the fixedClientId (already set up in @Before as "s1",
+        // but we override to return the client id so the provisional flow doesn't restart SSE)
+        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(Result.success(fixedClientId))
+
+        viewModel.sendMessage("hello")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        assertTrue("SSE must be started with a client session id", capturedStreamIds.isNotEmpty())
+        val sseId = capturedStreamIds.last()
+        assertEquals("SSE must use the client session id", fixedClientId, sseId)
+
+        // activeSessionId is set to the client id (not null, not "pending")
+        assertEquals("activeSessionId must be the client id", fixedClientId, viewModel.uiState.value.activeSessionId)
+
+        // Verify sendTurn was called with the same client id
+        runBlocking { verify(chatRepository).sendTurn(fixedClientId, "hello") }
+    }
+
+    @Test
+    fun `new main session failure removes user bubble and clears active session`() = vmTest {
+        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(
+            Result.failure(RuntimeException("net error"))
+        )
+
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            viewModel.sendMessage("hello")
+            dispatcher.scheduler.advanceTimeBy(200)
+
+            var foundRollback = false
+            while (!foundRollback) {
+                val state = awaitItem()
+                if (state.composerState == ComposerState.IDLE_EMPTY && state.activeSessionId == null) {
+                    foundRollback = true
+                    assertTrue("User bubble must be removed", state.messages.none { it.role == MessageRole.USER })
+                }
+            }
+            assertTrue(foundRollback)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `new main session failure emits uiEffects for rollback`() = vmTest {
+        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(
+            Result.failure(RuntimeException("net error"))
+        )
+
+        val effects = mutableListOf<ChatUiEffect>()
+        val job = launch { viewModel.uiEffects.collect { effects.add(it) } }
+
+        viewModel.sendMessage("hello")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        assertTrue("Must emit RestoreComposerText", effects.any { it is ChatUiEffect.RestoreComposerText && (it as ChatUiEffect.RestoreComposerText).text == "hello" })
+        assertTrue("Must emit ShowToast", effects.any { it is ChatUiEffect.ShowToast })
+
+        job.cancel()
+    }
+
+    @Test
+    fun `reconnect uses last delivered sse event id as cursor`() = vmTest {
+        val capturedLastEventIds = mutableListOf<String?>()
+        whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenAnswer { inv ->
+            capturedLastEventIds.add(inv.getArgument(2))
+            sseFlow
+        }
+
+        activateSession("s1")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        // Emit an envelope with eventId "7"
+        sseFlow.emit(SseEnvelope(eventId = "7", event = StreamEvent.Unknown))
+        dispatcher.scheduler.advanceTimeBy(100)
+
+        // Trigger reconnect by switching and switching back
+        viewModel.switchSession("other")
+        dispatcher.scheduler.advanceTimeBy(100)
+        viewModel.switchSession("s1")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val lastCallForS1 = capturedLastEventIds.lastOrNull()
+        assertEquals("Reconnect must use saved cursor", "7", lastCallForS1)
+    }
+
+    @Test
+    fun `existing session with no prior events reconnects with null cursor`() = vmTest {
+        val capturedLastEventIds = mutableListOf<String?>()
+        whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenAnswer { inv ->
+            capturedLastEventIds.add(inv.getArgument(2))
+            sseFlow
+        }
+
+        activateSession("s1")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        // No events received — cursor should be null for reconnect
+        val firstCallCursor = capturedLastEventIds.firstOrNull()
+        assertNull("Existing session first connect should use null cursor", firstCallCursor)
     }
 
     @Test
