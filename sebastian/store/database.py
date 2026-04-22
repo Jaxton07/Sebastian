@@ -87,14 +87,29 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
         ("relation_candidates", "updated_at", "DATETIME"),
         ("memory_slots", "proposed_by", "TEXT"),
         ("memory_slots", "proposed_in_session", "TEXT"),
+        # tasks 表：新增 agent_type
+        ("tasks", "agent_type", "VARCHAR(100) DEFAULT 'sebastian'"),
+        # checkpoints 表：新增 session_id 和 agent_type
+        ("checkpoints", "session_id", "TEXT DEFAULT ''"),
+        ("checkpoints", "agent_type", "VARCHAR(100) DEFAULT 'sebastian'"),
+        # session_consolidations：新增增量游标字段
+        ("session_consolidations", "last_consolidated_seq", "INTEGER"),
+        ("session_consolidations", "last_seen_item_seq", "INTEGER"),
+        ("session_consolidations", "last_consolidated_source_seq", "INTEGER"),
+        ("session_consolidations", "consolidation_mode", "VARCHAR(50) DEFAULT 'full_session'"),
     ]
     for table, column, ddl in patches:
         result = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
-        existing = {row[1] for row in result.fetchall()}
+        rows = result.fetchall()
+        if not rows:
+            # 表不存在，跳过（create_all 会负责建表）
+            continue
+        existing = {row[1] for row in rows}
         if column not in existing:
             await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
             logger.info("Applied migration: %s.%s", table, column)
 
+    await _apply_idempotent_indexes(conn)
     await _drop_obsolete_columns(conn)
     await _normalize_confidence_types(conn)
 
@@ -115,6 +130,17 @@ async def _normalize_confidence_types(conn: Any) -> None:
         )
         if result.rowcount:
             logger.info("Normalized %d str confidence rows in %s", result.rowcount, table)
+
+
+async def _apply_idempotent_indexes(conn: Any) -> None:
+    """幂等创建 session/timeline 查询索引。"""
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS ix_tasks_agent_type ON tasks (agent_type)",
+        "CREATE INDEX IF NOT EXISTS ix_checkpoints_session ON checkpoints (agent_type, session_id, task_id)",
+        "CREATE INDEX IF NOT EXISTS ix_session_consolidations_agent ON session_consolidations (agent_type)",
+    ]
+    for sql in indexes:
+        await conn.exec_driver_sql(sql)
 
 
 async def _drop_obsolete_columns(conn: Any) -> None:
