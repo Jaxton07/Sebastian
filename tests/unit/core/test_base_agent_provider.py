@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, call
+from collections.abc import AsyncGenerator
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from sebastian.core.stream_events import (
+    LLMStreamEvent,
     ProviderCallEnd,
-    ProviderCallStart,
     TextBlockStart,
     TextBlockStop,
     TextDelta,
@@ -16,6 +18,7 @@ from sebastian.core.stream_events import (
     ToolCallBlockStart,
     ToolCallReady,
 )
+from sebastian.llm.provider import LLMProvider
 from tests.unit.core.test_agent_loop import MockLLMProvider
 
 
@@ -140,20 +143,12 @@ async def test_stream_inner_sets_turn_id_and_pci() -> None:
 
 @pytest.mark.asyncio
 async def test_cancel_session_flushes_pending_blocks() -> None:
-    """cancel_session 后 finally 块应 flush 已缓冲的 assistant_blocks，不丢 thinking/tool blocks。"""
-    import asyncio
-
+    """cancel_session 后 finally 块应 flush 已缓冲 blocks。"""
     from sebastian.core.base_agent import BaseAgent
     from sebastian.store.session_store import SessionStore
 
     # Provider yields a thinking block, then hangs (never resolves)
     hang_event = asyncio.Event()
-
-    from collections.abc import AsyncGenerator
-    from typing import Any
-
-    from sebastian.core.stream_events import LLMStreamEvent
-    from sebastian.llm.provider import LLMProvider
 
     class SlowProvider(LLMProvider):
         """Yields a ThinkingBlockStop then blocks forever until cancelled."""
@@ -210,7 +205,7 @@ async def test_cancel_session_flushes_pending_blocks() -> None:
     # Wait for the run task to finish
     try:
         await asyncio.wait_for(run_task, timeout=2.0)
-    except (asyncio.CancelledError, asyncio.TimeoutError):
+    except (asyncio.CancelledError, TimeoutError):
         pass
 
     # append_message should have been called for the flushed assistant blocks
@@ -292,12 +287,12 @@ async def test_tool_call_block_uses_canonical_field_names() -> None:
 
     # 字段名必须是 tool_call_id（不是 tool_id）
     assert "tool_call_id" in tb, f"Expected 'tool_call_id', got keys: {list(tb.keys())}"
-    assert "tool_id" not in tb, f"Unexpected 'tool_id' key; should be 'tool_call_id'"
+    assert "tool_id" not in tb, "Unexpected 'tool_id' key; should be 'tool_call_id'"
     assert tb["tool_call_id"] == "toolu_42"
 
     # 字段名必须是 tool_name（不是 name）
     assert "tool_name" in tb, f"Expected 'tool_name', got keys: {list(tb.keys())}"
-    assert "name" not in tb, f"Unexpected 'name' key; should be 'tool_name'"
+    assert "name" not in tb, "Unexpected 'name' key; should be 'tool_name'"
     assert tb["tool_name"] == "search"
 
     # input 必须是 dict，不是 JSON 字符串
@@ -366,3 +361,222 @@ async def test_turn_done_flushes_tool_result_block() -> None:
     rb = result_blocks[0]
     assert rb.get("tool_call_id") == "toolu_99", f"tool_call_id mismatch: {rb}"
     assert rb.get("model_content") == "42", f"model_content should be '42': {rb}"
+
+
+@pytest.mark.asyncio
+async def test_tool_result_model_content_uses_llm_facing_string() -> None:
+    """持久化 model_content 必须与 AgentLoop 喂给 LLM 的字符串一致。"""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    provider = MockLLMProvider(
+        [
+            ToolCallBlockStart(block_id="b0_0", tool_id="toolu_json", name="inspect"),
+            ToolCallReady(
+                block_id="b0_0",
+                tool_id="toolu_json",
+                name="inspect",
+                inputs={},
+            ),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [
+            ToolCallBlockStart(block_id="b1_0", tool_id="toolu_empty", name="empty"),
+            ToolCallReady(
+                block_id="b1_0",
+                tool_id="toolu_empty",
+                name="empty",
+                inputs={},
+            ),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [
+            TextBlockStart(block_id="b2_0"),
+            TextDelta(block_id="b2_0", delta="done"),
+            TextBlockStop(block_id="b2_0", text="done"),
+            ProviderCallEnd(stop_reason="end_turn"),
+        ],
+    )
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are test."
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+
+    first = MagicMock()
+    first.ok = True
+    first.output = {"stdout": "ok"}
+    first.display = "human ok"
+    first.empty_hint = None
+    first.error = None
+
+    second = MagicMock()
+    second.ok = True
+    second.output = []
+    second.display = ""
+    second.empty_hint = "No rows found"
+    second.error = None
+
+    gate = MagicMock()
+    gate.call = AsyncMock(side_effect=[first, second])
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(gate=gate, session_store=session_store, provider=provider)
+    await agent.run("inspect", session_id="sess_model_content")
+
+    assistant_calls = [
+        c for c in session_store.append_message.call_args_list
+        if c.args[1] == "assistant"
+    ]
+    blocks = assistant_calls[-1].kwargs.get("blocks") or []
+    result_blocks = [b for b in blocks if b.get("type") == "tool_result"]
+
+    json_result = next(b for b in result_blocks if b["tool_call_id"] == "toolu_json")
+    empty_result = next(b for b in result_blocks if b["tool_call_id"] == "toolu_empty")
+    assert json_result["model_content"] == '{"stdout": "ok"}'
+    assert empty_result["model_content"] == "No rows found"
+
+
+@pytest.mark.asyncio
+async def test_tool_dispatch_exception_persists_failed_tool_result() -> None:
+    """工具抛异常时，DB flush 中也必须有匹配的失败 tool_result。"""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    provider = MockLLMProvider(
+        [
+            ToolCallBlockStart(block_id="b0_0", tool_id="toolu_fail", name="boom"),
+            ToolCallReady(block_id="b0_0", tool_id="toolu_fail", name="boom", inputs={}),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [
+            TextBlockStart(block_id="b1_0"),
+            TextDelta(block_id="b1_0", delta="recovered"),
+            TextBlockStop(block_id="b1_0", text="recovered"),
+            ProviderCallEnd(stop_reason="end_turn"),
+        ],
+    )
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are test."
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+
+    gate = MagicMock()
+    gate.call = AsyncMock(side_effect=RuntimeError("tool exploded"))
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(gate=gate, session_store=session_store, provider=provider)
+    await agent.run("boom", session_id="sess_tool_failure")
+
+    assistant_calls = [
+        c for c in session_store.append_message.call_args_list
+        if c.args[1] == "assistant"
+    ]
+    blocks = assistant_calls[-1].kwargs.get("blocks") or []
+    tool_call = next(b for b in blocks if b.get("type") == "tool")
+    tool_result = next(b for b in blocks if b.get("type") == "tool_result")
+
+    assert tool_call["tool_call_id"] == "toolu_fail"
+    assert tool_result["tool_call_id"] == "toolu_fail"
+    assert tool_result["ok"] is False
+    assert tool_result["model_content"] == "Error: tool exploded"
+    assert tool_result["error"] == "tool exploded"
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
+    """取消发生在工具执行中时，flush 不能留下孤立 tool_call。"""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    tool_started = asyncio.Event()
+    tool_release = asyncio.Event()
+
+    class ToolThenWaitProvider(LLMProvider):
+        message_format = "anthropic"
+        call_count = 0
+
+        async def stream(
+            self,
+            *,
+            system: str,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            model: str,
+            max_tokens: int,
+            block_id_prefix: str = "",
+            thinking_effort: str | None = None,
+        ) -> AsyncGenerator[LLMStreamEvent, None]:
+            self.call_count += 1
+            yield ToolCallBlockStart(block_id="b0_0", tool_id="toolu_slow", name="slow")
+            yield ToolCallReady(
+                block_id="b0_0",
+                tool_id="toolu_slow",
+                name="slow",
+                inputs={},
+            )
+            yield ProviderCallEnd(stop_reason="tool_use")
+
+    async def slow_tool(*_args: Any, **_kwargs: Any) -> MagicMock:
+        tool_started.set()
+        await tool_release.wait()
+        result = MagicMock()
+        result.ok = True
+        result.output = "late"
+        result.display = "late"
+        result.empty_hint = None
+        result.error = None
+        return result
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are test."
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+
+    gate = MagicMock()
+    gate.call = AsyncMock(side_effect=slow_tool)
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(gate=gate, session_store=session_store, provider=ToolThenWaitProvider())
+    run_task = asyncio.create_task(agent.run("slow", session_id="sess_cancel_tool"))
+    await asyncio.wait_for(tool_started.wait(), timeout=2.0)
+
+    await agent.cancel_session("sess_cancel_tool", intent="cancel")
+    try:
+        await asyncio.wait_for(run_task, timeout=2.0)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        tool_release.set()
+
+    assistant_calls = [
+        c for c in session_store.append_message.call_args_list
+        if c.args[1] == "assistant"
+    ]
+    blocks = assistant_calls[-1].kwargs.get("blocks") or []
+    tool_call = next(b for b in blocks if b.get("type") == "tool")
+    tool_result = next(b for b in blocks if b.get("type") == "tool_result")
+
+    assert tool_call["tool_call_id"] == "toolu_slow"
+    assert tool_result["tool_call_id"] == "toolu_slow"
+    assert tool_result["ok"] is False
+    assert "cancel" in tool_result["model_content"].lower()

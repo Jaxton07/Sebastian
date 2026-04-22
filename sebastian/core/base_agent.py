@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from ulid import ULID
 
 from sebastian.config import settings
-from sebastian.core.agent_loop import AgentLoop
+from sebastian.core.agent_loop import AgentLoop, _tool_result_content
 from sebastian.core.stream_events import (
     ProviderCallStart,
     TextBlockStart,
@@ -73,6 +73,78 @@ def _format_tool_display(result: ToolResult) -> str:
     if len(text) > _DISPLAY_MAX:
         return text[:_DISPLAY_MAX] + "…"
     return text
+
+
+def _append_tool_result_block(
+    blocks: list[dict[str, Any]],
+    *,
+    tool_id: str,
+    tool_name: str,
+    result: StreamToolResult,
+    display: str,
+    turn_id: str | None,
+    provider_call_index: int | None,
+    block_index: int,
+) -> None:
+    block: dict[str, Any] = {
+        "type": "tool_result",
+        "tool_call_id": tool_id,
+        "tool_name": tool_name,
+        "model_content": _tool_result_content(result),
+        "display": display,
+        "ok": result.ok,
+        "turn_id": turn_id,
+        "provider_call_index": provider_call_index,
+        "block_index": block_index,
+    }
+    if result.error is not None:
+        block["error"] = result.error
+    blocks.append(block)
+
+
+def _ensure_tool_results_for_pending_calls(
+    blocks: list[dict[str, Any]],
+    *,
+    reason: str,
+) -> None:
+    """Add synthetic failed tool_result blocks for persisted tool_calls without results."""
+    result_ids = {
+        block.get("tool_call_id")
+        for block in blocks
+        if block.get("type") == "tool_result" and block.get("tool_call_id")
+    }
+    block_indexes = [
+        block_index
+        for block in blocks
+        if isinstance((block_index := block.get("block_index")), int)
+    ]
+    next_block_index = max(block_indexes, default=-1) + 1
+    for block in list(blocks):
+        if block.get("type") != "tool":
+            continue
+        tool_id = block.get("tool_call_id")
+        if not tool_id or tool_id in result_ids:
+            continue
+        tool_name = block.get("tool_name", "")
+        result = StreamToolResult(
+            tool_id=tool_id,
+            name=tool_name,
+            ok=False,
+            output=None,
+            error=reason,
+        )
+        _append_tool_result_block(
+            blocks,
+            tool_id=tool_id,
+            tool_name=tool_name,
+            result=result,
+            display=reason,
+            turn_id=block.get("turn_id"),
+            provider_call_index=block.get("provider_call_index"),
+            block_index=next_block_index,
+        )
+        next_block_index += 1
+        result_ids.add(tool_id)
 
 
 BASE_PERSONA = (
@@ -443,6 +515,11 @@ class BaseAgent(ABC):
                 partial = self._partial_buffer.pop(session_id, "")
                 if partial or pending_blocks:
                     try:
+                        if pending_blocks:
+                            _ensure_tool_results_for_pending_calls(
+                                pending_blocks,
+                                reason="Tool execution cancelled before result was available.",
+                            )
                         await self._session_store.append_message(
                             session_id,
                             "assistant",
@@ -615,6 +692,25 @@ class BaseAgent(ABC):
                         logger.exception("Tool %s dispatch failed", event.name)
                         error = str(exc)
                         record["result"] = error
+                        stream_result = StreamToolResult(
+                            tool_id=event.tool_id,
+                            name=event.name,
+                            ok=False,
+                            output=None,
+                            error=error,
+                        )
+                        _append_tool_result_block(
+                            assistant_blocks,
+                            tool_id=event.tool_id,
+                            tool_name=event.name,
+                            result=stream_result,
+                            display=error,
+                            turn_id=turn_id,
+                            provider_call_index=current_pci,
+                            block_index=block_index,
+                        )
+                        block_index += 1
+                        self._pending_blocks[session_id] = assistant_blocks
                         await self._publish(
                             session_id,
                             EventType.TOOL_FAILED,
@@ -624,13 +720,7 @@ class BaseAgent(ABC):
                                 "error": error,
                             },
                         )
-                        send_value = StreamToolResult(
-                            tool_id=event.tool_id,
-                            name=event.name,
-                            ok=False,
-                            output=None,
-                            error=error,
-                        )
+                        send_value = stream_result
                     else:
                         if result.ok:
                             display = _format_tool_display(result)
@@ -656,25 +746,7 @@ class BaseAgent(ABC):
                                     "error": result.error,
                                 },
                             )
-                        model_content = result.output or result.error or ""
-                        display_content = (
-                            _format_tool_display(result) if result.ok else (result.error or "")
-                        )
-                        tool_result_block: dict[str, Any] = {
-                            "type": "tool_result",
-                            "tool_call_id": event.tool_id,
-                            "tool_name": event.name,
-                            "model_content": model_content,
-                            "display": display_content,
-                            "ok": result.ok,
-                            "turn_id": turn_id,
-                            "provider_call_index": current_pci,
-                            "block_index": block_index,
-                        }
-                        block_index += 1
-                        assistant_blocks.append(tool_result_block)
-                        self._pending_blocks[session_id] = assistant_blocks
-                        send_value = StreamToolResult(
+                        stream_result = StreamToolResult(
                             tool_id=event.tool_id,
                             name=event.name,
                             ok=result.ok,
@@ -682,6 +754,22 @@ class BaseAgent(ABC):
                             error=result.error,
                             empty_hint=result.empty_hint,
                         )
+                        display_content = (
+                            _format_tool_display(result) if result.ok else (result.error or "")
+                        )
+                        _append_tool_result_block(
+                            assistant_blocks,
+                            tool_id=event.tool_id,
+                            tool_name=event.name,
+                            result=stream_result,
+                            display=display_content,
+                            turn_id=turn_id,
+                            provider_call_index=current_pci,
+                            block_index=block_index,
+                        )
+                        block_index += 1
+                        self._pending_blocks[session_id] = assistant_blocks
+                        send_value = stream_result
                     continue
 
                 if isinstance(event, TurnDone):
@@ -710,6 +798,10 @@ class BaseAgent(ABC):
                 self._pending_blocks.pop(session_id, None)
                 if full_text or assistant_blocks:
                     try:
+                        _ensure_tool_results_for_pending_calls(
+                            assistant_blocks,
+                            reason="Tool execution cancelled before result was available.",
+                        )
                         await self._session_store.append_message(
                             session_id,
                             "assistant",

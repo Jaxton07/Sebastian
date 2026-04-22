@@ -51,6 +51,34 @@ def _get_session_lock(session_id: str, agent_type: str) -> asyncio.Lock:
     return lock
 
 
+def _normalize_block_payload(block: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        k: v for k, v in block.items()
+        if k not in ("text", "content", "turn_id", "provider_call_index", "block_index")
+    }
+    block_type = block.get("type", "")
+    if block_type in ("tool_use", "tool"):
+        payload["tool_call_id"] = (
+            block.get("tool_call_id")
+            or block.get("id")
+            or block.get("tool_id")
+            or ""
+        )
+        payload["tool_name"] = (
+            block.get("tool_name")
+            or block.get("name")
+            or ""
+        )
+    elif block_type == "tool_result":
+        payload["tool_call_id"] = (
+            block.get("tool_call_id")
+            or block.get("tool_use_id")
+            or block.get("tool_id")
+            or ""
+        )
+    return payload
+
+
 class TimelineItemInput(TypedDict, total=False):
     kind: Required[str]
     role: str | None
@@ -214,10 +242,7 @@ class SessionTimelineStore:
                 "turn_id": block.get("turn_id"),
                 "provider_call_index": block.get("provider_call_index"),
                 "block_index": block.get("block_index", idx),
-                "payload": {
-                    k: v for k, v in block.items()
-                    if k not in ("text", "content", "turn_id", "provider_call_index", "block_index")
-                },
+                "payload": _normalize_block_payload(block),
             })
         return result
 

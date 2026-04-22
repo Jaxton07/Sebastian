@@ -4,7 +4,7 @@ import re
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 
 @pytest.fixture
@@ -143,7 +143,7 @@ async def test_rebuild_pk_preserves_data():
     手动建出 PK 为 (session_id, agent_type) 的旧版，插入测试行，调用迁移，验证数据无误。
     """
     import sebastian.store.models  # noqa: F401
-    from sebastian.store.database import Base, _rebuild_pk_if_needed
+    from sebastian.store.database import _rebuild_pk_if_needed
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     table = "session_consolidations"
@@ -188,6 +188,79 @@ async def test_rebuild_pk_preserves_data():
         assert m.group(1) == "agent_type", (
             f"重建后 {table} PRIMARY KEY 首列应为 agent_type，实际为 {m.group(1)!r}"
         )
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rebuild_pk_with_existing_indexes_preserves_data():
+    """重建带已有索引的旧 sessions 表时，不应因同名 index 冲突失败。"""
+    import sebastian.store.models  # noqa: F401
+    from sebastian.store.database import _rebuild_pk_if_needed
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(
+            "CREATE TABLE sessions ("
+            "  id TEXT NOT NULL,"
+            "  agent_type TEXT NOT NULL,"
+            "  title TEXT DEFAULT '',"
+            "  goal TEXT DEFAULT '',"
+            "  status TEXT DEFAULT 'active',"
+            "  depth INTEGER DEFAULT 0,"
+            "  parent_session_id TEXT,"
+            "  last_activity_at DATETIME,"
+            "  created_at DATETIME,"
+            "  updated_at DATETIME,"
+            "  task_count INTEGER DEFAULT 0,"
+            "  active_task_count INTEGER DEFAULT 0,"
+            "  next_item_seq INTEGER DEFAULT 1,"
+            "  PRIMARY KEY (id, agent_type)"
+            ")"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX ix_sessions_agent_type ON sessions (agent_type)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX ix_sessions_agent_parent_status"
+            " ON sessions (agent_type, parent_session_id, status)"
+        )
+        await conn.exec_driver_sql(
+            "INSERT INTO sessions ("
+            "  id, agent_type, title, goal, status, depth, last_activity_at,"
+            "  created_at, updated_at, task_count, active_task_count, next_item_seq"
+            ") VALUES ("
+            "  'sid1', 'forge', 'Title', 'Goal', 'active', 2,"
+            "  '2026-04-22 00:00:00', '2026-04-22 00:00:00',"
+            "  '2026-04-22 00:00:00', 3, 1, 9"
+            ")"
+        )
+
+    async with engine.begin() as conn:
+        await _rebuild_pk_if_needed(conn, "sessions", wrong_first_col="id")
+
+        result = await conn.exec_driver_sql(
+            "SELECT agent_type, id, title, goal, task_count, active_task_count, next_item_seq"
+            " FROM sessions"
+        )
+        row = result.fetchone()
+        assert row is not None
+        assert row == ("forge", "sid1", "Title", "Goal", 3, 1, 9)
+
+        pk_result = await conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'")
+        )
+        sql = (pk_result.scalar() or "").lower()
+        m = re.search(r'primary key\s*\(\s*"?(\w+)"?', sql)
+        assert m is not None
+        assert m.group(1) == "agent_type"
+
+        idx_result = await conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='index' AND tbl_name='sessions'"
+            " AND name='ix_sessions_agent_type'"
+        )
+        assert idx_result.fetchone() is not None
 
     await engine.dispose()
 

@@ -228,6 +228,78 @@ async def test_append_message_tool_use_block_content_is_json_input(store, sessio
 
 
 @pytest.mark.asyncio
+async def test_append_message_tool_use_normalizes_legacy_id_name(store, session_in_db):
+    """tool_use 的 id/name 兼容字段应规范化为 tool_call_id/tool_name。"""
+    blocks = [
+        {
+            "type": "tool_use",
+            "id": "tc_legacy",
+            "name": "legacy_tool",
+            "input": {"q": "weather"},
+            "turn_id": "01JQTEST00000000000000000C",
+            "provider_call_index": 0,
+            "block_index": 0,
+        }
+    ]
+    await store.append_message(
+        session_in_db.id,
+        "assistant",
+        "",
+        agent_type="sebastian",
+        blocks=blocks,
+    )
+
+    items = await store.get_timeline_items(session_in_db.id, "sebastian")
+    tool_call = next(i for i in items if i["kind"] == "tool_call")
+    assert tool_call["payload"]["tool_call_id"] == "tc_legacy"
+    assert tool_call["payload"]["tool_name"] == "legacy_tool"
+    assert tool_call["payload"]["input"] == {"q": "weather"}
+
+    openai_messages = await store.get_context_messages(
+        session_in_db.id,
+        "sebastian",
+        "openai",
+    )
+    assistant = next(m for m in openai_messages if m.get("tool_calls"))
+    assert assistant["tool_calls"][0]["id"] == "tc_legacy"
+    assert assistant["tool_calls"][0]["function"]["name"] == "legacy_tool"
+
+
+@pytest.mark.asyncio
+async def test_append_message_tool_result_normalizes_tool_use_id(store, session_in_db):
+    """tool_result 的 tool_use_id 兼容字段应规范化为 tool_call_id。"""
+    blocks = [
+        {
+            "type": "tool_result",
+            "tool_use_id": "tc_legacy",
+            "content": "legacy result",
+            "turn_id": "01JQTEST00000000000000000D",
+            "provider_call_index": 0,
+            "block_index": 0,
+        }
+    ]
+    await store.append_message(
+        session_in_db.id,
+        "assistant",
+        "",
+        agent_type="sebastian",
+        blocks=blocks,
+    )
+
+    items = await store.get_timeline_items(session_in_db.id, "sebastian")
+    tool_result = next(i for i in items if i["kind"] == "tool_result")
+    assert tool_result["payload"]["tool_call_id"] == "tc_legacy"
+
+    openai_messages = await store.get_context_messages(
+        session_in_db.id,
+        "sebastian",
+        "openai",
+    )
+    tool_message = next(m for m in openai_messages if m["role"] == "tool")
+    assert tool_message["tool_call_id"] == "tc_legacy"
+
+
+@pytest.mark.asyncio
 async def test_get_messages_since_excludes_system_event(store, session_in_db):
     """get_messages_since 不返回 system_event 类型。"""
     items = [
@@ -282,7 +354,6 @@ async def test_get_timeline_items_orders_by_effective_seq_then_seq(store, sessio
     await store.append_timeline_items(session_in_db.id, "sebastian", [summary])
 
     all_items = await store.get_timeline_items(session_in_db.id, "sebastian")
-    kinds = [i["kind"] for i in all_items]
     # summary（effective_seq=3, seq=6）排在 seq=3 的 user_message 之后、seq=4 之前
     summary_idx = next(i for i, item in enumerate(all_items) if item["kind"] == "context_summary")
     msg4_idx = next(
@@ -326,7 +397,8 @@ async def test_get_context_with_thinking_excludes_system_event(store, session_in
     # thinking 和 assistant_message 同属 t1/pci=0，应合并在同一 assistant 消息里
     asst_msgs = [m for m in msgs if m.get("role") == "assistant"]
     assert len(asst_msgs) == 1, (
-        f"system_event broke assistant grouping; expected 1 assistant msg, got {len(asst_msgs)}: {asst_msgs}"
+        "system_event broke assistant grouping; expected 1 assistant msg, "
+        f"got {len(asst_msgs)}: {asst_msgs}"
     )
     content = asst_msgs[0].get("content", [])
     assert isinstance(content, list), "Assistant content should be a block list"

@@ -182,14 +182,30 @@ async def _rebuild_pk_if_needed(
 
     logger.info("Rebuilding %s to fix PRIMARY KEY column order", table)
     tmp = f"__{table}_pk_rebuild_tmp"
+    index_result = await conn.execute(
+        text(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='index' AND tbl_name=:table"
+            " AND name NOT LIKE 'sqlite_autoindex_%'"
+        ),
+        {"table": table},
+    )
+    index_names = [row[0] for row in index_result.fetchall()]
     await conn.exec_driver_sql(f"ALTER TABLE {table} RENAME TO {tmp}")
+    for index_name in index_names:
+        await conn.exec_driver_sql(f'DROP INDEX IF EXISTS "{index_name}"')
     await conn.run_sync(
         lambda sync_conn: Base.metadata.tables[table].create(sync_conn)
     )
     pragma = await conn.exec_driver_sql(f"PRAGMA table_info({tmp})")
     cols_info = pragma.fetchall()
-    cols = ", ".join(row[1] for row in cols_info)  # row[1] is column name
-    await conn.exec_driver_sql(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM {tmp}")
+    old_cols = {row[1] for row in cols_info}  # row[1] is column name
+    new_cols = [col.name for col in Base.metadata.tables[table].columns]
+    common_cols = [col for col in new_cols if col in old_cols]
+    quoted_cols = ", ".join(f'"{col}"' for col in common_cols)
+    await conn.exec_driver_sql(
+        f"INSERT INTO {table} ({quoted_cols}) SELECT {quoted_cols} FROM {tmp}"
+    )
     await conn.exec_driver_sql(f"DROP TABLE {tmp}")
     logger.info("Rebuilt %s with correct PRIMARY KEY", table)
 
@@ -227,7 +243,8 @@ async def _verify_schema_invariants(conn: Any) -> None:
     si_sql = (row.scalar() or "").lower()
     if si_sql and "uq_session_items_seq" not in si_sql:
         raise RuntimeError(
-            "Schema invariant violated: session_items missing UNIQUE constraint uq_session_items_seq. "
+            "Schema invariant violated: session_items missing UNIQUE constraint "
+            "uq_session_items_seq. "
             "Delete the database and restart."
         )
 
