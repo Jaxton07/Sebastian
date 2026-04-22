@@ -282,7 +282,7 @@ SQLite 迁移后不再保留独立 `IndexStore` 存储概念。
 - `get_context_timeline_items(session_id, agent_type)`
 - `get_timeline_items(session_id, agent_type, include_archived=True)`
 - `get_recent_timeline_items(session_id, agent_type, limit=25)`
-- `get_context_messages(session_id, agent_type, provider_format)`
+- `get_context_messages(session_id, agent_type, provider_format, include_thinking=False)`
 - `get_messages_since(session_id, agent_type, after_seq, limit=None)`
 - task/checkpoint 现有 CRUD 方法。
 - todo 读写方法，或提供 SQLite-backed `TodoStore`。
@@ -327,7 +327,10 @@ SQLite 迁移后不再保留独立 `IndexStore` 存储概念。
 Phase 1 使用 `sessions.next_item_seq` 作为单 session 计数器：
 
 1. `append_timeline_items()` 开启 DB transaction。
-2. 读取并锁定目标 session 的 `next_item_seq`。SQLite 下实现应使用同一事务内的原子 `UPDATE ... RETURNING`，或在无法依赖 `RETURNING` 时使用 per-session async lock + transaction。
+2. 读取并锁定目标 session 的 `next_item_seq`。SQLite 下实现必须使用 SQLite 级别互斥：
+   - 首选同一事务内的原子 `UPDATE ... RETURNING`。
+   - 如果运行环境无法依赖 `RETURNING`，fallback 必须使用 `BEGIN IMMEDIATE` 后在同一事务中读写计数器。
+   - 进程内 `asyncio.Lock` 只能作为减少本进程竞争的优化，不能作为正确性机制。
 3. 对 N 条待写 item 分配 `[next_item_seq, next_item_seq + N - 1]`。
 4. 将 `sessions.next_item_seq` 更新为 `next_item_seq + N`。
 5. 插入所有 `session_items`。
@@ -361,6 +364,13 @@ Phase 1 采用 turn 内缓冲 + 边界批量 flush：
 
 这与现状一样，进程崩溃时仍可能丢当前未完成 assistant 输出。Phase 1 接受这个 trade-off，不引入后台 writer queue。
 
+同一 turn 内的多轮 tool loop 不从 DB 重新读取刚产生的 tool_call/tool_result。AgentLoop 已经维护 provider-specific `working` 上下文；迁移后仍由 turn-local working state 加 pending timeline buffer 驱动后续 provider call。`get_context_messages()` 只用于 turn 启动前读取已持久化的上下文窗口，不负责合并当前 turn 尚未 flush 的 pending items。
+
+必须测试：
+
+- `tool_call -> tool_result -> 第二次 provider call` 的上下文来自 turn-local working state，工具结果不会漏喂给模型。
+- `TurnDone` 后 pending timeline items 批量 flush 到 DB，并能被下一次 turn 的 `get_context_messages()` 读取。
+
 ## Context 投影
 
 `session_items` 是 Sebastian 内部 canonical timeline。LLM Provider 输入格式仍然不同，需要在 provider 边界投影。
@@ -370,7 +380,7 @@ Phase 1 采用 turn 内缓冲 + 边界批量 flush：
 - Anthropic：assistant 消息 `content` 是 block list，tool result 放在下一轮 `role="user"` 的 `tool_result` block 内。
 - OpenAI：assistant 消息使用 `tool_calls` 字段，tool result 是独立 `role="tool"` 消息。
 
-因此 `get_context_messages(session_id, agent_type, provider_format)` 或同等 formatter 必须按 `provider_format` 生成消息：
+因此 `get_context_messages(session_id, agent_type, provider_format, include_thinking=False)` 或同等 formatter 必须按 `provider_format` 生成消息：
 
 - `anthropic`：将连续 timeline items 投影为 Anthropic content blocks。
 - `openai`：将 tool call 投影到 assistant `tool_calls`，将 tool result 投影成 `role="tool"`。
@@ -579,7 +589,7 @@ Route view rules:
 为降低主链路风险，实施计划应拆成可验证阶段，而不是一个大 patch：
 
 1. **Schema + Store 基础层**：新增 ORM/migrations，拆出 records/timeline/context/tasks/todos helper，完成 `SessionStore` SQLite 门面和 store 单元测试。
-2. **Context 投影层**：实现 `get_context_timeline_items()`、`get_context_messages(provider_format)`、recent/since 视图，补 Anthropic/OpenAI 投影测试。
+2. **Context 投影层**：实现 `get_context_timeline_items()`、`get_context_messages(provider_format, include_thinking=False)`、recent/since 视图，补 Anthropic/OpenAI 投影测试。
 3. **BaseAgent 写入切换**：移除旧 `EpisodicMemory` 主链路，改为 turn buffer + timeline flush；用户输入立即写 DB。
 4. **IndexStore 退场**：迁移 watchdog、TaskManager、session_runner、tools 和 gateway state，使调用方只依赖 `SessionStore`。
 5. **Gateway/API/Memory 调用点迁移**：更新 sessions/debug/inspect/completion notifier/consolidation，补集成测试。
