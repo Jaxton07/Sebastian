@@ -187,16 +187,33 @@ async def test_context_summary_effective_seq_ordering(store, session_in_db):
 
 @pytest.mark.asyncio
 async def test_legacy_messages_role_content_only(store, session_in_db):
-    """兼容 messages schema：只有 role/content，不含 provider-specific blocks。"""
-    items = [
-        {"kind": "user_message", "role": "user", "content": "hello"},
-        {"kind": "assistant_message", "role": "assistant", "content": "hi"},
-    ]
-    await store.append_timeline_items(session_in_db.id, "sebastian", items)
+    """build_legacy_messages：只有 role/content，不含 provider-specific blocks。"""
+    from sebastian.store.session_context import build_legacy_messages
 
-    # 用 get_context_messages 并查看结果不含 block list
-    msgs = await store.get_context_messages(session_in_db.id, "sebastian", "anthropic")
-    for msg in msgs:
-        # 只有 user/assistant message，content 应是字符串
-        if msg["role"] in ("user", "assistant"):
-            assert isinstance(msg["content"], str) or isinstance(msg["content"], list)
+    items_input = [
+        {"kind": "user_message", "role": "user", "content": "hello",
+         "turn_id": "t1", "provider_call_index": 0, "block_index": 0},
+        {"kind": "tool_call", "role": "assistant", "content": "",
+         "turn_id": "t1", "provider_call_index": 0, "block_index": 1,
+         "payload": {"tool_call_id": "tc1", "tool_name": "my_tool", "input": {}}},
+        {"kind": "assistant_message", "role": "assistant", "content": "hi",
+         "turn_id": "t1", "provider_call_index": 1, "block_index": 0},
+    ]
+    await store.append_timeline_items(session_in_db.id, "sebastian", items_input)
+    all_items = await store.get_context_timeline_items(session_in_db.id, "sebastian")
+
+    legacy = build_legacy_messages(all_items)
+
+    # 只包含 user_message 和 assistant_message，不包含 tool_call
+    roles = [m["role"] for m in legacy]
+    assert "user" in roles
+    assert "assistant" in roles
+    assert "tool" not in roles  # tool_result 不出现
+
+    # content 必须是字符串（不是 list）
+    for msg in legacy:
+        assert isinstance(msg["content"], str), f"content should be str: {msg}"
+
+    # 不含 tool_calls 字段
+    for msg in legacy:
+        assert "tool_calls" not in msg

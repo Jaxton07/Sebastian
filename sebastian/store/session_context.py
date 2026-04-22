@@ -10,9 +10,7 @@ Only produces plain ``dict`` output — no provider SDK types involved.
 from __future__ import annotations
 
 import json
-from itertools import groupby
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -39,6 +37,40 @@ def build_context_messages(
     if provider_format in ("openai", "openai_compat"):
         return _build_openai(items)
     raise ValueError(f"Unknown provider_format: {provider_format!r}")
+
+
+def build_legacy_messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """将 timeline items 投影为 UI 兼容的 role/content 消息列表。
+
+    仅包含 user_message、assistant_message、context_summary。
+    不含 provider-specific blocks (tool_calls, content block lists)。
+    """
+    result: list[dict[str, Any]] = []
+    for item in items:
+        kind = item.get("kind", "")
+        if kind == "user_message":
+            result.append({
+                "role": "user",
+                "content": item.get("content", ""),
+                "seq": item.get("seq"),
+                "created_at": item.get("created_at"),
+            })
+        elif kind == "assistant_message":
+            result.append({
+                "role": "assistant",
+                "content": item.get("content", ""),
+                "seq": item.get("seq"),
+                "created_at": item.get("created_at"),
+            })
+        elif kind == "context_summary":
+            result.append({
+                "role": "system",
+                "content": item.get("content", ""),
+                "seq": item.get("seq"),
+                "created_at": item.get("created_at"),
+            })
+        # tool_call, tool_result, thinking, raw_block, system_event 不进入 legacy messages
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +292,11 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "type": "function",
                     "function": {
                         "name": payload.get("tool_name", ""),
-                        "arguments": json.dumps(input_data) if isinstance(input_data, dict) else str(input_data),
+                        "arguments": (
+                            json.dumps(input_data)
+                            if isinstance(input_data, dict)
+                            else str(input_data)
+                        ),
                     },
                 })
             messages.append({
