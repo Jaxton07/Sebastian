@@ -40,6 +40,20 @@ class TodoStore:
         assert self._dir is not None, "sessions_dir required for file-backed TodoStore"
         return self._dir / agent_type / session_id / "todos.json"
 
+    async def read_updated_at(self, agent_type: str, session_id: str) -> str | None:
+        """返回该 session todos 的最后写入时间（ISO 8601 字符串），无记录时返回 None。"""
+        if self._db_todo is not None:
+            dt = await self._db_todo.read_updated_at(agent_type, session_id)
+            return dt.isoformat() if dt is not None else None
+        path = self._todos_path(agent_type, session_id)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get("updated_at")
+        except (OSError, ValueError):
+            return None
+
     async def read(self, agent_type: str, session_id: str) -> list[TodoItem]:
         if self._db_todo is not None:
             return await self._db_todo.read(agent_type, session_id)

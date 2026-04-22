@@ -28,6 +28,19 @@ class SessionTodoStore:
             return []
         return [TodoItem(**item) for item in record.todos]
 
+    async def read_updated_at(self, agent_type: str, session_id: str) -> datetime | None:
+        async with self._db() as db:
+            result = await db.execute(
+                select(SessionTodoRecord).where(
+                    SessionTodoRecord.agent_type == agent_type,
+                    SessionTodoRecord.session_id == session_id,
+                )
+            )
+            record = result.scalar_one_or_none()
+        if record is None:
+            return None
+        return record.updated_at
+
     async def write(
         self,
         agent_type: str,

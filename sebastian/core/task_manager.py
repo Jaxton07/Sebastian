@@ -51,7 +51,6 @@ class TaskManager:
 
     async def submit(self, task: Task, fn: TaskFn) -> None:
         await self._store.create_task(task, task.assigned_agent)
-        await self._sync_index(task.session_id, task.assigned_agent)
         self._tasks[task.id] = task
         await self._bus.publish(
             Event(
@@ -133,8 +132,6 @@ class TaskManager:
             task.completed_at = old_completed_at
             raise
 
-        await self._sync_index(task.session_id, task.assigned_agent)
-
         event_type = _STATUS_TO_EVENT.get(new_status)
         if event_type is None:
             return
@@ -147,5 +144,3 @@ class TaskManager:
             data["error"] = error
         await self._bus.publish(Event(type=event_type, data=data))
 
-    async def _sync_index(self, session_id: str, agent: str) -> None:
-        pass  # IndexStore removed; session metadata lives in SessionStore (SQLite)
