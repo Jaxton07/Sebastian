@@ -64,13 +64,14 @@ def _silent_provider(text: str = "ok") -> MockLLMProvider:
     )
 
 
-def _stub_episodic(agent) -> None:
-    from sebastian.memory.episodic_memory import EpisodicMemory
-
-    mock = MagicMock(spec=EpisodicMemory)
-    mock.get_turns = AsyncMock(return_value=[])
-    mock.add_turn = AsyncMock()
-    agent._episodic = mock
+def _stub_session_store(agent) -> None:
+    """Replace agent._session_store with a minimal mock for _stream_inner tests."""
+    session_store = MagicMock()
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+    agent._session_store = session_store
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +202,7 @@ async def test_stream_inner_includes_memory_in_system_prompt(mem_factory) -> Non
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s2"] = 1  # depth guard: only depth=1 injects memory
-    _stub_episodic(agent)
+    _stub_session_store(agent)
 
     captured_prompts: list[str] = []
 
@@ -221,6 +222,7 @@ async def test_stream_inner_includes_memory_in_system_prompt(mem_factory) -> Non
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
     session_store.update_activity = AsyncMock()
+    session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
     empty_todo_store = MagicMock()
@@ -278,7 +280,7 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s3"] = 1  # depth guard: only depth=1 injects memory
-    _stub_episodic(agent)
+    _stub_session_store(agent)
 
     captured_prompts: list[str] = []
 
@@ -312,6 +314,7 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
     session_store.update_activity = AsyncMock()
+    session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
     with patch.object(gw_state, "memory_settings", fake_mem_settings, create=True):

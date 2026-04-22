@@ -34,19 +34,15 @@ async def test_base_agent_uses_injected_provider() -> None:
 
     session_store = MagicMock(spec=SessionStore)
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
-
-    from sebastian.memory.episodic_memory import EpisodicMemory
-
-    episodic_mock = MagicMock(spec=EpisodicMemory)
-    episodic_mock.get_turns = AsyncMock(return_value=[])
-    episodic_mock.add_turn = AsyncMock()
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
 
     agent = TestAgent(
         gate=MagicMock(),
         session_store=session_store,
         provider=provider,
     )
-    agent._episodic = episodic_mock
 
     result = await agent.run("hi", session_id="test_sess_01")
     assert result == "Hello from sub."

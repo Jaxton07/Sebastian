@@ -36,7 +36,6 @@ from sebastian.core.stream_events import (
 )
 from sebastian.core.types import ToolResult
 from sebastian.memory.depth_guard import is_memory_eligible
-from sebastian.memory.episodic_memory import EpisodicMemory
 from sebastian.memory.working_memory import WorkingMemory
 from sebastian.permissions.gate import PolicyGate
 from sebastian.permissions.types import ToolCallContext
@@ -117,7 +116,6 @@ class BaseAgent(ABC):
         self._session_store = session_store
         self._event_bus = event_bus
         self._llm_registry = llm_registry
-        self._episodic = EpisodicMemory(session_store)
         self.working_memory = WorkingMemory()
         self._active_streams: dict[str, asyncio.Task[str]] = {}  # session_id → task
         # session_id → intent: "cancel" ends as cancelled; "stop" keeps context for resume.
@@ -384,17 +382,26 @@ class BaseAgent(ABC):
             },
         )
         await self._update_activity(session_id, agent_context)
-        turns = await self._episodic.get_turns(session_id, agent=agent_context, limit=20)
-        messages: list[dict[str, str]] = [
-            {"role": turn.role, "content": turn.content} for turn in turns
-        ]
+
+        provider_format = "anthropic"
+        if self._loop._provider is not None:
+            provider_format = self._loop._provider.message_format
+
+        if self._db_factory is not None:
+            messages = await self._session_store.get_context_messages(
+                session_id, agent_context, provider_format
+            )
+        else:
+            raw = await self._session_store.get_messages(session_id, agent_context, limit=50)
+            messages = [{"role": m["role"], "content": m["content"]} for m in raw]
+
         messages.append({"role": "user", "content": user_message})
 
-        await self._episodic.add_turn(
+        await self._session_store.append_message(
             session_id,
             "user",
             user_message,
-            agent=agent_context,
+            agent_type=agent_context,
         )
 
         current_stream = asyncio.create_task(
@@ -430,11 +437,11 @@ class BaseAgent(ABC):
                 partial = self._partial_buffer.pop(session_id, "")
                 if partial:
                     try:
-                        await self._episodic.add_turn(
+                        await self._session_store.append_message(
                             session_id,
                             "assistant",
                             (f"{partial}\n\n[用户中断]" if cancel_intent == "cancel" else partial),
-                            agent=agent_context,
+                            agent_type=agent_context,
                         )
                     except Exception:
                         logger.warning("Failed to flush partial text on cancel", exc_info=True)
@@ -626,11 +633,11 @@ class BaseAgent(ABC):
                     continue
 
                 if isinstance(event, TurnDone):
-                    await self._episodic.add_turn(
+                    await self._session_store.append_message(
                         session_id,
                         "assistant",
                         event.full_text,
-                        agent=agent_context,
+                        agent_type=agent_context,
                         blocks=assistant_blocks if assistant_blocks else None,
                     )
                     await self._publish(
@@ -648,11 +655,11 @@ class BaseAgent(ABC):
             # handles episodic flush. Only save here for external cancellations.
             if session_id not in self._cancel_requested:
                 if full_text:
-                    await self._episodic.add_turn(
+                    await self._session_store.append_message(
                         session_id,
                         "assistant",
                         full_text,
-                        agent=agent_context,
+                        agent_type=agent_context,
                         blocks=assistant_blocks if assistant_blocks else None,
                     )
                 await self._publish(
