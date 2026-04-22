@@ -30,10 +30,9 @@ def _make_session(
 
 def _make_mock_state(session: Session) -> tuple[MagicMock, AsyncMock]:
     state = MagicMock()
-    state.index_store = AsyncMock()
     state.session_store = AsyncMock()
     state.event_bus = AsyncMock()
-    state.index_store.list_all = AsyncMock(
+    state.session_store.list_sessions = AsyncMock(
         return_value=[
             {
                 "id": session.id,
@@ -97,7 +96,6 @@ async def test_resume_waiting_session_appends_instruction_and_restarts() -> None
         agent_type="code",
     )
     state.session_store.update_session.assert_awaited_once_with(session)
-    state.index_store.upsert.assert_awaited_once_with(session)
     state.event_bus.publish.assert_awaited_once()
     published_event = state.event_bus.publish.await_args.args[0]
     assert published_event.type == EventType.SESSION_RESUMED
@@ -298,8 +296,8 @@ async def test_concurrent_resume_only_schedules_once_for_same_session() -> None:
 
     session = _make_session(SessionStatus.WAITING)
     state, _ = _make_mock_state(session)
-    # Keep index stale as waiting to ensure code relies on session-level state under lock.
-    state.index_store.list_all = AsyncMock(
+    # Keep list_sessions stale as waiting to ensure code relies on session-level state under lock.
+    state.session_store.list_sessions = AsyncMock(
         return_value=[
             {
                 "id": session.id,
@@ -344,17 +342,13 @@ async def test_resume_waits_until_stop_finishes_writing_pause_message() -> None:
     }
 
     state = MagicMock()
-    state.index_store = AsyncMock()
     state.session_store = AsyncMock()
     state.event_bus = AsyncMock()
     state.agent_instances = {session.agent_type: AsyncMock()}
-    state.index_store.list_all = AsyncMock(return_value=[index_entry])
+    state.session_store.list_sessions = AsyncMock(return_value=[index_entry])
     state.session_store.get_session = AsyncMock(return_value=session)
 
     async def _update_session(s: Session) -> None:
-        index_entry["status"] = s.status.value
-
-    async def _upsert(s: Session) -> None:
         index_entry["status"] = s.status.value
 
     pause_append_started = asyncio.Event()
@@ -372,7 +366,6 @@ async def test_resume_waits_until_stop_finishes_writing_pause_message() -> None:
             await release_pause_append.wait()
 
     state.session_store.update_session = AsyncMock(side_effect=_update_session)
-    state.index_store.upsert = AsyncMock(side_effect=_upsert)
     state.session_store.append_message = AsyncMock(side_effect=_append_message)
     state.agent_instances[session.agent_type].cancel_session = AsyncMock(return_value=True)
 

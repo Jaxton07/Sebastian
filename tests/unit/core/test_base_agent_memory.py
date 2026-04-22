@@ -220,6 +220,7 @@ async def test_stream_inner_includes_memory_in_system_prompt(mem_factory) -> Non
 
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
     agent._session_store = session_store
 
     empty_todo_store = MagicMock()
@@ -310,6 +311,7 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
 
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
     agent._session_store = session_store
 
     with patch.object(gw_state, "memory_settings", fake_mem_settings, create=True):

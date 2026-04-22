@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from sebastian.core.types import InvalidTaskTransitionError, Task, TaskStatus
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event, EventType
-from sebastian.store.index_store import IndexStore
 from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
@@ -44,11 +43,9 @@ class TaskManager:
         self,
         session_store: SessionStore,
         event_bus: EventBus,
-        index_store: IndexStore | None = None,
     ) -> None:
         self._store = session_store
         self._bus = event_bus
-        self._index = index_store
         self._running: dict[str, asyncio.Task[None]] = {}
         self._tasks: dict[str, Task] = {}
 
@@ -151,8 +148,4 @@ class TaskManager:
         await self._bus.publish(Event(type=event_type, data=data))
 
     async def _sync_index(self, session_id: str, agent: str) -> None:
-        if self._index is None:
-            return
-        session = await self._store.get_session(session_id, agent)
-        if session is not None:
-            await self._index.upsert(session)
+        pass  # IndexStore removed; session metadata lives in SessionStore (SQLite)

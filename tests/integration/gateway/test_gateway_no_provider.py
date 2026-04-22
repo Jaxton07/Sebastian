@@ -110,7 +110,6 @@ def test_send_turn_to_session_returns_400(empty_db_client: TestClient) -> None:
             depth=1,
         )
         await state.session_store.create_session(session)
-        await state.index_store.upsert(session)
         return session.id
 
     session_id = asyncio.run(_seed())

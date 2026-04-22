@@ -9,6 +9,11 @@ async def test_inspect_session_returns_messages():
 
     mock_state = MagicMock()
     mock_state.session_store = AsyncMock()
+    mock_state.session_store.list_sessions = AsyncMock(
+        return_value=[
+            {"id": "s1", "agent_type": "code", "depth": 2, "status": "active", "title": "写测试"},
+        ]
+    )
     mock_state.session_store.get_session = AsyncMock(
         return_value=MagicMock(
             id="s1",
@@ -23,12 +28,6 @@ async def test_inspect_session_returns_messages():
         return_value=[
             {"role": "user", "content": "请写单元测试", "ts": "2026-04-06T10:00:00"},
             {"role": "assistant", "content": "好的，我来写", "ts": "2026-04-06T10:00:05"},
-        ]
-    )
-    mock_state.index_store = AsyncMock()
-    mock_state.index_store.list_all = AsyncMock(
-        return_value=[
-            {"id": "s1", "agent_type": "code", "depth": 2, "status": "active", "title": "写测试"},
         ]
     )
 

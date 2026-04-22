@@ -593,12 +593,12 @@ async def sweep_unconsolidated(
     *,
     db_factory: async_sessionmaker[AsyncSession],
     worker: SessionConsolidationWorker,
-    index_store: Any,
+    session_store: Any,
     memory_settings_fn: Callable[[], bool],
 ) -> None:
     """Catch up sessions that completed while the gateway was down.
 
-    Queries the session index for ``status == "completed"`` entries, removes
+    Queries SessionStore for ``status == "completed"`` entries, removes
     those already marked by :class:`SessionConsolidationRecord`, and invokes
     :meth:`SessionConsolidationWorker.consolidate_session` for the rest. A
     single failing session is logged and skipped — it must not abort the sweep.
@@ -608,7 +608,7 @@ async def sweep_unconsolidated(
 
     from sebastian.store.models import SessionConsolidationRecord
 
-    entries = await index_store.list_all()
+    entries = await session_store.list_sessions()
     completed = [
         e
         for e in entries

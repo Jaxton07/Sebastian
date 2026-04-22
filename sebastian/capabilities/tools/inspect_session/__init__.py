@@ -24,7 +24,7 @@ async def inspect_session(
 ) -> ToolResult:
     state = _get_state()
 
-    all_sessions = await state.index_store.list_all()
+    all_sessions = await state.session_store.list_sessions()
     session_entry = next((s for s in all_sessions if s["id"] == session_id), None)
     if session_entry is None:
         return ToolResult(ok=False, error=f"Session {session_id} 未找到")

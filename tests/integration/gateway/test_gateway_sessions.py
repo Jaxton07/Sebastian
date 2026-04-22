@@ -72,7 +72,6 @@ def _store_session(session) -> None:
     import sebastian.gateway.state as state
 
     asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
 
 
 def _store_task(task, agent_type: str, agent_id: str = "") -> None:
@@ -117,7 +116,6 @@ def test_get_session_returns_meta_and_messages(client):
         title="Hello world",
     )
     assert state.session_store is not None
-    assert state.index_store is not None
 
     asyncio.run(state.session_store.create_session(session))
     asyncio.run(
@@ -128,7 +126,6 @@ def test_get_session_returns_meta_and_messages(client):
             agent_type="sebastian",
         )
     )
-    asyncio.run(state.index_store.upsert(session))
 
     response = http_client.get(
         f"/api/v1/sessions/{session.id}",
@@ -361,7 +358,6 @@ def test_post_cancel_idle_session_returns_200(client) -> None:
 
     session = Session(id="idle-cancel", agent_type="sebastian", title="t")
     asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
 
     resp = http_client.post(
         "/api/v1/sessions/idle-cancel/cancel",

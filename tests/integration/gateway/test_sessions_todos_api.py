@@ -71,7 +71,6 @@ def test_get_todos_empty_for_new_session(client):
 
     session = Session(agent_type="sebastian", title="t")
     asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
 
     response = client.get(
         f"/api/v1/sessions/{session.id}/todos",
@@ -91,7 +90,6 @@ def test_get_todos_returns_written(client):
 
     session = Session(agent_type="sebastian", title="t")
     asyncio.run(state.session_store.create_session(session))
-    asyncio.run(state.index_store.upsert(session))
 
     asyncio.run(
         state.todo_store.write(

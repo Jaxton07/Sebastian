@@ -32,7 +32,7 @@ async def list_sessions(
 ) -> JSONDict:
     import sebastian.gateway.state as state
 
-    sessions = await state.index_store.list_all()
+    sessions = await state.session_store.list_sessions()
     sessions = [s for s in sessions if s.get("depth", 1) == 1]
     if agent_type is not None:
         sessions = [s for s in sessions if s.get("agent_type") == agent_type]
@@ -50,7 +50,7 @@ async def list_agent_sessions(
 ) -> JSONDict:
     import sebastian.gateway.state as state
 
-    sessions = await state.index_store.list_by_agent_type(agent_type)
+    sessions = await state.session_store.list_sessions_by_agent_type(agent_type)
     return {"agent_type": agent_type, "sessions": sessions}
 
 
@@ -80,7 +80,6 @@ async def create_agent_session(
         depth=2,
     )
     await state.session_store.create_session(session)
-    await state.index_store.upsert(session)
 
     agent = state.agent_instances[agent_type]
 
@@ -92,7 +91,6 @@ async def create_agent_session(
             session=session,
             goal=content,
             session_store=state.session_store,
-            index_store=state.index_store,
             event_bus=state.event_bus,
         )
     )
@@ -134,14 +132,12 @@ def _log_background_turn_failure(task: asyncio.Task[object]) -> None:
 async def _persist_session_status(
     session: Session,
     session_store: Any,
-    index_store: Any,
     event_bus: Any,
 ) -> None:
     from sebastian.protocol.events.types import Event, EventType
 
     session.updated_at = datetime.now(UTC)
     await session_store.update_session(session)
-    await index_store.upsert(session)
     if event_bus is not None:
         from sebastian.core.types import SessionStatus
 
@@ -166,7 +162,6 @@ async def _persist_session_status(
 def _make_turn_done_callback(
     session: Session,
     session_store: Any,
-    index_store: Any,
     event_bus: Any,
 ) -> Callable[[asyncio.Task[object]], None]:
     from sebastian.core.types import SessionStatus
@@ -179,7 +174,7 @@ def _make_turn_done_callback(
         else:
             return
         persist_task = asyncio.create_task(
-            _persist_session_status(session, session_store, index_store, event_bus)
+            _persist_session_status(session, session_store, event_bus)
         )
         _background_tasks.add(persist_task)
         persist_task.add_done_callback(_background_tasks.discard)
@@ -189,7 +184,7 @@ def _make_turn_done_callback(
 
 
 async def _resolve_session(state: Any, session_id: str) -> Session:
-    entries = await state.index_store.list_all()
+    entries = await state.session_store.list_sessions()
     entry = next((e for e in entries if e["id"] == session_id), None)
     if entry is None:
         raise HTTPException(404, "Session not found")
@@ -203,7 +198,6 @@ async def _touch_session(state: Any, session: Session) -> datetime:
     now = datetime.now(UTC)
     session.updated_at = now
     await state.session_store.update_session(session)
-    await state.index_store.upsert(session)
     return now
 
 
@@ -241,7 +235,7 @@ async def _schedule_session_turn(
     task.add_done_callback(_background_tasks.discard)
     task.add_done_callback(_log_background_turn_failure)
     task.add_done_callback(
-        _make_turn_done_callback(session, state.session_store, state.index_store, state.event_bus)
+        _make_turn_done_callback(session, state.session_store, state.event_bus)
     )
 
 
@@ -254,7 +248,6 @@ async def delete_session(
 
     session = await _resolve_session(state, session_id)
     await state.session_store.delete_session(session)
-    await state.index_store.remove(session_id)
     return {"session_id": session_id, "deleted": True}
 
 

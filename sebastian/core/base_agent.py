@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
     from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
-    from sebastian.store.index_store import IndexStore
 
 from sebastian.config import settings
 from sebastian.core.agent_loop import AgentLoop
@@ -108,7 +107,6 @@ class BaseAgent(ABC):
         model: str | None = None,
         allowed_tools: list[str] | None = None,
         allowed_skills: list[str] | None = None,
-        index_store: IndexStore | None = None,
         llm_registry: LLMProviderRegistry | None = None,
         db_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
@@ -118,7 +116,6 @@ class BaseAgent(ABC):
         self._current_depth: dict[str, int] = {}  # session_id → depth
         self._session_store = session_store
         self._event_bus = event_bus
-        self._index_store = index_store
         self._llm_registry = llm_registry
         self._episodic = EpisodicMemory(session_store)
         self.working_memory = WorkingMemory()
@@ -386,7 +383,7 @@ class BaseAgent(ABC):
                 "message": user_message[:200],
             },
         )
-        await self._update_activity(session_id)
+        await self._update_activity(session_id, agent_context)
         turns = await self._episodic.get_turns(session_id, agent=agent_context, limit=20)
         messages: list[dict[str, str]] = [
             {"role": turn.role, "content": turn.content} for turn in turns
@@ -553,7 +550,7 @@ class BaseAgent(ABC):
                         "status": "failed",
                     }
                     assistant_blocks.append(record)
-                    await self._update_activity(session_id)
+                    await self._update_activity(session_id, agent_context)
                     try:
                         context = ToolCallContext(
                             task_goal=self._current_task_goals.get(session_id, ""),
@@ -644,7 +641,7 @@ class BaseAgent(ABC):
                             "interrupted": False,
                         },
                     )
-                    await self._update_activity(session_id)
+                    await self._update_activity(session_id, agent_context)
                     return event.full_text
         except asyncio.CancelledError:
             # When cancelled via cancel_session(), the finally block in run_streaming
@@ -667,10 +664,9 @@ class BaseAgent(ABC):
                 )
             raise
 
-    async def _update_activity(self, session_id: str) -> None:
-        """Update last_activity_at in index for stalled detection."""
-        if self._index_store is not None:
-            await self._index_store.update_activity(session_id)
+    async def _update_activity(self, session_id: str, agent_type: str) -> None:
+        """Update last_activity_at for stalled detection."""
+        await self._session_store.update_activity(session_id, agent_type)
 
     async def _publish(
         self,
