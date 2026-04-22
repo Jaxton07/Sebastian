@@ -86,7 +86,6 @@ class SessionRecordsStore:
             SessionStatus.ACTIVE.value,
             SessionStatus.STALLED.value,
             SessionStatus.WAITING.value,
-            SessionStatus.IDLE.value,
         )
         async with self._db() as db:
             result = await db.execute(
@@ -123,7 +122,11 @@ def _to_record(session: Session) -> SessionRecord:
         agent_type=session.agent_type,
         title=session.title,
         goal=session.goal,
-        status=session.status.value if isinstance(session.status, SessionStatus) else session.status,
+        status=(
+            session.status.value
+            if isinstance(session.status, SessionStatus)
+            else session.status
+        ),
         depth=session.depth,
         parent_session_id=session.parent_session_id,
         last_activity_at=session.last_activity_at,
@@ -138,7 +141,11 @@ def _to_record(session: Session) -> SessionRecord:
 def _apply_session_to_record(session: Session, record: SessionRecord) -> None:
     record.title = session.title
     record.goal = session.goal
-    record.status = session.status.value if isinstance(session.status, SessionStatus) else session.status
+    record.status = (
+        session.status.value
+        if isinstance(session.status, SessionStatus)
+        else session.status
+    )
     record.depth = session.depth
     record.parent_session_id = session.parent_session_id
     record.last_activity_at = session.last_activity_at
@@ -173,7 +180,9 @@ def _record_to_dict(record: SessionRecord) -> dict[str, Any]:
         "status": record.status,
         "depth": record.depth,
         "parent_session_id": record.parent_session_id,
-        "last_activity_at": record.last_activity_at.isoformat() if record.last_activity_at else None,
+        "last_activity_at": (
+            record.last_activity_at.isoformat() if record.last_activity_at else None
+        ),
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
         "task_count": record.task_count,
         "active_task_count": record.active_task_count,

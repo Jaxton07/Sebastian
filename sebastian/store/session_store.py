@@ -177,7 +177,7 @@ class SessionStore:
         """Return metadata dicts for active child sessions of the given parent."""
         if self._records is not None:
             return await self._records.list_active_children(agent_type, parent_session_id)
-        active_statuses = {"active", "stalled", "waiting", "idle"}
+        active_statuses = {"active", "stalled", "waiting"}
         sessions: list[dict[str, Any]] = []
         agent_dir = self._dir / agent_type
         if not agent_dir.exists():
