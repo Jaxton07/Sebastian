@@ -188,10 +188,10 @@ class TimelineMapperTest {
     @Test
     fun createdAtTakenFromFirstItemInGroup() {
         val messages = listOf(
-            item(seq = 1, kind = "thinking", content = "a", turnId = "t1"),
-            item(seq = 2, kind = "assistant_message", content = "b", turnId = "t1"),
+            item(seq = 1, kind = "thinking", content = "a", turnId = "t1", createdAt = "2026-04-22T10:00:00Z"),
+            item(seq = 2, kind = "assistant_message", content = "b", turnId = "t1", createdAt = "2026-04-22T10:00:01Z"),
         ).toMessagesFromTimeline()
-        assertEquals("2026-04-22T00:00:01Z", messages.single().createdAt)
+        assertEquals("2026-04-22T10:00:00Z", messages.single().createdAt)
     }
 
     // ---------------------------------------------------------------------------
@@ -207,6 +207,7 @@ class TimelineMapperTest {
         providerCallIndex: Int? = 0,
         blockIndex: Int? = null,
         payload: Map<String, Any?>? = null,
+        createdAt: String = "2026-01-01T00:00:00Z",
     ) = TimelineItemDto(
         id = "item-$seq",
         sessionId = "s1",
@@ -219,6 +220,6 @@ class TimelineMapperTest {
         turnId = turnId,
         providerCallIndex = providerCallIndex,
         blockIndex = blockIndex,
-        createdAt = "2026-04-22T00:00:0${seq}Z",
+        createdAt = createdAt,
     )
 }
