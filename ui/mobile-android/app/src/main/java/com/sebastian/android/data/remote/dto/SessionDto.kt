@@ -49,6 +49,7 @@ data class AgentSessionListResponse(
 data class SessionDetailResponse(
     @param:Json(name ="session") val session: SessionDto,
     @param:Json(name ="messages") val messages: List<MessageDto>,
+    @param:Json(name ="timeline_items") val timelineItems: List<TimelineItemDto> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)

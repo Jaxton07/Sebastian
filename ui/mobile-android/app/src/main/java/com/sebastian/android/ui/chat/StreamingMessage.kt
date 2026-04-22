@@ -147,6 +147,12 @@ private fun AssistantMessageBlocks(
                             .fillMaxWidth()
                             .alpha(alpha),
                     )
+                    is ContentBlock.SummaryBlock -> MarkdownView(
+                        text = block.text,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(alpha),
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
             }
