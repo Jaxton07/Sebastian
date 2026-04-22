@@ -419,10 +419,12 @@ async def get_session_recent(
     messages = build_legacy_messages(items)
     return {
         "session_id": session.id,
-        "status": session.status,
+        "status": session.status.value,
         "title": session.title,
         "goal": session.goal,
-        "last_activity_at": session.last_activity_at.isoformat(),
+        "last_activity_at": (
+            session.last_activity_at.isoformat() if session.last_activity_at else None
+        ),
         "messages": messages,
         "timeline_items": items,
     }

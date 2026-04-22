@@ -129,12 +129,16 @@ async def resume_agent(
                 ),
             )
 
+        timeline_items: list[dict[str, str]] = [
+            {"kind": "system_event", "role": "system", "content": f"Agent {session_id} resumed"}
+        ]
         if instruction:
-            await state.session_store.append_timeline_items(
-                session_id,
-                actual_agent_type,
-                [{"kind": "user_message", "role": "user", "content": instruction}],
-            )
+            timeline_items.append({"kind": "user_message", "role": "user", "content": instruction})
+        await state.session_store.append_timeline_items(
+            session_id,
+            actual_agent_type,
+            timeline_items,
+        )
 
         session.status = SessionStatus.ACTIVE
         await state.session_store.update_session(session)

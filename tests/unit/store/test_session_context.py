@@ -71,7 +71,9 @@ async def test_anthropic_tool_call_projection(store, session_in_db):
          "payload": {"tool_call_id": "tc1", "tool_name": "my_tool", "input": {"x": 1}}},
         {"kind": "tool_result", "role": "tool", "content": "",
          "turn_id": "t1", "provider_call_index": 0, "block_index": 2,
-         "payload": {"tool_call_id": "tc1", "model_content": "result_text", "display": "Result: result_text"}},
+         "payload": {
+             "tool_call_id": "tc1", "model_content": "result_text", "display": "Result: result_text"
+         }},
         {"kind": "assistant_message", "role": "assistant", "content": "done",
          "turn_id": "t1", "provider_call_index": 1, "block_index": 0},
     ]
@@ -84,7 +86,9 @@ async def test_anthropic_tool_call_projection(store, session_in_db):
     assert msgs[0]["content"] == "use tool"
 
     # assistant message with tool_use block
-    asst_with_tool = next(m for m in msgs if m["role"] == "assistant" and isinstance(m["content"], list))
+    asst_with_tool = next(
+        m for m in msgs if m["role"] == "assistant" and isinstance(m["content"], list)
+    )
     tool_use_block = next(b for b in asst_with_tool["content"] if b.get("type") == "tool_use")
     assert tool_use_block["id"] == "tc1"
     assert tool_use_block["name"] == "my_tool"

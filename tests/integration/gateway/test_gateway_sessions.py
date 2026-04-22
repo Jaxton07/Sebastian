@@ -81,9 +81,9 @@ def _store_task(task, agent_type: str, agent_id: str = "") -> None:
 
 
 def _capture_background_task(scheduled_coroutines: list[object]):
-    import sys as _sys
     import asyncio as _asyncio
     import inspect as _inspect
+    import sys as _sys
 
     _real_create_task = _asyncio.create_task
     _ROUTE_MARKERS = ("gateway/routes/sessions.py", "gateway/routes/turns.py")

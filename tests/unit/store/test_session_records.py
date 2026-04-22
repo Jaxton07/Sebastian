@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import sqlalchemy
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+import sqlalchemy
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from sebastian.core.types import Session, SessionStatus
+from sebastian.store.session_store import SessionStore
 
 
 @pytest.fixture
@@ -33,7 +36,8 @@ async def test_session_items_table_exists(sqlite_session_factory):
     async with sqlite_session_factory() as session:
         rows = await session.execute(sqlalchemy.text("PRAGMA table_info(session_items)"))
         columns = {row[1] for row in rows.fetchall()}
-        assert {"id", "session_id", "agent_type", "seq", "kind", "archived", "effective_seq"}.issubset(columns)
+        expected = {"id", "session_id", "agent_type", "seq", "kind", "archived", "effective_seq"}
+        assert expected.issubset(columns)
 
 
 @pytest.mark.asyncio
@@ -49,15 +53,16 @@ async def test_session_consolidations_cursor_fields_exist(sqlite_session_factory
     async with sqlite_session_factory() as session:
         rows = await session.execute(sqlalchemy.text("PRAGMA table_info(session_consolidations)"))
         columns = {row[1] for row in rows.fetchall()}
-        assert {"last_consolidated_seq", "last_seen_item_seq", "last_consolidated_source_seq", "consolidation_mode"}.issubset(columns)
+        expected = {
+            "last_consolidated_seq",
+            "last_seen_item_seq",
+            "last_consolidated_source_seq",
+            "consolidation_mode",
+        }
+        assert expected.issubset(columns)
 
 
 # ── Task 2: Session Records CRUD/List Tests ──────────────────────────────────
-
-from datetime import UTC, datetime, timedelta
-
-from sebastian.core.types import Session, SessionStatus
-from sebastian.store.session_store import SessionStore
 
 
 def _make_session_store(factory):

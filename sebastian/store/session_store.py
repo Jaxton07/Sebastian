@@ -284,7 +284,9 @@ class SessionStore:
         """Return all timeline items. Requires db_factory."""
         if self._timeline is None:
             raise RuntimeError("get_timeline_items requires db_factory")
-        return await self._timeline.get_items(session_id, agent_type, include_archived=include_archived)
+        return await self._timeline.get_items(
+            session_id, agent_type, include_archived=include_archived
+        )
 
     async def get_recent_timeline_items(
         self,
@@ -292,7 +294,9 @@ class SessionStore:
         agent_type: str = "sebastian",
         limit: int = 25,
     ) -> list[dict[str, Any]]:
-        """Return most recent non-archived timeline items in ascending seq order. Requires db_factory."""
+        """Return most recent non-archived timeline items in ascending seq order.
+        Requires db_factory.
+        """
         if self._timeline is None:
             raise RuntimeError("get_recent_timeline_items requires db_factory")
         return await self._timeline.get_recent_items(session_id, agent_type, limit=limit)

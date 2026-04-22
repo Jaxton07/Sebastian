@@ -92,7 +92,10 @@ async def test_resume_waiting_session_appends_instruction_and_restarts() -> None
     state.session_store.append_timeline_items.assert_awaited_once_with(
         session.id,
         "code",
-        [{"kind": "user_message", "role": "user", "content": "继续推进修复"}],
+        [
+            {"kind": "system_event", "role": "system", "content": f"Agent {session.id} resumed"},
+            {"kind": "user_message", "role": "user", "content": "继续推进修复"},
+        ],
     )
     state.session_store.update_session.assert_awaited_once_with(session)
     state.event_bus.publish.assert_awaited_once()
@@ -106,7 +109,7 @@ async def test_resume_waiting_session_appends_instruction_and_restarts() -> None
 
 
 @pytest.mark.asyncio
-async def test_resume_waiting_session_without_instruction_skips_append() -> None:
+async def test_resume_waiting_session_without_instruction_writes_system_event() -> None:
     import sebastian.capabilities.tools.resume_agent as resume_mod
     from sebastian.capabilities.tools.resume_agent import resume_agent
 
@@ -121,11 +124,15 @@ async def test_resume_waiting_session_without_instruction_skips_append() -> None
         result = await resume_agent(agent_type="code", session_id=session.id, instruction="")
 
     assert result.ok is True
-    state.session_store.append_timeline_items.assert_not_awaited()
+    state.session_store.append_timeline_items.assert_awaited_once_with(
+        session.id,
+        "code",
+        [{"kind": "system_event", "role": "system", "content": f"Agent {session.id} resumed"}],
+    )
 
 
 @pytest.mark.asyncio
-async def test_resume_idle_session_without_instruction_does_not_append_message() -> None:
+async def test_resume_idle_session_without_instruction_writes_system_event() -> None:
     import sebastian.capabilities.tools.resume_agent as resume_mod
     from sebastian.capabilities.tools.resume_agent import resume_agent
 
@@ -141,7 +148,11 @@ async def test_resume_idle_session_without_instruction_does_not_append_message()
 
     assert result.ok is True
     assert session.status == SessionStatus.ACTIVE
-    state.session_store.append_timeline_items.assert_not_awaited()
+    state.session_store.append_timeline_items.assert_awaited_once_with(
+        session.id,
+        "code",
+        [{"kind": "system_event", "role": "system", "content": f"Agent {session.id} resumed"}],
+    )
 
 
 @pytest.mark.asyncio
@@ -167,7 +178,10 @@ async def test_resume_idle_session_with_instruction_appends_message() -> None:
     state.session_store.append_timeline_items.assert_awaited_once_with(
         session.id,
         "code",
-        [{"kind": "user_message", "role": "user", "content": "继续执行任务"}],
+        [
+            {"kind": "system_event", "role": "system", "content": f"Agent {session.id} resumed"},
+            {"kind": "user_message", "role": "user", "content": "继续执行任务"},
+        ],
     )
 
 
@@ -402,5 +416,10 @@ async def test_resume_waits_until_stop_finishes_writing_pause_message() -> None:
     assert len(append_calls) == 2
     first_items = append_calls[0][1]
     second_items = append_calls[1][1]
+    # stop_agent writes the pause system_event first
     assert first_items[0]["kind"] == "system_event"
-    assert second_items[0]["kind"] == "user_message"
+    # resume_agent always writes a system_event, then the user_message instruction
+    assert second_items[0]["kind"] == "system_event"
+    assert second_items[0]["content"] == f"Agent {session.id} resumed"
+    assert second_items[1]["kind"] == "user_message"
+    assert second_items[1]["content"] == "继续执行"

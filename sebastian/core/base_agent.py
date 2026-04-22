@@ -383,6 +383,8 @@ class BaseAgent(ABC):
         )
         await self._update_activity(session_id, agent_context)
 
+        # _llm_registry resolution above guarantees _provider is set in production;
+        # "anthropic" is the fallback for test-only agents with no provider injected.
         provider_format = "anthropic"
         if self._loop._provider is not None:
             provider_format = self._loop._provider.message_format

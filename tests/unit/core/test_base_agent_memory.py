@@ -70,6 +70,7 @@ def _stub_session_store(agent) -> None:
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
     session_store.update_activity = AsyncMock()
     session_store.get_messages = AsyncMock(return_value=[])
+    session_store.get_context_messages = AsyncMock(return_value=[])
     session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
@@ -425,3 +426,41 @@ async def test_memory_section_returns_empty_when_disabled(mem_factory) -> None:
             mock_retrieve.assert_not_called()
 
     assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — run_streaming() with db_factory set uses get_context_messages
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_sqlite_mode_uses_get_context_messages(mem_factory) -> None:
+    """When _db_factory is set, run_streaming must call get_context_messages, not get_messages."""
+    import sebastian.gateway.state as gw_state
+
+    agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
+    _stub_session_store(agent)
+
+    # Ensure get_session_for_agent_type returns a session with required attrs
+    fake_worker_session = MagicMock()
+    fake_worker_session.agent_type = "test"
+    agent._session_store.get_session_for_agent_type = AsyncMock(
+        return_value=fake_worker_session
+    )
+
+    fake_settings = MagicMock()
+    fake_settings.enabled = False
+
+    empty_todo_store = MagicMock()
+    empty_todo_store.read = AsyncMock(return_value=[])
+
+    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+        with patch.object(gw_state, "todo_store", empty_todo_store, create=True):
+            await agent.run_streaming(
+                session_id="s-sqlite", user_message="hello"
+            )
+
+    agent._session_store.get_context_messages.assert_called_once()
+    call_args = agent._session_store.get_context_messages.call_args
+    assert call_args.args[0] == "s-sqlite"  # session_id
+    agent._session_store.get_messages.assert_not_called()

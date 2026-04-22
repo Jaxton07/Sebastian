@@ -36,6 +36,7 @@ from sebastian.memory.types import (
 )
 from sebastian.memory.write_router import persist_decision
 from sebastian.protocol.events.types import Event, EventType
+from sebastian.store.session_context import build_legacy_messages
 
 if TYPE_CHECKING:
     from sebastian.llm.registry import LLMProviderRegistry, ResolvedProvider
@@ -195,19 +196,15 @@ class SessionConsolidationWorker:
         # 2. Fetch session messages (prefer timeline items for cursor tracking)
         last_seen_item_seq: int | None = None
         last_consolidated_source_seq: int | None = None
-        messages: list[dict[str, Any]]
+        messages: list[dict[str, Any]] = []
         try:
             context_items = await self._session_store.get_context_timeline_items(
                 session_id, agent_type
             )
-            from sebastian.store.session_context import build_legacy_messages
-
             messages = build_legacy_messages(context_items)
             # Compute cursors from raw timeline items
-            if context_items:
-                last_seen_item_seq = max(
-                    item["seq"] for item in context_items if item.get("seq") is not None
-                )
+            seqs = [item["seq"] for item in context_items if item.get("seq") is not None]
+            last_seen_item_seq = max(seqs) if seqs else None
             for item in context_items:
                 if item.get("kind") == "context_summary":
                     payload = item.get("payload") or {}
@@ -218,8 +215,8 @@ class SessionConsolidationWorker:
                             or source_seq_end > last_consolidated_source_seq
                         ):
                             last_consolidated_source_seq = source_seq_end
-        except (RuntimeError, AttributeError, TypeError):
-            # Fallback: session_store has no timeline (legacy or test stub)
+        except RuntimeError:
+            # Fallback: session_store has no timeline (legacy or test stub without db_factory)
             messages = await self._session_store.get_messages(session_id, agent_type)
 
         # 3. Open one atomic transaction that wraps context-gathering,
