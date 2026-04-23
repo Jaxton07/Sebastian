@@ -12,6 +12,7 @@ viewmodel/
 ├── AgentBindingEditorViewModel.kt  # 单个 Agent 绑定编辑（Provider + Thinking，防抖保存）
 ├── ChatViewModel.kt                # 主对话状态机（SSE 订阅、消息渲染）
 ├── GlobalApprovalViewModel.kt      # 全局审批队列（跨 session 的审批事件处理）
+├── MemorySettingsViewModel.kt      # 记忆功能开关设置（toggle enabled，失败时回滚）
 ├── ProviderFormViewModel.kt        # Provider 新增/编辑表单状态
 ├── SessionViewModel.kt             # Session 列表与新建
 ├── SettingsViewModel.kt            # 设置页状态（serverUrl、当前 provider）
@@ -102,6 +103,14 @@ Agent LLM 绑定主列表页的 ViewModel，仅负责数据加载：
 - 加载某 agent 的 session 列表（`AgentRepository.getAgentSessions(agentId)`）
 - 新建 agent session（懒创建：`createAgentSession(agentType)`）
 
+### `MemorySettingsViewModel`
+
+记忆功能开关页 ViewModel（`@HiltViewModel`），负责：
+
+- 初始化时调用 `SettingsRepository.getMemorySettings()` 加载当前开关状态
+- `toggle(enabled)`：乐观更新本地 `enabled`，异步调用 `SettingsRepository.setMemoryEnabled()`；失败时回滚到调用前的值并 emit 错误提示
+- 暴露 `MemorySettingsUiState`（`enabled` / `isLoading` / `error` / `errorSerial`），`errorSerial` 递增用于触发一次性 Snackbar
+
 ### `ProviderFormViewModel`
 
 - 管理 Provider 表单状态（name / type / api_key / base_url / model / thinking_capability）
@@ -131,6 +140,7 @@ ViewModel (sendMessage / switchSession / ...)
 | 改全局审批处理 | `GlobalApprovalViewModel.grantApproval()` / `denyApproval()` |
 | 改 Agent LLM 绑定主列表加载 | `AgentBindingsViewModel.load()` |
 | 改单个 Agent 绑定编辑（Provider + Thinking） | `AgentBindingEditorViewModel.selectProvider()` / `setEffort()` |
+| 改记忆开关设置 | `MemorySettingsViewModel.toggle()` |
 | 改滚动跟随逻辑 | `ui/chat/MessageList.kt`（UI 层，ViewModel 不参与） |
 | 改 session 列表加载 | `SessionViewModel` |
 | 改设置页状态（serverUrl / provider） | `SettingsViewModel` |
