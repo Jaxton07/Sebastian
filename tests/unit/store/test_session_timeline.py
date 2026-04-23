@@ -23,6 +23,7 @@ async def sqlite_session_factory():
         yield factory
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 @pytest.fixture
