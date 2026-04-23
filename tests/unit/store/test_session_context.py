@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -21,6 +23,7 @@ async def sqlite_session_factory():
         yield factory
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 @pytest.fixture

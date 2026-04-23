@@ -20,6 +20,7 @@ async def fresh_engine():
         yield engine
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -114,6 +115,7 @@ async def test_verify_schema_invariants_passes_on_correct_schema():
         )
         await _verify_schema_invariants(conn)  # must not raise
     await engine.dispose()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -135,6 +137,7 @@ async def test_verify_schema_invariants_detects_wrong_sessions_pk():
         with pytest.raises(RuntimeError, match="sessions"):
             await _verify_schema_invariants(conn)
     await engine.dispose()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -192,6 +195,7 @@ async def test_rebuild_pk_preserves_data():
         )
 
     await engine.dispose()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -263,6 +267,7 @@ async def test_rebuild_pk_with_existing_indexes_preserves_data():
         assert idx_result.fetchone() is not None
 
     await engine.dispose()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -288,6 +293,7 @@ async def test_verify_schema_invariants_detects_missing_ix_session_items_ctx():
         with pytest.raises(RuntimeError, match="ix_session_items_ctx"):
             await _verify_schema_invariants(conn)
     await engine.dispose()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -309,3 +315,4 @@ async def test_verify_schema_invariants_detects_wrong_session_todos_pk():
         with pytest.raises(RuntimeError, match="session_todos"):
             await _verify_schema_invariants(conn)
     await engine.dispose()
+    await asyncio.sleep(0)
