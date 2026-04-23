@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/toast-center.md
+integrated_at: 2026-04-23
+---
+
 # Android ToastCenter 公共组件设计
 
 - 状态：Draft

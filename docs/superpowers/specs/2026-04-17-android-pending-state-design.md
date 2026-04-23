@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/pending-state.md
+integrated_at: 2026-04-23
+---
+
 # Android Chat PENDING 状态与即时停止设计
 
 - **日期**：2026-04-17

@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/navigation.md
+integrated_at: 2026-04-23
+---
+
 # Android 三面板滑动：加阻尼 + 弹簧动画
 
 ## Context
