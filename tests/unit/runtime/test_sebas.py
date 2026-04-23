@@ -156,6 +156,43 @@ async def test_get_or_create_session_reloads_existing_sebastian_session(
     assert loaded.title == "Persisted title"
 
 
+@pytest.mark.asyncio
+async def test_get_or_create_session_creates_with_client_provided_id(
+    tmp_path: Path,
+) -> None:
+    from sebastian.core.task_manager import TaskManager
+    from sebastian.orchestrator.conversation import ConversationManager
+    from sebastian.orchestrator.sebas import Sebastian
+    from sebastian.protocol.events.bus import EventBus
+    from sebastian.store.session_store import SessionStore
+
+    sessions_dir = tmp_path / "sessions"
+    store = SessionStore(sessions_dir)
+    bus = EventBus()
+    conversation = ConversationManager(bus)
+    task_manager = TaskManager(store, bus)
+
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
+
+    # session 不存在，client 提供的 id 应被采用
+    session = await agent.get_or_create_session("my-client-id", "hello")
+
+    assert session.id == "my-client-id"
+    assert session.agent_type == "sebastian"
+    assert session.depth == 1
+
+    loaded = await store.get_session("my-client-id", "sebastian")
+    assert loaded is not None
+    assert loaded.id == "my-client-id"
+    assert loaded.goal == "hello"
+
+
 def test_sebastian_allowed_tools_use_resume_and_stop_agent() -> None:
     """Sebastian 作为主管家，需要恢复或终止等待中的下属代理。"""
     from sebastian.orchestrator.sebas import Sebastian

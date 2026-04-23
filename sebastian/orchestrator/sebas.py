@@ -166,6 +166,16 @@ class Sebastian(BaseAgent):
             session = await self._session_store.get_session(session_id, "sebastian")
             if session:
                 return session
+            # session 不存在 → 用 client-provided id 创建，确保 SSE 订阅能收到事件
+            new_session = Session(
+                id=session_id,
+                agent_type="sebastian",
+                title=first_message[:40] or "新对话",
+                goal=first_message,
+                depth=1,
+            )
+            await self._session_store.create_session(new_session)
+            return new_session
 
         session = Session(
             agent_type="sebastian",

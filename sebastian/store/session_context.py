@@ -110,6 +110,10 @@ def _build_anthropic(
         # --- context_summary ---------------------------------------------------
         if kind == "context_summary":
             _flush_tool_results(messages, _pending_tool_results)
+            # TODO: role:user projection causes consecutive user messages when followed by
+            # a user_message group. Safe for Phase 1 (no compression worker). Fix before
+            # enabling compression: merge context_summary into the subsequent user message's
+            # content list instead of injecting a standalone role:user turn.
             messages.append({"role": "user", "content": first["content"]})
             continue
 
