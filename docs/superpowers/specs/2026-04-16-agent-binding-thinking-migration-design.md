@@ -2,6 +2,8 @@
 version: "1.0"
 last_updated: 2026-04-16
 status: planned
+integrated_to: core/llm-provider.md
+integrated_at: 2026-04-23
 ---
 
 # Agent Binding 次级页面 & 思考配置迁移设计

@@ -1,5 +1,5 @@
 ---
-version: "1.1"
+version: "1.2"
 last_updated: 2026-04-23
 status: in-progress
 ---
@@ -33,6 +33,8 @@ status: in-progress
 | [global-approval.md](global-approval.md) | 全局审批系统（GlobalApprovalViewModel + Banner）、SubAgent 对话页复用 ChatScreen、路由变更 |
 | [session-panel.md](session-panel.md) | Session 侧栏按日期分组（今天/昨天/7天/30天 + 年月折叠）、GroupHeader、折叠状态记忆、active 自动展开 |
 | [theme-design.md](theme-design.md) | M3 颜色 token 补全（消除紫色 fallback）、SebastianSwitch 苹果绿组件、硬编码颜色修复 |
+| [state-recovery-notification.md](state-recovery-notification.md) | App 状态恢复（REST 快照 + SSE 增量幂等 merge）、本地通知（NotificationDispatcher、前后台判断、Channel 设计）、Deep Link 跳转 |
+| [agent-pill-animation.md](agent-pill-animation.md) | AgentPill 灵动岛式动画（OrbsAnimation 光团漂移 + HudAnimation Jarvis HUD + BreathingHalo 彩虹环）、80ms 防抖、AgentPillMode 状态映射 |
 
 ---
 
@@ -50,6 +52,8 @@ status: in-progress
 | 查阅整体 Phase 规划或技术栈决策 | [overview.md](overview.md) |
 | 改 Session 侧栏分组、折叠、日期显示 | [session-panel.md](session-panel.md) |
 | 改主题颜色、Switch 组件、新增颜色 token | [theme-design.md](theme-design.md) |
+| 改状态恢复、通知分发、Deep Link | [state-recovery-notification.md](state-recovery-notification.md) |
+| 改 AgentPill 胶囊动画、OrbsAnimation、HudAnimation | [agent-pill-animation.md](agent-pill-animation.md) |
 
 ---
 

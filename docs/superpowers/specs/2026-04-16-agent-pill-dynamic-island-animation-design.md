@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/agent-pill-animation.md
+integrated_at: 2026-04-23
+---
+
 # AgentPill 灵动岛式动画设计
 
 **日期：** 2026-04-16

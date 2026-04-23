@@ -1,3 +1,8 @@
+---
+integrated_to: mobile/state-recovery-notification.md
+integrated_at: 2026-04-23
+---
+
 # App 状态恢复 + 本地通知
 
 ## Context
