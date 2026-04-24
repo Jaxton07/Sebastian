@@ -157,7 +157,7 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                     name = item.payloadString("tool_name") ?: item.payloadString("name") ?: "",
                     inputs = item.content ?: "",
                     status = status,
-                    resultSummary = result?.content,
+                    resultSummary = result?.payloadString("display") ?: result?.content,
                     error = if (status == ToolStatus.FAILED) result?.payloadString("error") else null,
                 )
             }
@@ -172,7 +172,7 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                         name = "",
                         inputs = "",
                         status = if (failed) ToolStatus.FAILED else ToolStatus.DONE,
-                        resultSummary = item.content,
+                        resultSummary = item.payloadString("display") ?: item.content,
                         error = if (failed) item.payloadString("error") else null,
                     )
                 }
