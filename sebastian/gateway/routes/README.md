@@ -55,6 +55,8 @@ routes/
 | `DELETE /sessions/{id}/tasks/{tid}` — 取消 Task（DELETE）| [sessions.py](sessions.py) |
 | `POST /sessions/{id}/tasks/{tid}/cancel` — 取消 Task（POST）| [sessions.py](sessions.py) |
 | `POST /sessions/{id}/cancel` — 取消 session 当前 turn（含未登记流的预取消兜底）| [sessions.py](sessions.py) |
+| `POST /sessions/{id}/compact` — 手动触发上下文压缩（409 if active stream）| [sessions.py](sessions.py) |
+| `GET /sessions/{id}/compaction/status` — 查询 session 压缩状态（token 估算、summary seq 等）| [sessions.py](sessions.py) |
 | `GET /stream` — 订阅全局 SSE 事件流 | [stream.py](stream.py) |
 | `GET /sessions/{id}/stream` — 订阅单会话 SSE 事件流 | [stream.py](stream.py) |
 | `POST /auth/login` — 密码登录，获取 JWT | [turns.py](turns.py) |

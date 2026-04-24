@@ -173,6 +173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         token_meter=ContextTokenMeter(context_window=200_000),
         estimator=TokenEstimator(),
     )
+    state.context_compaction_worker = _compaction_worker
 
     # Catch-up sweep: consolidate sessions that completed while the gateway was down.
     from sebastian.memory.consolidation import sweep_unconsolidated
