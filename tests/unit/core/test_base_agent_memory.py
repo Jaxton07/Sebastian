@@ -72,6 +72,7 @@ def _stub_session_store(agent) -> None:
     session_store.get_messages = AsyncMock(return_value=[])
     session_store.get_context_messages = AsyncMock(return_value=[])
     session_store.append_message = AsyncMock()
+    session_store.allocate_exchange = AsyncMock(return_value=("ex_test", 1))
     agent._session_store = session_store
 
 

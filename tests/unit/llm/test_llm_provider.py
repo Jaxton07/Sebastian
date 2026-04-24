@@ -59,8 +59,16 @@ async def test_anthropic_provider_streams_text_and_ends() -> None:
     text_block.type = "text"
     text_block.text = "Hello world"
 
+    final_usage = MagicMock()
+    final_usage.input_tokens = 10
+    final_usage.output_tokens = 5
+    final_usage.cache_creation_input_tokens = None
+    final_usage.cache_read_input_tokens = None
+    final_usage.model_dump = lambda: {"input_tokens": 10, "output_tokens": 5}
+
     final_msg = MagicMock()
     final_msg.stop_reason = "end_turn"
+    final_msg.usage = final_usage
 
     raw_events = [
         _make_raw("content_block_start", index=0, content_block=MagicMock(type="text")),
@@ -99,11 +107,20 @@ async def test_anthropic_provider_streams_text_and_ends() -> None:
     ):
         events.append(event)
 
+    from sebastian.context.usage import TokenUsage
+
     assert events == [
         TextBlockStart(block_id="b0_0"),
         TextDelta(block_id="b0_0", delta="Hello world"),
         TextBlockStop(block_id="b0_0", text="Hello world"),
-        ProviderCallEnd(stop_reason="end_turn"),
+        ProviderCallEnd(
+            stop_reason="end_turn",
+            usage=TokenUsage(
+                input_tokens=10,
+                output_tokens=5,
+                raw={"input_tokens": 10, "output_tokens": 5},
+            ),
+        ),
     ]
 
 
@@ -128,12 +145,26 @@ async def test_openai_compat_provider_streams_text_and_ends() -> None:
         delta.tool_calls = None
         choice.delta = delta
         chunk.choices = [choice]
+        chunk.usage = None
+        return chunk
+
+    def _usage_chunk() -> MagicMock:
+        chunk = MagicMock()
+        chunk.choices = []
+        usage = MagicMock()
+        usage.prompt_tokens = 8
+        usage.completion_tokens = 4
+        usage.total_tokens = 12
+        usage.completion_tokens_details = None
+        usage.model_dump = lambda: {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12}
+        chunk.usage = usage
         return chunk
 
     chunks = [
         _chunk(content="Hello"),
         _chunk(content=" world"),
         _chunk(finish_reason="stop"),
+        _usage_chunk(),
     ]
 
     async def _aiter_chunks():
@@ -161,12 +192,22 @@ async def test_openai_compat_provider_streams_text_and_ends() -> None:
     ):
         events.append(event)
 
+    from sebastian.context.usage import TokenUsage
+
     assert events == [
         TextBlockStart(block_id="b0_0"),
         TextDelta(block_id="b0_0", delta="Hello"),
         TextDelta(block_id="b0_0", delta=" world"),
         TextBlockStop(block_id="b0_0", text="Hello world"),
-        ProviderCallEnd(stop_reason="end_turn"),
+        ProviderCallEnd(
+            stop_reason="stop",
+            usage=TokenUsage(
+                input_tokens=8,
+                output_tokens=4,
+                total_tokens=12,
+                raw={"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12},
+            ),
+        ),
     ]
 
 
