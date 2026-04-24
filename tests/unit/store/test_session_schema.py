@@ -298,7 +298,7 @@ async def test_verify_schema_invariants_detects_missing_ix_session_items_ctx():
 
 @pytest.mark.asyncio
 async def test_migration_backfills_assistant_turn_id_from_legacy_turn_id():
-    """旧库只有 turn_id 时，迁移应新增 assistant_turn_id 并回填历史值。"""
+    """旧库只有 turn_id 时，迁移应重建为 assistant_turn_id 并保留约束索引。"""
     from sebastian.store.database import _apply_idempotent_migrations
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -332,6 +332,31 @@ async def test_migration_backfills_assistant_turn_id_from_legacy_turn_id():
         ).first()
         assert row is not None
         assert row[0] == "t1"
+
+        columns = {
+            row[1]
+            for row in (await conn.exec_driver_sql("PRAGMA table_info(session_items)")).fetchall()
+        }
+        assert "assistant_turn_id" in columns
+        assert "turn_id" not in columns
+
+        create_sql = (
+            await conn.exec_driver_sql(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='session_items'"
+            )
+        ).scalar_one()
+        assert "uq_session_items_seq" in create_sql
+
+        index_names = {
+            row[0]
+            for row in (
+                await conn.exec_driver_sql(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='session_items'"
+                )
+            ).fetchall()
+        }
+        assert "ix_session_items_ctx" in index_names
+        assert "ix_session_items_assistant_turn" in index_names
 
     await engine.dispose()
     await asyncio.sleep(0)
