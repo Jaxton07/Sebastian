@@ -86,6 +86,7 @@ def _normalize_block_payload(block: dict[str, Any]) -> dict[str, Any]:
         payload["tool_call_id"] = (
             block.get("tool_call_id") or block.get("tool_use_id") or block.get("tool_id") or ""
         )
+        payload.pop("model_content", None)
     return payload
 
 
@@ -251,6 +252,14 @@ class SessionTimelineStore:
                 block_content = json.dumps(block.get("input", {}), default=str)
             elif block_type == "thinking":
                 block_content = block.get("thinking") or ""
+            elif block_type == "tool_result":
+                block_content = (
+                    block.get("model_content")
+                    or block.get("display")
+                    or block.get("text")
+                    or block.get("content")
+                    or ""
+                )
             else:
                 block_content = block.get("text") or block.get("content") or ""
 
@@ -485,9 +494,7 @@ class SessionTimelineStore:
                     )
                     seq_row = seq_result.first()
                     if seq_row is None:
-                        raise ValueError(
-                            f"Session {session_id!r} (agent={agent_type!r}) not found"
-                        )
+                        raise ValueError(f"Session {session_id!r} (agent={agent_type!r}) not found")
                     summary_seq: int = seq_row[0]
 
                     # 5. Insert context_summary item
