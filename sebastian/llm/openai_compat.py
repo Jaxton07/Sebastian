@@ -6,6 +6,7 @@ from typing import Any
 
 import openai
 
+from sebastian.context.usage import TokenUsage
 from sebastian.core.stream_events import (
     LLMStreamEvent,
     ProviderCallEnd,
@@ -67,6 +68,7 @@ class OpenAICompatProvider(LLMProvider):
             "messages": openai_messages,
             "max_tokens": max_tokens,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if tools:
             kwargs["tools"] = [
@@ -95,8 +97,24 @@ class OpenAICompatProvider(LLMProvider):
         # tool_calls_raw: index → {id, name, arguments_str}
         tool_calls_raw: dict[int, dict[str, str]] = {}
         stop_reason = "end_turn"
+        last_usage: TokenUsage | None = None
 
         async for chunk in await self._client.chat.completions.create(**kwargs):
+            raw_usage = getattr(chunk, "usage", None)
+            if raw_usage is not None:
+                last_usage = TokenUsage(
+                    input_tokens=getattr(raw_usage, "prompt_tokens", None),
+                    output_tokens=getattr(raw_usage, "completion_tokens", None),
+                    total_tokens=getattr(raw_usage, "total_tokens", None),
+                    reasoning_tokens=(
+                        getattr(
+                            getattr(raw_usage, "completion_tokens_details", None),
+                            "reasoning_tokens",
+                            None,
+                        )
+                    ),
+                    raw=raw_usage.model_dump() if hasattr(raw_usage, "model_dump") else None,
+                )
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]
@@ -179,7 +197,7 @@ class OpenAICompatProvider(LLMProvider):
             )
             stop_reason = "tool_use"
 
-        yield ProviderCallEnd(stop_reason=stop_reason)
+        yield ProviderCallEnd(stop_reason=stop_reason, usage=last_usage)
 
 
 def _parse_think_tags(

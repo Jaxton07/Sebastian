@@ -73,6 +73,13 @@ Anthropic 旧版 effort 模式的 budget_tokens 映射写在 `AnthropicProvider.
 
 UI 层需在 clamp 规则中保证传入 Provider 的 effort 始终合法（见 `ui/mobile/src/store/composer.ts` 的 `clampAllToCapability`）。
 
+## Token Usage 采集
+
+- Provider 在 `ProviderCallEnd` 事件中附带 `usage: TokenUsage | None`，由 `sebastian.context.usage.TokenUsage` 定义。
+- `AnthropicProvider` 从 `final.usage` 构造 `TokenUsage`，包含 `cache_creation_input_tokens` / `cache_read_input_tokens`。
+- `OpenAICompatProvider` 在请求 kwargs 中加 `stream_options: {include_usage: True}`，从末尾 chunk 的 `usage` 字段采集；`reasoning_tokens` 从 `completion_tokens_details.reasoning_tokens` 取得。
+- 若 Provider 未返回 usage（如本地模型或旧版 API），`TokenUsage` 为 `None`；后续 Token 估算由 `TokenEstimator`（尚未实现）兜底。
+
 ## 修改导航
 
 | 如果要修改… | 看这里 |
