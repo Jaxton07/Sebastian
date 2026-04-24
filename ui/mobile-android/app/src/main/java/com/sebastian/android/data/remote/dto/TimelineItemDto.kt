@@ -18,6 +18,8 @@ data class TimelineItemDto(
     @param:Json(name = "provider_call_index") val providerCallIndex: Int? = null,
     @param:Json(name = "block_index") val blockIndex: Int? = null,
     @param:Json(name = "created_at") val createdAt: String? = null,
+    @param:Json(name = "exchange_id") val exchangeId: String? = null,
+    @param:Json(name = "exchange_index") val exchangeIndex: Long? = null,
 ) {
     fun payloadString(key: String): String? = payload?.get(key) as? String
 

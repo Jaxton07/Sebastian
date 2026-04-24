@@ -65,4 +65,24 @@ class TimelineItemDtoTest {
         )
         assertTrue(!item.archived)
     }
+
+    @Test
+    fun timelineItemParsesExchangeFields() {
+        val json = """
+            {
+              "id": "i2",
+              "session_id": "s1",
+              "seq": 2,
+              "kind": "context_summary",
+              "exchange_id": "ex-1",
+              "exchange_index": 3
+            }
+        """.trimIndent()
+
+        val adapter = moshi.adapter(TimelineItemDto::class.java)
+        val item = adapter.fromJson(json)!!
+
+        assertEquals("ex-1", item.exchangeId)
+        assertEquals(3L, item.exchangeIndex)
+    }
 }
