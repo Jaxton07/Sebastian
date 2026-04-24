@@ -474,7 +474,7 @@ def _has_active_stream(state: Any, session_id: str) -> bool:
         return True
     # Check sub-agent instances
     for agent in state.agent_instances.values():
-        task = agent._active_streams.get(session_id)  # type: ignore[attr-defined]
+        task = agent._active_streams.get(session_id)
         if task is not None and not task.done():
             return True
     return False
@@ -508,6 +508,8 @@ async def compact_session(
         session_id,
         session.agent_type,
         reason="manual",
+        retain_recent_exchanges=body.retain_recent_exchanges,
+        dry_run=body.dry_run,
     )
     return asdict(result)
 
@@ -547,14 +549,14 @@ async def get_compaction_status(
 
     # Count non-archived, non-summary items grouped by exchange for compactable count.
     # Reuse the same grouping logic: total groups minus retained, floor 0.
-    from sebastian.context.compaction import _group_by_exchange
+    from sebastian.context.compaction import group_by_exchange
 
     active_items = [
         item
         for item in items
         if not item.get("archived") and item.get("kind") != "context_summary"
     ]
-    groups = _group_by_exchange(active_items)
+    groups = group_by_exchange(active_items)
     compactable = max(0, len(groups) - _DEFAULT_RETAIN_RECENT_EXCHANGES)
 
     return {

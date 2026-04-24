@@ -310,3 +310,54 @@ def test_compaction_status_unknown_session_returns_404(client) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions/{id}/compact — dry_run variant
+# ---------------------------------------------------------------------------
+
+
+def test_compact_session_dry_run_returns_dry_run_status_and_no_summary(client) -> None:
+    """POST /compact with dry_run=true returns status='dry_run' and summary_item_id=None.
+
+    The worker must not insert a context_summary item.
+    """
+    import sebastian.gateway.state as state
+    from sebastian.context.compaction import CompactionResult
+
+    http_client = client
+    token = _login(http_client)
+
+    session = _create_session()
+    _store_session(session)
+
+    dry_run_result = CompactionResult(
+        status="dry_run",
+        source_seq_start=1,
+        source_seq_end=16,
+        archived_item_count=16,
+        source_token_estimate=9500,
+        summary_item_id=None,
+    )
+
+    with patch.object(
+        state.context_compaction_worker,
+        "compact_session",
+        new_callable=AsyncMock,
+        return_value=dry_run_result,
+    ) as mock_compact:
+        resp = http_client.post(
+            f"/api/v1/sessions/{session.id}/compact",
+            json={"dry_run": True},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "dry_run"
+    assert body["summary_item_id"] is None
+    assert body["source_token_estimate"] == 9500
+
+    # Verify the gateway forwarded dry_run=True to the worker
+    call_kwargs = mock_compact.call_args
+    assert call_kwargs.kwargs.get("dry_run") is True

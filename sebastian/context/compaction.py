@@ -30,7 +30,7 @@ def select_compaction_range(
         item for item in items
         if not item.get("archived") and item.get("kind") != "context_summary"
     ]
-    groups = _group_by_exchange(candidates)
+    groups = group_by_exchange(candidates)
     if len(groups) <= retain_recent_exchanges:
         return None
     source_groups = groups[:-retain_recent_exchanges]
@@ -54,7 +54,7 @@ def select_compaction_range(
     )
 
 
-def _group_by_exchange(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+def group_by_exchange(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Group items by exchange_index when present, else start a new group at each user_message."""
     groups: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
@@ -103,7 +103,7 @@ def _has_incomplete_tool_chain(items: list[dict[str, Any]]) -> bool:
 
 @dataclass(slots=True)
 class CompactionResult:
-    status: str  # "compacted" | "skipped"
+    status: str  # "compacted" | "skipped" | "dry_run"
     reason: str | None = None
     summary_item_id: str | None = None
     source_seq_start: int | None = None
@@ -162,6 +162,8 @@ class SessionContextCompactionWorker:
         agent_type: str,
         *,
         reason: str,
+        retain_recent_exchanges: int | None = None,
+        dry_run: bool = False,
     ) -> CompactionResult:
         from sebastian.context.estimator import TokenEstimator
         from sebastian.context.prompts import CONTEXT_COMPACTION_SYSTEM_PROMPT
@@ -177,15 +179,31 @@ class SessionContextCompactionWorker:
         # 2. Estimate source tokens (full timeline, not just compaction range)
         source_token_estimate = estimator.estimate_messages(items)
 
-        # 3. Select compaction range
+        # 3. Select compaction range — caller may override the retention window
+        effective_retain = (
+            retain_recent_exchanges
+            if retain_recent_exchanges is not None
+            else self._retain_recent_exchanges
+        )
         compaction_range = select_compaction_range(
             items,
-            retain_recent_exchanges=self._retain_recent_exchanges,
+            retain_recent_exchanges=effective_retain,
         )
 
         # 4. No valid range → skip
         if compaction_range is None:
             return CompactionResult(status="skipped", reason="range_too_small")
+
+        # 4b. Dry-run: return range metadata without calling LLM or persisting
+        if dry_run:
+            return CompactionResult(
+                status="dry_run",
+                source_seq_start=compaction_range.source_seq_start,
+                source_seq_end=compaction_range.source_seq_end,
+                archived_item_count=len(compaction_range.items),
+                source_token_estimate=source_token_estimate,
+                summary_item_id=None,
+            )
 
         # 5. Enforce min_source_tokens gate for non-manual triggers
         if reason != "manual" and source_token_estimate < self._min_source_tokens:

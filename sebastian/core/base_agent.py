@@ -172,6 +172,7 @@ class BaseAgent(ABC):
     allowed_tools: list[str] | None = None
     allowed_skills: list[str] | None = None
     system_prompt: str = ""  # populated by build_system_prompt in __init__
+    _active_streams: dict[str, asyncio.Task[Any]]
 
     def __init__(
         self,
@@ -577,14 +578,14 @@ class BaseAgent(ABC):
         exchange_id: str | None = None,
         exchange_index: int | None = None,
     ) -> str:
-        from sebastian.context.usage import TokenUsage as _TokenUsage  # noqa: F401 — type only
+        from sebastian.context.usage import TokenUsage
 
         full_text = ""
         assistant_blocks: list[dict[str, Any]] = []
         assistant_turn_id = str(ULID())
         current_pci: int = 0
         block_index: int = 0
-        last_provider_usage: _TokenUsage | None = None
+        last_provider_usage: TokenUsage | None = None
         todo_section = await self._session_todos_section(session_id, agent_context)
         last_user_msg = messages[-1].get("content", "") if messages else ""
         memory_section = await self._memory_section(

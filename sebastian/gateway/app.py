@@ -284,6 +284,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await completion_notifier.aclose()
     if state.consolidation_scheduler is not None:
         await state.consolidation_scheduler.aclose()
+    state.context_compaction_scheduler = None
+    state.context_compaction_worker = None
     from sebastian.store.database import get_engine
 
     await get_engine().dispose()

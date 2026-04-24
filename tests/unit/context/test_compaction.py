@@ -253,6 +253,55 @@ async def test_worker_compacts_and_returns_metadata() -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_dry_run_skips_llm_and_returns_dry_run_status() -> None:
+    """dry_run=True must return status='dry_run' without calling the LLM or compact_range."""
+    from sebastian.context.compaction import SessionContextCompactionWorker
+
+    items = []
+    seq = 1
+    for ex in range(1, 17):
+        items.append({
+            "seq": seq, "kind": "user_message", "exchange_index": ex,
+            "exchange_id": f"ex-{ex}", "archived": False,
+            "payload": {}, "content": f"u{ex}", "role": "user",
+        })
+        seq += 1
+        items.append({
+            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
+            "exchange_id": f"ex-{ex}", "archived": False,
+            "payload": {}, "content": f"a{ex}" * 200, "role": "assistant",
+        })
+        seq += 1
+
+    store = FakeSessionStore(items=items)
+    fake_provider = FakeLLMProvider("should not be called")
+    registry = FakeLLMRegistry(fake_provider)
+    worker = SessionContextCompactionWorker(session_store=store, llm_registry=registry)
+
+    # Track whether the provider was called by monkey-patching stream
+    provider_called = False
+    original_stream = fake_provider.stream
+
+    async def _guarded_stream(**kwargs: Any) -> Any:
+        nonlocal provider_called
+        provider_called = True
+        async for ev in original_stream(**kwargs):
+            yield ev
+
+    fake_provider.stream = _guarded_stream  # type: ignore[method-assign]
+
+    result = await worker.compact_session("s1", "sebastian", reason="manual", dry_run=True)
+
+    assert result.status == "dry_run"
+    assert result.summary_item_id is None
+    assert result.source_seq_start is not None
+    assert result.source_seq_end is not None
+    # No LLM call and no compact_range call
+    assert not provider_called
+    assert len(store.compact_calls) == 0
+
+
+@pytest.mark.asyncio
 async def test_worker_skips_when_llm_returns_empty_summary() -> None:
     from sebastian.context.compaction import SessionContextCompactionWorker
 
