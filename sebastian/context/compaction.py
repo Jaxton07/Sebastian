@@ -40,8 +40,8 @@ def select_compaction_range(
     if _has_incomplete_tool_chain(source_items):
         return None
     seqs = [int(it["seq"]) for it in source_items]
-    exchange_indexes = [
-        it.get("exchange_index")
+    exchange_indexes: list[int] = [
+        int(it["exchange_index"])
         for it in source_items
         if it.get("exchange_index") is not None
     ]
