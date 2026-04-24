@@ -39,9 +39,16 @@ class ContextTokenMeter:
                 token_count=usage_tokens,
                 threshold=self._usage_threshold,
             )
+        if estimate is not None:
+            return CompactionDecision(
+                should_compact=estimate >= self._estimate_threshold,
+                reason="estimate_threshold",
+                token_count=estimate,
+                threshold=self._estimate_threshold,
+            )
         return CompactionDecision(
-            should_compact=estimate is not None and estimate >= self._estimate_threshold,
-            reason="estimate_threshold",
-            token_count=estimate,
+            should_compact=False,
+            reason="no_data",
+            token_count=None,
             threshold=self._estimate_threshold,
         )

@@ -45,3 +45,60 @@ def test_select_compaction_range_skips_incomplete_tool_chain() -> None:
     ]
 
     assert select_compaction_range(items, retain_recent_exchanges=1, min_items=1) is None
+
+
+def test_select_compaction_range_fallback_groups_by_user_message() -> None:
+    # All items lack exchange_index; grouping falls back to user_message boundaries
+    items = []
+    seq = 1
+    for _ in range(11):
+        items.append(item(seq, "user_message"))
+        seq += 1
+        items.append(item(seq, "assistant_message"))
+        seq += 1
+
+    result = select_compaction_range(items, retain_recent_exchanges=3, min_items=1)
+
+    assert result is not None
+    assert result.source_seq_start == 1
+    assert result.source_seq_end == 16
+    assert result.source_exchange_start is None
+    assert result.source_exchange_end is None
+
+
+def test_select_compaction_range_rejects_below_min_items() -> None:
+    items = []
+    seq = 1
+    for ex in range(1, 12):
+        items.append(item(seq, "user_message", ex))
+        seq += 1
+        items.append(item(seq, "assistant_message", ex))
+        seq += 1
+
+    # 8 source exchanges × 2 items = 16 items; min_items=20 should reject
+    result = select_compaction_range(items, retain_recent_exchanges=3, min_items=20)
+
+    assert result is None
+
+
+def test_select_compaction_range_filters_archived_and_summary() -> None:
+    items = []
+    seq = 1
+    # one archived item + one context_summary + enough regular exchanges
+    items.append({**item(seq, "user_message", 1), "archived": True})
+    seq += 1
+    items.append(item(seq, "context_summary", 1))
+    seq += 1
+    for ex in range(2, 13):
+        items.append(item(seq, "user_message", ex))
+        seq += 1
+        items.append(item(seq, "assistant_message", ex))
+        seq += 1
+
+    result = select_compaction_range(items, retain_recent_exchanges=3, min_items=1)
+
+    assert result is not None
+    # archived and context_summary are excluded from source
+    kinds = {it["kind"] for it in result.items}
+    assert "context_summary" not in kinds
+    assert all(not it.get("archived") for it in result.items)

@@ -21,6 +21,12 @@ class TokenEstimator:
         *,
         system_prompt: str = "",
     ) -> int:
+        """Conservatively estimate tokens for a message list.
+
+        Serializes each message as JSON before counting, which includes role/content
+        punctuation overhead, then adds a fixed per-message budget. Biased toward
+        overestimating so threshold decisions err on the side of compacting.
+        """
         total = self.estimate_text(system_prompt) + 8
         for message in messages:
             total += 6

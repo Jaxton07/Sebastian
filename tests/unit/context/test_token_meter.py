@@ -18,3 +18,13 @@ def test_meter_uses_lower_estimate_threshold() -> None:
 
     assert decision.should_compact is True
     assert decision.reason == "estimate_threshold"
+
+
+def test_meter_returns_no_data_reason_when_both_inputs_missing() -> None:
+    meter = ContextTokenMeter(context_window=100_000)
+
+    decision = meter.should_compact(usage=None, estimate=None)
+
+    assert decision.should_compact is False
+    assert decision.reason == "no_data"
+    assert decision.token_count is None

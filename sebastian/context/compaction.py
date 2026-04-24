@@ -19,7 +19,10 @@ def select_compaction_range(
     retain_recent_exchanges: int = 8,
     min_items: int = 12,
 ) -> CompactionRange | None:
-    candidates = [item for item in items if not item.get("archived")]
+    candidates = [
+        item for item in items
+        if not item.get("archived") and item.get("kind") != "context_summary"
+    ]
     groups = _group_by_exchange(candidates)
     if len(groups) <= retain_recent_exchanges:
         return None
@@ -83,4 +86,4 @@ def _has_incomplete_tool_chain(items: list[dict[str, Any]]) -> bool:
             call_ids.add(tool_id)
         elif it.get("kind") == "tool_result":
             result_ids.add(tool_id)
-    return bool(call_ids - result_ids)
+    return bool(call_ids ^ result_ids)
