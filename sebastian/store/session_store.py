@@ -376,6 +376,32 @@ class SessionStore:
 
         return build_context_messages(items, provider_format, include_thinking=include_thinking)
 
+    async def compact_range(
+        self,
+        session_id: str,
+        agent_type: str,
+        *,
+        source_seq_start: int,
+        source_seq_end: int,
+        summary_content: str,
+        summary_payload: dict[str, Any],
+    ) -> Any:
+        """Atomically archive timeline items in [source_seq_start, source_seq_end] and
+        insert a context_summary item. Requires db_factory.
+
+        Returns CompactRangeResult(status, summary_item, archived_item_count).
+        """
+        if self._timeline is None:
+            raise RuntimeError("compact_range requires db_factory")
+        return await self._timeline.compact_range(
+            session_id,
+            agent_type,
+            source_seq_start=source_seq_start,
+            source_seq_end=source_seq_end,
+            summary_content=summary_content,
+            summary_payload=summary_payload,
+        )
+
     async def get_messages_since(
         self,
         session_id: str,

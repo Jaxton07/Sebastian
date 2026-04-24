@@ -569,6 +569,78 @@ async def test_allocate_exchange_increments_next_exchange_index(store, session_i
 
 
 @pytest.mark.asyncio
+async def test_compact_range_archives_source_and_inserts_summary(store, session_in_db) -> None:
+    await store.append_timeline_items(
+        session_in_db.id,
+        "sebastian",
+        [
+            {"kind": "user_message", "role": "user", "content": "u1", "exchange_index": 1},
+            {
+                "kind": "assistant_message",
+                "role": "assistant",
+                "content": "a1",
+                "exchange_index": 1,
+            },
+            {"kind": "user_message", "role": "user", "content": "u2", "exchange_index": 2},
+        ],
+    )
+
+    result = await store.compact_range(
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="summary",
+        summary_payload={"summary_version": "context_compaction_v1"},
+    )
+
+    assert result.status == "compacted"
+    context_items = await store.get_context_timeline_items(session_in_db.id, "sebastian")
+    assert [item["kind"] for item in context_items] == ["context_summary", "user_message"]
+    audit_items = await store.get_timeline_items(
+        session_in_db.id, "sebastian", include_archived=True
+    )
+    assert audit_items[0]["archived"] is True
+    assert audit_items[1]["archived"] is True
+
+
+@pytest.mark.asyncio
+async def test_compact_range_returns_already_compacted_when_any_source_archived(
+    store, session_in_db
+) -> None:
+    await store.append_timeline_items(
+        session_in_db.id,
+        "sebastian",
+        [
+            {"kind": "user_message", "role": "user", "content": "u1", "exchange_index": 1},
+            {
+                "kind": "assistant_message",
+                "role": "assistant",
+                "content": "a1",
+                "exchange_index": 1,
+            },
+        ],
+    )
+
+    # first compaction succeeds
+    first = await store.compact_range(
+        session_in_db.id, "sebastian",
+        source_seq_start=1, source_seq_end=2,
+        summary_content="s", summary_payload={"summary_version": "context_compaction_v1"},
+    )
+    assert first.status == "compacted"
+
+    # second attempt on same range
+    second = await store.compact_range(
+        session_in_db.id, "sebastian",
+        source_seq_start=1, source_seq_end=2,
+        summary_content="s2", summary_payload={"summary_version": "context_compaction_v1"},
+    )
+    assert second.status == "already_compacted"
+    assert second.archived_item_count == 0
+
+
+@pytest.mark.asyncio
 async def test_allocate_exchange_concurrent(store, session_in_db) -> None:
     """并发调用 allocate_exchange 两次，exchange_id 唯一且 exchange_index 连续。"""
     results = await asyncio.gather(

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import weakref
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Required, TypedDict
 from uuid import uuid4
@@ -15,6 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sebastian.store.models import SessionItemRecord
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class CompactRangeResult:
+    status: str  # "compacted" | "already_compacted"
+    summary_item: dict[str, Any] | None
+    archived_item_count: int
 
 # kind 值不进入"上下文窗口"投影的黑名单
 _CONTEXT_EXCLUDED_KINDS = frozenset({"thinking", "raw_block", "system_event"})
@@ -391,3 +399,110 @@ class SessionTimelineStore:
             )
             result = await db.execute(q)
             return [_record_to_dict(r) for r in result.scalars()]
+
+    # ------------------------------------------------------------------
+    # Compaction
+    # ------------------------------------------------------------------
+
+    async def compact_range(
+        self,
+        session_id: str,
+        agent_type: str,
+        *,
+        source_seq_start: int,
+        source_seq_end: int,
+        summary_content: str,
+        summary_payload: dict[str, Any],
+    ) -> CompactRangeResult:
+        """Atomically archive items in [source_seq_start, source_seq_end] and insert a
+        context_summary item with effective_seq=source_seq_start.
+
+        Returns CompactRangeResult with status "compacted" on success or
+        "already_compacted" if any item in the range is already archived (idempotent guard).
+        """
+        lock = _get_session_lock(session_id, agent_type)
+        async with lock:
+            return await self._compact_range_locked(
+                session_id,
+                agent_type,
+                source_seq_start=source_seq_start,
+                source_seq_end=source_seq_end,
+                summary_content=summary_content,
+                summary_payload=summary_payload,
+            )
+
+    async def _compact_range_locked(
+        self,
+        session_id: str,
+        agent_type: str,
+        *,
+        source_seq_start: int,
+        source_seq_end: int,
+        summary_content: str,
+        summary_payload: dict[str, Any],
+    ) -> CompactRangeResult:
+        now = datetime.now(UTC)
+        async with self._db() as db:
+            async with db.begin():
+                # 1. Select source items in range
+                result = await db.execute(
+                    select(SessionItemRecord)
+                    .where(
+                        SessionItemRecord.session_id == session_id,
+                        SessionItemRecord.agent_type == agent_type,
+                        SessionItemRecord.seq >= source_seq_start,
+                        SessionItemRecord.seq <= source_seq_end,
+                    )
+                    .with_for_update()
+                )
+                source_items = list(result.scalars())
+
+                # 2. Guard: no items found or any already archived → already_compacted
+                if not source_items or any(item.archived for item in source_items):
+                    return CompactRangeResult("already_compacted", None, 0)
+
+                # 3. Archive all source items
+                for item in source_items:
+                    item.archived = True
+
+                # 4. Allocate a new seq for the summary item
+                seq_result = await db.execute(
+                    text(
+                        "UPDATE sessions SET next_item_seq = next_item_seq + 1"
+                        " WHERE id = :sid AND agent_type = :at"
+                        " RETURNING next_item_seq - 1"
+                    ),
+                    {"sid": session_id, "at": agent_type},
+                )
+                seq_row = seq_result.first()
+                if seq_row is None:
+                    raise ValueError(
+                        f"Session {session_id!r} (agent={agent_type!r}) not found"
+                    )
+                summary_seq: int = seq_row[0]
+
+                # 5. Insert context_summary item
+                summary_record = SessionItemRecord(
+                    id=str(uuid4()),
+                    session_id=session_id,
+                    agent_type=agent_type,
+                    seq=summary_seq,
+                    kind="context_summary",
+                    role="assistant",
+                    content=summary_content,
+                    payload=summary_payload,
+                    archived=False,
+                    assistant_turn_id=None,
+                    provider_call_index=None,
+                    block_index=None,
+                    effective_seq=source_seq_start,
+                    exchange_id=None,
+                    exchange_index=None,
+                    created_at=now,
+                )
+                db.add(summary_record)
+                # flush so _record_to_dict can read back the record state
+                await db.flush()
+                summary_dict = _record_to_dict(summary_record)
+
+        return CompactRangeResult("compacted", summary_dict, len(source_items))
