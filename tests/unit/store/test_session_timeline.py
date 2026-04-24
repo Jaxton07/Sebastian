@@ -566,3 +566,32 @@ async def test_allocate_exchange_increments_next_exchange_index(store, session_i
     assert ex_idx2 == 2
     assert ex_id1 != ex_id2
     assert len(ex_id1) == 26  # ULID length
+
+
+@pytest.mark.asyncio
+async def test_allocate_exchange_concurrent(store, session_in_db) -> None:
+    """并发调用 allocate_exchange 两次，exchange_id 唯一且 exchange_index 连续。"""
+    results = await asyncio.gather(
+        store.allocate_exchange(session_in_db.id, "sebastian"),
+        store.allocate_exchange(session_in_db.id, "sebastian"),
+    )
+    ex_ids = {r[0] for r in results}
+    ex_indices = {r[1] for r in results}
+
+    assert len(ex_ids) == 2, f"exchange_id 应唯一，实际: {ex_ids}"
+    assert ex_indices == {1, 2}, f"exchange_index 应为 {{1, 2}}，实际: {ex_indices}"
+
+    # Verify sessions.next_exchange_index == 3
+    from sqlalchemy import text as sa_text
+
+    async with store._db_factory() as db:
+        row = (
+            await db.execute(
+                sa_text(
+                    "SELECT next_exchange_index FROM sessions WHERE id = :sid"
+                ),
+                {"sid": session_in_db.id},
+            )
+        ).first()
+    assert row is not None
+    assert row[0] == 3, f"next_exchange_index 应为 3，实际: {row[0]}"

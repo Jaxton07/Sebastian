@@ -617,6 +617,7 @@ async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
 
     agent = TestAgent(gate=gate, session_store=session_store, provider=ToolThenWaitProvider())
     run_task = asyncio.create_task(agent.run("slow", session_id="sess_cancel_tool"))
+
     await asyncio.wait_for(tool_started.wait(), timeout=2.0)
 
     await agent.cancel_session("sess_cancel_tool", intent="cancel")
@@ -638,3 +639,81 @@ async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
     assert tool_result["tool_call_id"] == "toolu_slow"
     assert tool_result["ok"] is False
     assert "cancel" in tool_result["model_content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_flush_carries_same_exchange_as_user_message() -> None:
+    """cancel-flush 的 append_message 应携带与 user-message 相同的 exchange_id/exchange_index。"""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    hang_event = asyncio.Event()
+
+    class SlowThinkProvider(LLMProvider):
+        """Yields a ThinkingBlockStop then hangs until cancelled."""
+
+        message_format = "anthropic"
+        call_count = 0
+
+        async def stream(
+            self,
+            *,
+            system: str,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            model: str,
+            max_tokens: int,
+            block_id_prefix: str = "",
+            thinking_effort: str | None = None,
+        ) -> AsyncGenerator[LLMStreamEvent, None]:
+            self.call_count += 1
+            yield ThinkingBlockStart(block_id="b0_0")
+            yield ThinkingBlockStop(block_id="b0_0", thinking="pondering...", signature=None)
+            await hang_event.wait()
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are a test agent."
+
+    _EXCHANGE_ID = "01JEXCHANGE_CANCEL000000001"
+    _EXCHANGE_IDX = 7
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_context_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+    session_store.allocate_exchange = AsyncMock(return_value=(_EXCHANGE_ID, _EXCHANGE_IDX))
+
+    fake_db_factory = MagicMock()
+
+    gate = MagicMock()
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(
+        gate=gate,
+        session_store=session_store,
+        provider=SlowThinkProvider(),
+        db_factory=fake_db_factory,
+    )
+
+    run_task = asyncio.create_task(agent.run("hi", session_id="sess_cancel_exchange"))
+    await asyncio.sleep(0.05)
+
+    await agent.cancel_session("sess_cancel_exchange", intent="cancel")
+    try:
+        await asyncio.wait_for(run_task, timeout=2.0)
+    except (asyncio.CancelledError, TimeoutError):
+        pass
+
+    calls = session_store.append_message.call_args_list
+    # Every call (user + cancel-flush assistant) must carry the same exchange pair
+    assert len(calls) >= 2, "Expected user append + cancel-flush append"
+    for call in calls:
+        assert call.kwargs.get("exchange_id") == _EXCHANGE_ID, (
+            f"exchange_id mismatch in call: {call}"
+        )
+        assert call.kwargs.get("exchange_index") == _EXCHANGE_IDX, (
+            f"exchange_index mismatch in call: {call}"
+        )
