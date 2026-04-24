@@ -165,6 +165,32 @@ class SessionContextCompactionWorker:
         retain_recent_exchanges: int | None = None,
         dry_run: bool = False,
     ) -> CompactionResult:
+        """Run a single context-compaction pass for *session_id*/*agent_type*.
+
+        Execution order
+        ---------------
+        1. Fetch timeline items from the store.
+        2. Estimate source token count (full timeline).
+        3. Select the compaction range (``select_compaction_range``).
+        4. If no valid range → return ``status="skipped"``.
+        5. **dry_run short-circuit**: when ``dry_run=True`` the function returns
+           immediately with ``status="dry_run"`` and the range metadata.  This
+           happens *before* the ``min_source_tokens`` gate (step 6), so the
+           returned result reflects the would-be range even when the token count
+           is below the threshold.  No LLM call and no ``store.compact_range``
+           call are made.
+        6. Enforce ``min_source_tokens`` gate (skips non-manual triggers below
+           the threshold).
+        7–14. Call LLM, persist summary, return ``status="compacted"``.
+
+        Parameters
+        ----------
+        dry_run:
+            When ``True``, short-circuit after range selection and token
+            estimation and return ``CompactionResult(status="dry_run")``
+            without touching the LLM or the persistent store.  Useful for
+            inspecting what *would* be compacted without side effects.
+        """
         from sebastian.context.estimator import TokenEstimator
         from sebastian.context.prompts import CONTEXT_COMPACTION_SYSTEM_PROMPT
         from sebastian.core.stream_events import TextDelta

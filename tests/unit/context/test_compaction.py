@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -332,3 +336,57 @@ async def test_worker_skips_when_llm_returns_empty_summary() -> None:
     assert result.reason == "empty_summary"
     # compact_range should NOT have been called
     assert len(store.compact_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_dry_run_returns_dry_run_even_below_min_source_tokens() -> None:
+    """dry_run=True must return status='dry_run' even when token count is below
+    min_source_tokens — the dry_run short-circuit fires before the token gate."""
+    from unittest.mock import AsyncMock
+
+    from sebastian.context.compaction import SessionContextCompactionWorker
+
+    # Build just enough exchanges for a valid compaction range (>8 + retain)
+    items = []
+    seq = 1
+    for ex in range(1, 17):
+        items.append({
+            "seq": seq, "kind": "user_message", "exchange_index": ex,
+            "exchange_id": f"ex-{ex}", "archived": False,
+            "payload": {}, "content": "hi",  # tiny content → tiny token estimate
+            "role": "user",
+        })
+        seq += 1
+        items.append({
+            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
+            "exchange_id": f"ex-{ex}", "archived": False,
+            "payload": {}, "content": "ok",  # tiny → ensures token estimate < 1_000_000
+            "role": "assistant",
+        })
+        seq += 1
+
+    store = FakeSessionStore(items=items)
+    # Mock compact_range so we can assert it was never called
+    store.compact_range = AsyncMock()  # type: ignore[method-assign]
+
+    fake_provider = FakeLLMProvider("should not be called")
+    fake_provider.stream = AsyncMock()  # type: ignore[method-assign]
+    registry = FakeLLMRegistry(fake_provider)
+
+    # min_source_tokens set impossibly high so normal compaction would be skipped
+    worker = SessionContextCompactionWorker(
+        session_store=store,
+        llm_registry=registry,
+        min_source_tokens=1_000_000,
+    )
+
+    result = await worker.compact_session("s1", "sebastian", reason="auto_token", dry_run=True)
+
+    # dry_run must win — status is "dry_run", not "skipped"
+    assert result.status == "dry_run"
+    assert result.source_seq_start is not None
+    assert result.source_seq_end is not None
+    # No LLM call, no store.compact_range call
+    fake_provider.stream.assert_not_called()
+    store.compact_range.assert_not_called()
+
