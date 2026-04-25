@@ -158,6 +158,12 @@ async def clear_agent_binding(
 ) -> Response:
     import sebastian.gateway.state as state
 
+    if agent_type == "__default__":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete __default__ binding; PUT a new value instead.",
+        )
+
     if agent_type != ORCHESTRATOR_AGENT_TYPE and agent_type not in state.agent_registry:
         raise HTTPException(status_code=404, detail="Agent not found")
 
