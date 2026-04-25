@@ -296,10 +296,10 @@ class TestLoadBuiltinCatalog:
 
     def test_zhipu_provider(self) -> None:
         p = self.catalog.get_provider("zhipu")
-        assert p.display_name == "智谱"
+        assert p.display_name == "Zhi Pu Coding"
         assert p.provider_type == "anthropic"
         assert p.base_url == "https://open.bigmodel.cn/api/anthropic"
-        assert len(p.models) == 2
+        assert len(p.models) == 3
 
     def test_zhipu_glm51(self) -> None:
         m = self.catalog.get_model("zhipu", "glm-5.1")
@@ -313,3 +313,10 @@ class TestLoadBuiltinCatalog:
         assert m.display_name == "GLM-5V-Turbo"
         assert m.context_window_tokens == 200_000
         assert m.thinking_capability == "toggle"
+
+    def test_zhipu_glm47(self) -> None:
+        m = self.catalog.get_model("zhipu", "glm-4.7")
+        assert m.display_name == "GLM-4.7"
+        assert m.context_window_tokens == 200_000
+        assert m.thinking_capability == "toggle"
+        assert m.thinking_format is None
