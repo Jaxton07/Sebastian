@@ -1,14 +1,12 @@
 package com.sebastian.android.data.repository
 
-import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.remote.ApiService
 import com.sebastian.android.data.remote.dto.AgentBindingDto
-import com.sebastian.android.data.remote.dto.LegacyAgentBindingDto
-import com.sebastian.android.data.remote.dto.LegacySetBindingRequest
 import com.sebastian.android.data.remote.dto.MemoryComponentBindingDto
 import com.sebastian.android.data.remote.dto.MemoryComponentDto
 import com.sebastian.android.data.remote.dto.MemoryComponentsResponse
 import com.sebastian.android.data.remote.dto.SetBindingRequest
+import com.sebastian.android.data.model.ThinkingEffort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -23,63 +21,6 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 
 class AgentRepositoryImplTest {
-
-    @Test
-    fun `setBinding sends provider_id and OFF effort as null thinking_effort`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.setAgentBinding(eq("forge"), any())).thenReturn(
-            LegacyAgentBindingDto(agentType = "forge", providerId = "p1", thinkingEffort = null)
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        val result = repo.setBinding("forge", "p1", ThinkingEffort.OFF)
-
-        assertTrue(result.isSuccess)
-        val captor = argumentCaptor<LegacySetBindingRequest>()
-        verify(api).setAgentBinding(eq("forge"), captor.capture())
-        assertEquals("p1", captor.firstValue.providerId)
-        assertNull(captor.firstValue.thinkingEffort)
-    }
-
-    @Test
-    fun `setBinding maps HIGH effort to high string in request body`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.setAgentBinding(eq("forge"), any())).thenReturn(
-            LegacyAgentBindingDto(agentType = "forge", providerId = "p1", thinkingEffort = "high")
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        repo.setBinding("forge", "p1", ThinkingEffort.HIGH)
-
-        val captor = argumentCaptor<LegacySetBindingRequest>()
-        verify(api).setAgentBinding(eq("forge"), captor.capture())
-        assertEquals("high", captor.firstValue.thinkingEffort)
-    }
-
-    @Test
-    fun `setBinding allows null provider_id for use-default`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.setAgentBinding(eq("forge"), any())).thenReturn(
-            LegacyAgentBindingDto(agentType = "forge", providerId = null, thinkingEffort = null)
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        repo.setBinding("forge", null, ThinkingEffort.OFF)
-
-        val captor = argumentCaptor<LegacySetBindingRequest>()
-        verify(api).setAgentBinding(eq("forge"), captor.capture())
-        assertNull(captor.firstValue.providerId)
-    }
-
-    @Test
-    fun `clearBinding calls clearAgentBinding and returns success`() = runTest {
-        val api = mock(ApiService::class.java)
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        val result = repo.clearBinding("forge")
-        assertTrue(result.isSuccess)
-        verify(api).clearAgentBinding("forge")
-    }
 
     // ── Memory Component tests ──────────────────────────────────────────────
 
@@ -141,77 +82,12 @@ class AgentRepositoryImplTest {
         assertEquals(ThinkingEffort.HIGH, info.thinkingEffort)
     }
 
-    @Test
-    fun `getMemoryComponentBinding fills agentType with componentType`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.getMemoryComponentBinding("episodic")).thenReturn(
-            MemoryComponentBindingDto(
-                componentType = "episodic",
-                accountId = "acct-1",
-                thinkingEffort = null,
-            )
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        val result = repo.getMemoryComponentBinding("episodic")
-
-        assertTrue(result.isSuccess)
-        val dto = result.getOrThrow()
-        assertEquals("episodic", dto.agentType)
-        // Legacy getMemoryComponentBinding maps accountId -> providerId for backward compat
-        assertEquals("acct-1", dto.providerId)
-        assertNull(dto.thinkingEffort)
-    }
-
-    @Test
-    fun `setMemoryComponentBinding sends correct request with OFF effort as null`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.setMemoryComponentBinding(eq("semantic"), any())).thenReturn(
-            MemoryComponentBindingDto(componentType = "semantic", accountId = "acct-2", thinkingEffort = null)
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        val result = repo.setMemoryComponentBinding("semantic", "acct-2", ThinkingEffort.OFF)
-
-        assertTrue(result.isSuccess)
-        val captor = argumentCaptor<LegacySetBindingRequest>()
-        verify(api).setMemoryComponentBinding(eq("semantic"), captor.capture())
-        assertEquals("acct-2", captor.firstValue.providerId)
-        assertNull(captor.firstValue.thinkingEffort)
-    }
-
-    @Test
-    fun `setMemoryComponentBinding maps HIGH effort to high string`() = runTest {
-        val api = mock(ApiService::class.java)
-        `when`(api.setMemoryComponentBinding(eq("semantic"), any())).thenReturn(
-            MemoryComponentBindingDto(componentType = "semantic", accountId = "acct-2", thinkingEffort = "high")
-        )
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        repo.setMemoryComponentBinding("semantic", "acct-2", ThinkingEffort.HIGH)
-
-        val captor = argumentCaptor<LegacySetBindingRequest>()
-        verify(api).setMemoryComponentBinding(eq("semantic"), captor.capture())
-        assertEquals("high", captor.firstValue.thinkingEffort)
-    }
-
-    @Test
-    fun `clearMemoryComponentBinding calls correct API endpoint and returns success`() = runTest {
-        val api = mock(ApiService::class.java)
-        val repo = AgentRepositoryImpl(api, Dispatchers.Unconfined)
-
-        val result = repo.clearMemoryComponentBinding("episodic")
-
-        assertTrue(result.isSuccess)
-        verify(api).clearMemoryComponentBinding("episodic")
-    }
-
     // ── Account-based memory binding tests ──────────────────────────────────
 
     @Test
     fun `getMemoryBinding returns AgentBinding with accountId and modelId`() = runTest {
         val api = mock(ApiService::class.java)
-        `when`(api.getMemoryComponentBindingV2("episodic")).thenReturn(
+        `when`(api.getMemoryComponentBinding("episodic")).thenReturn(
             MemoryComponentBindingDto(
                 componentType = "episodic",
                 accountId = "acct-1",
@@ -234,7 +110,7 @@ class AgentRepositoryImplTest {
     @Test
     fun `setMemoryBinding sends accountId and modelId in request`() = runTest {
         val api = mock(ApiService::class.java)
-        `when`(api.setMemoryComponentBindingV2(eq("semantic"), any())).thenReturn(
+        `when`(api.setMemoryComponentBinding(eq("semantic"), any())).thenReturn(
             MemoryComponentBindingDto(
                 componentType = "semantic",
                 accountId = "acct-5",
@@ -248,16 +124,16 @@ class AgentRepositoryImplTest {
 
         assertTrue(result.isSuccess)
         val captor = argumentCaptor<SetBindingRequest>()
-        verify(api).setMemoryComponentBindingV2(eq("semantic"), captor.capture())
+        verify(api).setMemoryComponentBinding(eq("semantic"), captor.capture())
         assertEquals("acct-5", captor.firstValue.accountId)
         assertEquals("claude-opus-4", captor.firstValue.modelId)
         assertEquals("high", captor.firstValue.thinkingEffort)
     }
 
     @Test
-    fun `getAgentBinding returns AgentBinding via V2 endpoint`() = runTest {
+    fun `getAgentBinding returns AgentBinding via endpoint`() = runTest {
         val api = mock(ApiService::class.java)
-        `when`(api.getAgentBindingV2("forge")).thenReturn(
+        `when`(api.getAgentBinding("forge")).thenReturn(
             AgentBindingDto(
                 agentType = "forge",
                 accountId = "acct-7",

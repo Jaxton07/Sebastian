@@ -12,6 +12,7 @@ data class MemoryComponentBindingDto(
     @param:Json(name = "account_id") val accountId: String? = null,
     @param:Json(name = "model_id") val modelId: String? = null,
     @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
+    @param:Json(name = "resolved") val resolved: ResolvedBindingDto? = null,
 )
 
 fun MemoryComponentBindingDto.toAgentBinding(componentTypeFallback: String) = AgentBinding(
@@ -19,7 +20,7 @@ fun MemoryComponentBindingDto.toAgentBinding(componentTypeFallback: String) = Ag
     accountId = accountId,
     modelId = modelId,
     thinkingEffort = thinkingEffort,
-    resolved = null,
+    resolved = resolved?.toDomain(),
 )
 
 @JsonClass(generateAdapter = true)

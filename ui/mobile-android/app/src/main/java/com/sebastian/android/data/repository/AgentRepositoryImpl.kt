@@ -3,12 +3,7 @@ package com.sebastian.android.data.repository
 import com.sebastian.android.data.model.AgentBinding
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.MemoryComponentInfo
-import com.sebastian.android.data.model.ThinkingEffort
-import com.sebastian.android.data.model.toApiString
 import com.sebastian.android.data.remote.ApiService
-import com.sebastian.android.data.remote.dto.AgentBindingDto
-import com.sebastian.android.data.remote.dto.LegacyAgentBindingDto
-import com.sebastian.android.data.remote.dto.LegacySetBindingRequest
 import com.sebastian.android.data.remote.dto.SetBindingRequest
 import com.sebastian.android.data.remote.dto.toAgentBinding
 import com.sebastian.android.di.IoDispatcher
@@ -29,42 +24,11 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── Legacy provider-based agent binding ──────────────────────────────
-
-    override suspend fun getBinding(agentType: String): Result<LegacyAgentBindingDto> = runCatching {
-        withContext(dispatcher) {
-            apiService.getAgentBinding(agentType)
-        }
-    }
-
-    override suspend fun setBinding(
-        agentType: String,
-        providerId: String?,
-        thinkingEffort: ThinkingEffort,
-    ): Result<Unit> = runCatching {
-        withContext(dispatcher) {
-            apiService.setAgentBinding(
-                agentType,
-                LegacySetBindingRequest(
-                    providerId = providerId,
-                    thinkingEffort = thinkingEffort.toApiString(),
-                ),
-            )
-            Unit
-        }
-    }
-
-    override suspend fun clearBinding(agentType: String): Result<Unit> = runCatching {
-        withContext(dispatcher) {
-            apiService.clearAgentBinding(agentType)
-        }
-    }
-
-    // ── Account-based agent binding ──────────────────────────────────────
+    // ── Account-based agent binding ──────────────────────────────────────────
 
     override suspend fun getAgentBinding(agentType: String): Result<AgentBinding> = runCatching {
         withContext(dispatcher) {
-            apiService.getAgentBindingV2(agentType).toDomain()
+            apiService.getAgentBinding(agentType).toDomain()
         }
     }
 
@@ -75,7 +39,7 @@ class AgentRepositoryImpl @Inject constructor(
         thinkingEffort: String?,
     ): Result<AgentBinding> = runCatching {
         withContext(dispatcher) {
-            apiService.setAgentBindingV2(
+            apiService.setAgentBinding(
                 agentType,
                 SetBindingRequest(
                     accountId = accountId,
@@ -86,7 +50,13 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── Memory components ────────────────────────────────────────────────
+    override suspend fun clearAgentBinding(agentType: String): Result<Unit> = runCatching {
+        withContext(dispatcher) {
+            apiService.clearAgentBinding(agentType)
+        }
+    }
+
+    // ── Memory components ────────────────────────────────────────────────────
 
     override suspend fun listMemoryComponents(): Result<List<MemoryComponentInfo>> = runCatching {
         withContext(dispatcher) {
@@ -94,51 +64,11 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
-    // Legacy provider-based memory binding
-
-    override suspend fun getMemoryComponentBinding(
-        componentType: String,
-    ): Result<LegacyAgentBindingDto> = runCatching {
-        withContext(dispatcher) {
-            val dto = apiService.getMemoryComponentBinding(componentType)
-            LegacyAgentBindingDto(
-                agentType = dto.componentType ?: componentType,
-                providerId = dto.accountId,
-                thinkingEffort = dto.thinkingEffort,
-            )
-        }
-    }
-
-    override suspend fun setMemoryComponentBinding(
-        componentType: String,
-        providerId: String?,
-        thinkingEffort: ThinkingEffort,
-    ): Result<Unit> = runCatching {
-        withContext(dispatcher) {
-            apiService.setMemoryComponentBinding(
-                componentType,
-                LegacySetBindingRequest(
-                    providerId = providerId,
-                    thinkingEffort = thinkingEffort.toApiString(),
-                ),
-            )
-            Unit
-        }
-    }
-
-    override suspend fun clearMemoryComponentBinding(
-        componentType: String,
-    ): Result<Unit> = runCatching {
-        withContext(dispatcher) {
-            apiService.clearMemoryComponentBinding(componentType)
-        }
-    }
-
     // Account-based memory binding
 
     override suspend fun getMemoryBinding(componentType: String): Result<AgentBinding> = runCatching {
         withContext(dispatcher) {
-            apiService.getMemoryComponentBindingV2(componentType).toAgentBinding(componentType)
+            apiService.getMemoryComponentBinding(componentType).toAgentBinding(componentType)
         }
     }
 
@@ -149,7 +79,7 @@ class AgentRepositoryImpl @Inject constructor(
         thinkingEffort: String?,
     ): Result<AgentBinding> = runCatching {
         withContext(dispatcher) {
-            apiService.setMemoryComponentBindingV2(
+            apiService.setMemoryComponentBinding(
                 componentType,
                 SetBindingRequest(
                     accountId = accountId,
@@ -157,6 +87,12 @@ class AgentRepositoryImpl @Inject constructor(
                     thinkingEffort = thinkingEffort,
                 ),
             ).toAgentBinding(componentType)
+        }
+    }
+
+    override suspend fun clearMemoryComponentBinding(componentType: String): Result<Unit> = runCatching {
+        withContext(dispatcher) {
+            apiService.clearMemoryComponentBinding(componentType)
         }
     }
 }

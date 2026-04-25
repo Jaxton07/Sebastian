@@ -4,22 +4,7 @@ import com.sebastian.android.data.model.*
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
-// ── Legacy binding DTOs (used by old agent + memory binding endpoints) ──
-
-@JsonClass(generateAdapter = true)
-data class LegacySetBindingRequest(
-    @param:Json(name = "provider_id") val providerId: String?,
-    @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
-)
-
-@JsonClass(generateAdapter = true)
-data class LegacyAgentBindingDto(
-    @param:Json(name = "agent_type") val agentType: String,
-    @param:Json(name = "provider_id") val providerId: String?,
-    @param:Json(name = "thinking_effort") val thinkingEffort: String? = null,
-)
-
-// ── New account-based binding DTOs ─────────────────────────────────────
+// ── Account-based binding DTOs ─────────────────────────────────────────────
 
 @JsonClass(generateAdapter = true)
 data class SetBindingRequest(

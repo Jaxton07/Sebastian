@@ -53,19 +53,10 @@ interface ApiService {
     suspend fun getAgents(): AgentListResponse
 
     @GET("api/v1/agents/{agentType}/llm-binding")
-    suspend fun getAgentBinding(@Path("agentType") agentType: String): LegacyAgentBindingDto
-
-    @GET("api/v1/agents/{agentType}/llm-binding")
-    suspend fun getAgentBindingV2(@Path("agentType") agentType: String): AgentBindingDto
+    suspend fun getAgentBinding(@Path("agentType") agentType: String): AgentBindingDto
 
     @PUT("api/v1/agents/{agentType}/llm-binding")
     suspend fun setAgentBinding(
-        @Path("agentType") agentType: String,
-        @Body body: LegacySetBindingRequest,
-    ): LegacyAgentBindingDto
-
-    @PUT("api/v1/agents/{agentType}/llm-binding")
-    suspend fun setAgentBindingV2(
         @Path("agentType") agentType: String,
         @Body body: SetBindingRequest,
     ): AgentBindingDto
@@ -119,19 +110,8 @@ interface ApiService {
         @Path("componentType") componentType: String,
     ): MemoryComponentBindingDto
 
-    @GET("api/v1/memory/components/{componentType}/llm-binding")
-    suspend fun getMemoryComponentBindingV2(
-        @Path("componentType") componentType: String,
-    ): MemoryComponentBindingDto
-
     @PUT("api/v1/memory/components/{componentType}/llm-binding")
     suspend fun setMemoryComponentBinding(
-        @Path("componentType") componentType: String,
-        @Body body: LegacySetBindingRequest,
-    ): MemoryComponentBindingDto
-
-    @PUT("api/v1/memory/components/{componentType}/llm-binding")
-    suspend fun setMemoryComponentBindingV2(
         @Path("componentType") componentType: String,
         @Body body: SetBindingRequest,
     ): MemoryComponentBindingDto
@@ -139,7 +119,7 @@ interface ApiService {
     @DELETE("api/v1/memory/components/{componentType}/llm-binding")
     suspend fun clearMemoryComponentBinding(@Path("componentType") componentType: String)
 
-    // ── New LLM Catalog / Account / Binding endpoints ────────────────
+    // ── LLM Catalog / Account / Binding endpoints ────────────────────────
 
     @GET("api/v1/llm-catalog")
     suspend fun getLlmCatalog(): LlmCatalogResponseDto

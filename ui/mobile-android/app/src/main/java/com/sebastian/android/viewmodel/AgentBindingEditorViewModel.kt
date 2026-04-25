@@ -263,7 +263,7 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
         return when {
             s.isDefault -> Result.failure(IllegalStateException("Default model cannot be cleared"))
             isMemoryComponent -> agentRepository.clearMemoryComponentBinding(s.agentType)
-            else -> agentRepository.clearBinding(s.agentType)
+            else -> agentRepository.clearAgentBinding(s.agentType)
         }
     }
 
