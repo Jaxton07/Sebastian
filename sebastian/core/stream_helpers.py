@@ -181,9 +181,7 @@ async def dispatch_tool_call(
             task_id=task_id,
             agent_type=agent_context,
             depth=current_depth.get(session_id, 1),
-            allowed_tools=(
-                frozenset(allowed_tools) if allowed_tools is not None else None
-            ),
+            allowed_tools=(frozenset(allowed_tools) if allowed_tools is not None else None),
             progress_cb=functools.partial(publish, session_id, EventType.TOOL_RUNNING),
         )
         result = await gate_call(event.name, event.inputs, context)

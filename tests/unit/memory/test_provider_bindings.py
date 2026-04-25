@@ -51,9 +51,7 @@ async def test_get_provider_memory_extractor_falls_back_to_default(
     )
     await registry_with_db.create_account(account)
 
-    await registry_with_db.set_binding(
-        "__default__", account.id, "claude-opus-4-7"
-    )
+    await registry_with_db.set_binding("__default__", account.id, "claude-opus-4-7")
 
     resolved = await registry_with_db.get_provider(MEMORY_EXTRACTOR_BINDING)
 
@@ -74,9 +72,7 @@ async def test_get_provider_memory_consolidator_falls_back_to_default(
     )
     await registry_with_db.create_account(account)
 
-    await registry_with_db.set_binding(
-        "__default__", account.id, "claude-opus-4-7"
-    )
+    await registry_with_db.set_binding("__default__", account.id, "claude-opus-4-7")
 
     resolved = await registry_with_db.get_provider(MEMORY_CONSOLIDATOR_BINDING)
 

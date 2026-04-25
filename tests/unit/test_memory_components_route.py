@@ -96,9 +96,7 @@ def test_list_shows_existing_binding(client: TestClient, mock_registry: MagicMoc
     assert by_type[MEMORY_CONSOLIDATOR_BINDING]["binding"] is None
 
 
-def test_get_binding_no_row_returns_null(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
+def test_get_binding_no_row_returns_null(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.get_binding = AsyncMock(return_value=None)
     resp = client.get(f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding")
     assert resp.status_code == 200

@@ -708,7 +708,7 @@ def test_rename_custom_model_to_model_id_of_different_account_returns_200(client
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    # model-unique exists under account Y; rename it to model-shared (no conflict — different account)
+    # model-unique exists under account Y; rename to model-shared (no conflict — different account)
     aid_y = account_y.json()["id"]
     model_y = http_client.post(
         f"/api/v1/llm-accounts/{aid_y}/models",

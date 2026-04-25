@@ -188,9 +188,7 @@ def test_create_account_custom_rejects_invalid_base_url(client: TestClient) -> N
     assert "base_url" in resp.json()["detail"]
 
 
-def test_create_account_custom_success(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
+def test_create_account_custom_success(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.create_account = AsyncMock()
 
     resp = client.post(
@@ -473,7 +471,7 @@ def _make_session_with_results(*scalar_results: Any):
         def scalar_one_or_none(self) -> Any:
             return self._value
 
-        def scalars(self) -> "_Result":
+        def scalars(self) -> _Result:
             return self
 
         def all(self) -> list:
@@ -483,7 +481,7 @@ def _make_session_with_results(*scalar_results: Any):
         def __init__(self) -> None:
             self._results = list(scalar_results)
 
-        async def __aenter__(self) -> "_Session":
+        async def __aenter__(self) -> _Session:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -528,10 +526,10 @@ def test_update_custom_model_rename_to_existing_same_account_returns_409(
     monkeypatch.setattr(state, "llm_registry", mock_registry)
     monkeypatch.setattr(state, "db_factory", session_factory, raising=False)
 
+    from fastapi import FastAPI
+
     from sebastian.gateway.auth import require_auth
     from sebastian.gateway.routes.llm_accounts import router
-
-    from fastapi import FastAPI
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -564,10 +562,10 @@ def test_update_custom_model_rename_to_new_id_returns_200(
     monkeypatch.setattr(state, "llm_registry", mock_registry)
     monkeypatch.setattr(state, "db_factory", session_factory, raising=False)
 
+    from fastapi import FastAPI
+
     from sebastian.gateway.auth import require_auth
     from sebastian.gateway.routes.llm_accounts import router
-
-    from fastapi import FastAPI
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")

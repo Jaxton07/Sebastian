@@ -23,9 +23,7 @@ async def allocate_exchange_for_turn(
 
     Called from ``run_streaming`` only when a real ``db_factory`` is present.
     """
-    exchange_id, exchange_index = await session_store.allocate_exchange(
-        session_id, agent_type
-    )
+    exchange_id, exchange_index = await session_store.allocate_exchange(session_id, agent_type)
     return exchange_id, exchange_index
 
 

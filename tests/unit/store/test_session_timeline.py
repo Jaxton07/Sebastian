@@ -624,17 +624,23 @@ async def test_compact_range_returns_already_compacted_when_any_source_archived(
 
     # first compaction succeeds
     first = await store.compact_range(
-        session_in_db.id, "sebastian",
-        source_seq_start=1, source_seq_end=2,
-        summary_content="s", summary_payload={"summary_version": "context_compaction_v1"},
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="s",
+        summary_payload={"summary_version": "context_compaction_v1"},
     )
     assert first.status == "compacted"
 
     # second attempt on same range
     second = await store.compact_range(
-        session_in_db.id, "sebastian",
-        source_seq_start=1, source_seq_end=2,
-        summary_content="s2", summary_payload={"summary_version": "context_compaction_v1"},
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="s2",
+        summary_payload={"summary_version": "context_compaction_v1"},
     )
     assert second.status == "already_compacted"
     assert second.archived_item_count == 0
@@ -659,9 +665,7 @@ async def test_allocate_exchange_concurrent(store, session_in_db) -> None:
     async with store._db_factory() as db:
         row = (
             await db.execute(
-                sa_text(
-                    "SELECT next_exchange_index FROM sessions WHERE id = :sid"
-                ),
+                sa_text("SELECT next_exchange_index FROM sessions WHERE id = :sid"),
                 {"sid": session_in_db.id},
             )
         ).first()

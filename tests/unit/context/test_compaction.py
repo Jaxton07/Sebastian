@@ -137,13 +137,16 @@ class FakeSessionStore:
         summary_content: str,
         summary_payload: dict[str, Any],
     ) -> Any:
-        self.compact_calls.append({
-            "source_seq_start": source_seq_start,
-            "source_seq_end": source_seq_end,
-            "summary_content": summary_content,
-            "summary_payload": summary_payload,
-        })
+        self.compact_calls.append(
+            {
+                "source_seq_start": source_seq_start,
+                "source_seq_end": source_seq_end,
+                "summary_content": summary_content,
+                "summary_payload": summary_payload,
+            }
+        )
         from sebastian.store.session_timeline import CompactRangeResult
+
         return CompactRangeResult(
             status="compacted",
             summary_item={"id": "sum-1", "seq": 99, "effective_seq": source_seq_start},
@@ -215,17 +218,31 @@ async def test_worker_compacts_and_returns_metadata() -> None:
     seq = 1
     # 16 exchanges: retain_recent_exchanges=8 → 8 source groups × 2 items = 16 ≥ min_items=12
     for ex in range(1, 17):
-        items.append({
-            "seq": seq, "kind": "user_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"u{ex}", "role": "user",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "user_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"u{ex}",
+                "role": "user",
+            }
+        )
         seq += 1
-        items.append({
-            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"a{ex}" * 200, "role": "assistant",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "assistant_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"a{ex}" * 200,
+                "role": "assistant",
+            }
+        )
         seq += 1
 
     store = FakeSessionStore(items=items)
@@ -245,10 +262,16 @@ async def test_worker_compacts_and_returns_metadata() -> None:
     call = store.compact_calls[0]
     payload = call["summary_payload"]
     for key in [
-        "summary_version", "source_seq_start", "source_seq_end",
-        "source_exchange_start", "source_exchange_end",
-        "source_token_estimate", "summary_token_estimate",
-        "retained_recent_exchanges", "model", "reason",
+        "summary_version",
+        "source_seq_start",
+        "source_seq_end",
+        "source_exchange_start",
+        "source_exchange_end",
+        "source_token_estimate",
+        "summary_token_estimate",
+        "retained_recent_exchanges",
+        "model",
+        "reason",
     ]:
         assert key in payload, f"missing key: {key}"
     assert payload["summary_version"] == "context_compaction_v1"
@@ -263,17 +286,31 @@ async def test_worker_dry_run_skips_llm_and_returns_dry_run_status() -> None:
     items = []
     seq = 1
     for ex in range(1, 17):
-        items.append({
-            "seq": seq, "kind": "user_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"u{ex}", "role": "user",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "user_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"u{ex}",
+                "role": "user",
+            }
+        )
         seq += 1
-        items.append({
-            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"a{ex}" * 200, "role": "assistant",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "assistant_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"a{ex}" * 200,
+                "role": "assistant",
+            }
+        )
         seq += 1
 
     store = FakeSessionStore(items=items)
@@ -311,17 +348,31 @@ async def test_worker_skips_when_llm_returns_empty_summary() -> None:
     items = []
     seq = 1
     for ex in range(1, 17):
-        items.append({
-            "seq": seq, "kind": "user_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"u{ex}", "role": "user",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "user_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"u{ex}",
+                "role": "user",
+            }
+        )
         seq += 1
-        items.append({
-            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"a{ex}" * 200, "role": "assistant",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "assistant_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"a{ex}" * 200,
+                "role": "assistant",
+            }
+        )
         seq += 1
 
     store = FakeSessionStore(items=items)
@@ -346,17 +397,31 @@ async def test_worker_payload_records_effective_retain_when_overridden() -> None
     items = []
     seq = 1
     for ex in range(1, 31):
-        items.append({
-            "seq": seq, "kind": "user_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"u{ex}", "role": "user",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "user_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"u{ex}",
+                "role": "user",
+            }
+        )
         seq += 1
-        items.append({
-            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": f"a{ex}" * 200, "role": "assistant",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "assistant_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": f"a{ex}" * 200,
+                "role": "assistant",
+            }
+        )
         seq += 1
 
     store = FakeSessionStore(items=items)
@@ -384,19 +449,31 @@ async def test_worker_dry_run_returns_dry_run_even_below_min_source_tokens() -> 
     items = []
     seq = 1
     for ex in range(1, 17):
-        items.append({
-            "seq": seq, "kind": "user_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": "hi",  # tiny content → tiny token estimate
-            "role": "user",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "user_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": "hi",  # tiny content → tiny token estimate
+                "role": "user",
+            }
+        )
         seq += 1
-        items.append({
-            "seq": seq, "kind": "assistant_message", "exchange_index": ex,
-            "exchange_id": f"ex-{ex}", "archived": False,
-            "payload": {}, "content": "ok",  # tiny → ensures token estimate < 1_000_000
-            "role": "assistant",
-        })
+        items.append(
+            {
+                "seq": seq,
+                "kind": "assistant_message",
+                "exchange_index": ex,
+                "exchange_id": f"ex-{ex}",
+                "archived": False,
+                "payload": {},
+                "content": "ok",  # tiny → ensures token estimate < 1_000_000
+                "role": "assistant",
+            }
+        )
         seq += 1
 
     store = FakeSessionStore(items=items)
@@ -618,6 +695,7 @@ async def test_scheduler_returns_quickly_and_runs_in_background() -> None:
     from sebastian.context.compaction import TurnEndCompactionScheduler
 
     worker_mock = AsyncMock()
+
     async def slow_compact(*args: Any, **kwargs: Any) -> None:
         await asyncio.sleep(0.5)
 

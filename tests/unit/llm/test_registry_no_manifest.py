@@ -20,9 +20,7 @@ def test_get_by_type_method_removed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_registry_resolves_from_account_and_binding(
-    tmp_path, monkeypatch
-) -> None:
+async def test_registry_resolves_from_account_and_binding(tmp_path, monkeypatch) -> None:
     key_file = tmp_path / "secret.key"
     key_file.write_text("test-secret")
     monkeypatch.setattr("sebastian.config.settings.sebastian_data_dir", str(tmp_path))

@@ -233,9 +233,7 @@ class SessionStore:
                 )
                 row = result.first()
                 if row is None:
-                    raise ValueError(
-                        f"Session {session_id!r} (agent={agent_type!r}) not found"
-                    )
+                    raise ValueError(f"Session {session_id!r} (agent={agent_type!r}) not found")
                 exchange_index: int = row[0]
                 exchange_id = str(ULID())
         return exchange_id, exchange_index
@@ -252,7 +250,11 @@ class SessionStore:
     ) -> None:
         if self._timeline is not None:
             await self._timeline.append_message_compat(
-                session_id, role, content, agent_type, blocks,
+                session_id,
+                role,
+                content,
+                agent_type,
+                blocks,
                 exchange_id=exchange_id,
                 exchange_index=exchange_index,
             )

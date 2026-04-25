@@ -28,9 +28,7 @@ def _build_app_with_mocks(
         )
     )
     state.llm_registry.get_account = AsyncMock(
-        side_effect=lambda account_id: next(
-            (a for a in _accounts if a.id == account_id), None
-        )
+        side_effect=lambda account_id: next((a for a in _accounts if a.id == account_id), None)
     )
 
     app = FastAPI()

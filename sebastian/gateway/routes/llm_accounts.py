@@ -322,9 +322,7 @@ async def delete_account(
     # Check if any bindings reference this account
     async with state.db_factory() as session:
         result = await session.execute(
-            select(AgentLLMBindingRecord).where(
-                AgentLLMBindingRecord.account_id == account_id
-            )
+            select(AgentLLMBindingRecord).where(AgentLLMBindingRecord.account_id == account_id)
         )
         bound = list(result.scalars().all())
 

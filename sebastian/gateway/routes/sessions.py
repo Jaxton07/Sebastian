@@ -552,9 +552,7 @@ async def get_compaction_status(
     from sebastian.context.compaction import group_by_exchange
 
     active_items = [
-        item
-        for item in items
-        if not item.get("archived") and item.get("kind") != "context_summary"
+        item for item in items if not item.get("archived") and item.get("kind") != "context_summary"
     ]
     groups = group_by_exchange(active_items)
     compactable = max(0, len(groups) - _DEFAULT_RETAIN_RECENT_EXCHANGES)

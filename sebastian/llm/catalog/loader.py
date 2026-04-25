@@ -106,9 +106,7 @@ def _validate_catalog(data: dict[str, Any]) -> None:
 
         models_raw = prov.get("models")
         if not isinstance(models_raw, list):
-            raise CatalogValidationError(
-                f"Provider {pid!r} 'models' must be a list"
-            )
+            raise CatalogValidationError(f"Provider {pid!r} 'models' must be a list")
 
         seen_model_ids: set[str] = set()
         for m in models_raw:
@@ -123,9 +121,7 @@ def _validate_catalog(data: dict[str, Any]) -> None:
                     f"Model id must be a string in provider {pid!r}, got {mid!r}"
                 )
             if mid in seen_model_ids:
-                raise CatalogValidationError(
-                    f"Duplicate model id {mid!r} in provider {pid!r}"
-                )
+                raise CatalogValidationError(f"Duplicate model id {mid!r} in provider {pid!r}")
             seen_model_ids.add(mid)
 
             cwt = m.get("context_window_tokens")
@@ -180,9 +176,7 @@ def load_catalog_from_path(path: Path) -> LLMCatalog:
 
 def load_builtin_catalog() -> LLMCatalog:
     """Load the bundled ``builtin_providers.json`` catalog."""
-    ref = importlib.resources.files("sebastian.llm.catalog").joinpath(
-        "builtin_providers.json"
-    )
+    ref = importlib.resources.files("sebastian.llm.catalog").joinpath("builtin_providers.json")
     data = json.loads(ref.read_text(encoding="utf-8"))
     _validate_catalog(data)
     return _build_catalog(data)

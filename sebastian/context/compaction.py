@@ -28,8 +28,7 @@ def select_compaction_range(
     min_items: int = 12,
 ) -> CompactionRange | None:
     candidates = [
-        item for item in items
-        if not item.get("archived") and item.get("kind") != "context_summary"
+        item for item in items if not item.get("archived") and item.get("kind") != "context_summary"
     ]
     groups = group_by_exchange(candidates)
     if len(groups) <= retain_recent_exchanges:
@@ -42,9 +41,7 @@ def select_compaction_range(
         return None
     seqs = [int(it["seq"]) for it in source_items]
     exchange_indexes: list[int] = [
-        int(it["exchange_index"])
-        for it in source_items
-        if it.get("exchange_index") is not None
+        int(it["exchange_index"]) for it in source_items if it.get("exchange_index") is not None
     ]
     return CompactionRange(
         source_seq_start=min(seqs),
