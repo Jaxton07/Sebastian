@@ -26,21 +26,29 @@ def _coerce_thinking(
     capability: str | None,
 ) -> str | None:
     """按 provider capability 钳制 effort 到合法值。"""
-    if capability in ("none", "always_on"):
+    if capability in ("none", "always_on", None):
         return None
     if capability == "toggle":
         if effort in (None, "off"):
             return "off"
-        # 任何非空非 off 的值（包括 on/low/medium/high/max）→ on
-        return "on"
+        if effort in {"on", "low", "medium", "high", "max"}:
+            return "on"
+        return None
     if capability == "effort":
+        if effort in (None, "off"):
+            return None
         if effort in ("max", "on"):
             return "high"
-        return effort
+        if effort in {"low", "medium", "high"}:
+            return effort
+        return None
     if capability == "adaptive":
-        return effort
-    # capability 未知/None → pass-through
-    return effort
+        if effort in (None, "off"):
+            return None
+        if effort in {"low", "medium", "high", "max"}:
+            return effort
+        return None
+    return None
 
 
 @dataclass(slots=True)

@@ -9,6 +9,11 @@ from sqlalchemy import select
 
 from sebastian.gateway.auth import require_auth
 from sebastian.llm.catalog import load_builtin_catalog
+from sebastian.llm.catalog.loader import (
+    SUPPORTED_PROVIDER_TYPES,
+    SUPPORTED_THINKING_CAPABILITIES,
+    SUPPORTED_THINKING_FORMATS,
+)
 
 router = APIRouter(tags=["llm-accounts"])
 
@@ -130,6 +135,36 @@ def _validate_base_url(base_url: str) -> str:
     return value
 
 
+def _validate_provider_type(value: str) -> str:
+    if value not in SUPPORTED_PROVIDER_TYPES:
+        allowed = ", ".join(sorted(SUPPORTED_PROVIDER_TYPES))
+        raise HTTPException(
+            status_code=400,
+            detail=f"provider_type must be one of: {allowed}",
+        )
+    return value
+
+
+def _validate_thinking_capability(value: str | None) -> str | None:
+    if value not in SUPPORTED_THINKING_CAPABILITIES:
+        allowed = ", ".join(sorted(v for v in SUPPORTED_THINKING_CAPABILITIES if v is not None))
+        raise HTTPException(
+            status_code=400,
+            detail=f"thinking_capability must be one of: {allowed}",
+        )
+    return value
+
+
+def _validate_thinking_format(value: str | None) -> str | None:
+    if value not in SUPPORTED_THINKING_FORMATS:
+        allowed = ", ".join(sorted(v for v in SUPPORTED_THINKING_FORMATS if v is not None))
+        raise HTTPException(
+            status_code=400,
+            detail=f"thinking_format must be one of: {allowed}",
+        )
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------------
@@ -207,7 +242,7 @@ async def create_account(
                 detail="base_url_override is required for custom providers",
             )
         base_url = _validate_base_url(body.base_url_override)
-        provider_type = body.provider_type
+        provider_type = _validate_provider_type(body.provider_type)
     else:
         # Validate catalog_provider_id exists in catalog
         catalog = load_builtin_catalog()
@@ -248,6 +283,11 @@ async def update_account(
     if "api_key" in data and (data["api_key"] is None or data["api_key"] == ""):
         raise HTTPException(status_code=400, detail="api_key must be non-empty")
 
+    # Fetch account first so we can check provider type for base_url rules
+    record = await state.llm_registry.get_account(account_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+
     updates: dict[str, Any] = {}
     if "name" in data:
         updates["name"] = data["name"]
@@ -257,13 +297,18 @@ async def update_account(
         val = data["base_url_override"]
         if val is not None:
             updates["base_url_override"] = _validate_base_url(val)
+        elif record.catalog_provider_id == "custom":
+            raise HTTPException(
+                status_code=400,
+                detail="base_url_override is required for custom providers",
+            )
         else:
             updates["base_url_override"] = None
 
-    record = await state.llm_registry.update_account(account_id, **updates)
-    if record is None:
+    updated = await state.llm_registry.update_account(account_id, **updates)
+    if updated is None:
         raise HTTPException(status_code=404, detail="Account not found")
-    return _account_to_dict(record)
+    return _account_to_dict(updated)
 
 
 @router.delete("/llm-accounts/{account_id}", status_code=204)
@@ -348,6 +393,9 @@ async def create_custom_model(
             detail="context_window_tokens must be between 1,000 and 10,000,000",
         )
 
+    thinking_capability = _validate_thinking_capability(body.thinking_capability)
+    thinking_format = _validate_thinking_format(body.thinking_format)
+
     # Enforce unique (account_id, model_id)
     async with state.db_factory() as session:
         existing = await session.execute(
@@ -367,8 +415,8 @@ async def create_custom_model(
             model_id=body.model_id,
             display_name=body.display_name,
             context_window_tokens=body.context_window_tokens,
-            thinking_capability=body.thinking_capability,
-            thinking_format=body.thinking_format,
+            thinking_capability=thinking_capability,
+            thinking_format=thinking_format,
         )
         session.add(record)
         await session.commit()
@@ -407,6 +455,11 @@ async def update_custom_model(
                     status_code=400,
                     detail="context_window_tokens must be between 1,000 and 10,000,000",
                 )
+
+        if "thinking_capability" in data:
+            data["thinking_capability"] = _validate_thinking_capability(data["thinking_capability"])
+        if "thinking_format" in data:
+            data["thinking_format"] = _validate_thinking_format(data["thinking_format"])
 
         # If model_id changes, check bindings
         if "model_id" in data and data["model_id"] != record.model_id:

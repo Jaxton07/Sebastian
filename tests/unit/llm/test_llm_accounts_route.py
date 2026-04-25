@@ -240,7 +240,10 @@ def test_update_account_rejects_empty_api_key(client: TestClient) -> None:
     assert "api_key" in resp.json()["detail"]
 
 
-def test_update_account_rejects_invalid_base_url(client: TestClient) -> None:
+def test_update_account_rejects_invalid_base_url(
+    client: TestClient, mock_registry: MagicMock
+) -> None:
+    mock_registry.get_account = AsyncMock(return_value=_make_account())
     resp = client.put(
         "/api/v1/llm-accounts/acc1",
         json={"base_url_override": "not-a-url"},
@@ -358,3 +361,90 @@ def test_account_to_dict_masks_api_key() -> None:
     record_empty = _make_account(api_key_enc="")
     result_empty = _account_to_dict(record_empty)
     assert result_empty["has_api_key"] is False
+
+
+# ---------------------------------------------------------------------------
+# New validation tests (Task 1 — Step 1)
+# ---------------------------------------------------------------------------
+
+
+def test_create_account_custom_rejects_unsupported_provider_type(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Gemini-ish",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "gemini",
+            "base_url_override": "https://example.com/v1",
+        },
+    )
+    assert resp.status_code == 400
+    assert "provider_type" in resp.json()["detail"]
+
+
+def test_update_custom_account_rejects_null_base_url(
+    client: TestClient,
+    mock_registry: MagicMock,
+) -> None:
+    custom = _make_account(
+        id="custom-1",
+        catalog_provider_id="custom",
+        provider_type="openai",
+        base_url_override="https://custom.example.com/v1",
+    )
+    mock_registry.get_account = AsyncMock(return_value=custom)
+
+    resp = client.put(
+        "/api/v1/llm-accounts/custom-1",
+        json={"base_url_override": None},
+    )
+
+    assert resp.status_code == 400
+    assert "base_url_override" in resp.json()["detail"]
+    mock_registry.update_account.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# New validation tests (Task 1 — Step 6): custom model thinking field validation
+# ---------------------------------------------------------------------------
+
+
+def test_create_custom_model_rejects_invalid_thinking_capability(
+    client: TestClient,
+    mock_registry: MagicMock,
+) -> None:
+    custom = _make_account(catalog_provider_id="custom", provider_type="openai")
+    mock_registry.get_account = AsyncMock(return_value=custom)
+
+    resp = client.post(
+        "/api/v1/llm-accounts/acc1/models",
+        json={
+            "model_id": "bad-model",
+            "display_name": "Bad Model",
+            "context_window_tokens": 128000,
+            "thinking_capability": "telepathy",
+        },
+    )
+    assert resp.status_code == 400
+    assert "thinking_capability" in resp.json()["detail"]
+
+
+def test_create_custom_model_rejects_invalid_thinking_format(
+    client: TestClient,
+    mock_registry: MagicMock,
+) -> None:
+    custom = _make_account(catalog_provider_id="custom", provider_type="openai")
+    mock_registry.get_account = AsyncMock(return_value=custom)
+
+    resp = client.post(
+        "/api/v1/llm-accounts/acc1/models",
+        json={
+            "model_id": "bad-model",
+            "display_name": "Bad Model",
+            "context_window_tokens": 128000,
+            "thinking_format": "xml_cloud",
+        },
+    )
+    assert resp.status_code == 400
+    assert "thinking_format" in resp.json()["detail"]

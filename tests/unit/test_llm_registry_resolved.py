@@ -37,8 +37,17 @@ def test_coerce_adaptive_passes_through():
     assert _coerce_thinking("max", "adaptive") == "max"
 
 
-def test_coerce_none_capability_returns_unmodified():
-    assert _coerce_thinking("high", None) == "high"
+def test_coerce_none_capability_returns_none():
+    # None capability is treated as "no thinking" — effort is not meaningful
+    assert _coerce_thinking("high", None) is None
+
+
+def test_coerce_thinking_rejects_invalid_effort_for_effort_capability() -> None:
+    assert _coerce_thinking("ultra", "effort") is None
+
+
+def test_coerce_thinking_rejects_invalid_effort_for_adaptive_capability() -> None:
+    assert _coerce_thinking("ultra", "adaptive") is None
 
 
 # ---------------------------------------------------------------------------

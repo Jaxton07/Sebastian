@@ -453,6 +453,180 @@ def test_custom_model_model_id_change_returns_409_when_referenced(client) -> Non
     assert "binding" in resp.json()["detail"].lower()
 
 
+def test_create_custom_account_rejects_invalid_provider_type(client) -> None:
+    http_client, token = client
+    resp = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Bad Custom",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "gemini",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_custom_account_rejects_null_base_url(client) -> None:
+    http_client, token = client
+    create = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Custom",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "openai",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    resp = http_client.put(
+        f"/api/v1/llm-accounts/{aid}",
+        json={"base_url_override": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+def test_create_custom_model_rejects_invalid_thinking_capability(client) -> None:
+    http_client, token = client
+    create = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Custom Cap Test",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "openai",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    resp = http_client.post(
+        f"/api/v1/llm-accounts/{aid}/models",
+        json={
+            "model_id": "bad-cap-model",
+            "display_name": "Bad Cap Model",
+            "context_window_tokens": 128000,
+            "thinking_capability": "telepathy",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert "thinking_capability" in resp.json()["detail"]
+
+
+def test_create_custom_model_rejects_invalid_thinking_format(client) -> None:
+    http_client, token = client
+    create = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Custom Fmt Test",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "openai",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    resp = http_client.post(
+        f"/api/v1/llm-accounts/{aid}/models",
+        json={
+            "model_id": "bad-fmt-model",
+            "display_name": "Bad Fmt Model",
+            "context_window_tokens": 128000,
+            "thinking_format": "xml_cloud",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert "thinking_format" in resp.json()["detail"]
+
+
+def test_update_custom_model_rejects_invalid_thinking_capability(client) -> None:
+    http_client, token = client
+    create = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Custom Upd Cap Test",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "openai",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    model = http_client.post(
+        f"/api/v1/llm-accounts/{aid}/models",
+        json={
+            "model_id": "good-model",
+            "display_name": "Good Model",
+            "context_window_tokens": 128000,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert model.status_code == 201
+    mid = model.json()["id"]
+
+    resp = http_client.put(
+        f"/api/v1/llm-accounts/{aid}/models/{mid}",
+        json={"thinking_capability": "telepathy"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert "thinking_capability" in resp.json()["detail"]
+
+
+def test_update_custom_model_rejects_invalid_thinking_format(client) -> None:
+    http_client, token = client
+    create = http_client.post(
+        "/api/v1/llm-accounts",
+        json={
+            "name": "Custom Upd Fmt Test",
+            "catalog_provider_id": "custom",
+            "api_key": "sk-test",
+            "provider_type": "openai",
+            "base_url_override": "https://custom.example.com/v1",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    model = http_client.post(
+        f"/api/v1/llm-accounts/{aid}/models",
+        json={
+            "model_id": "good-model-fmt",
+            "display_name": "Good Model Fmt",
+            "context_window_tokens": 128000,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert model.status_code == 201
+    mid = model.json()["id"]
+
+    resp = http_client.put(
+        f"/api/v1/llm-accounts/{aid}/models/{mid}",
+        json={"thinking_format": "xml_cloud"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert "thinking_format" in resp.json()["detail"]
+
+
 def test_custom_model_delete_returns_409_when_referenced(client) -> None:
     http_client, token = client
 
