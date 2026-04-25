@@ -16,14 +16,16 @@ JSONDict = dict[str, Any]
 
 
 class BindingUpdate(BaseModel):
-    provider_id: str | None = None
+    account_id: str | None = None
+    model_id: str | None = None
     thinking_effort: str | None = None
 
 
 def _binding_to_dict(binding: Any) -> JSONDict:
     return {
         "agent_type": binding.agent_type,
-        "provider_id": binding.provider_id,
+        "account_id": binding.account_id,
+        "model_id": binding.model_id,
         "thinking_effort": binding.thinking_effort,
     }
 
@@ -37,7 +39,6 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
 
     agents: list[JSONDict] = []
 
-    # Sebastian 置顶
     seb_binding = binding_map.get(ORCHESTRATOR_AGENT_TYPE)
     agents.append(
         {
@@ -52,7 +53,7 @@ async def list_agents(_auth: AuthPayload = Depends(require_auth)) -> JSONDict:
 
     for agent_type, config in state.agent_registry.items():
         if agent_type == ORCHESTRATOR_AGENT_TYPE:
-            continue  # 已置顶，跳过重复
+            continue
 
         sessions = await state.session_store.list_sessions_by_agent_type(agent_type)
         active_count = sum(1 for s in sessions if s.get("status") == "active")
@@ -86,7 +87,8 @@ async def get_agent_binding(
     if binding is None:
         return {
             "agent_type": agent_type,
-            "provider_id": None,
+            "account_id": None,
+            "model_id": None,
             "thinking_effort": None,
         }
     return _binding_to_dict(binding)
@@ -99,33 +101,51 @@ async def set_agent_binding(
     _auth: AuthPayload = Depends(require_auth),
 ) -> JSONDict:
     import sebastian.gateway.state as state
+    from sebastian.llm.registry import _coerce_thinking
 
     if agent_type != ORCHESTRATOR_AGENT_TYPE and agent_type not in state.agent_registry:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # 查 provider record（需要读 thinking_capability）
-    record = None
-    if body.provider_id is not None:
-        record = await state.llm_registry.get_record(body.provider_id)
-        if record is None:
-            raise HTTPException(status_code=400, detail="Provider not found")
+    if body.account_id is None or body.model_id is None:
+        # Both must be provided together, or both None to clear
+        if body.account_id is not None or body.model_id is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="account_id and model_id must both be provided or both be null",
+            )
+        await state.llm_registry.clear_binding(agent_type)
+        return {
+            "agent_type": agent_type,
+            "account_id": None,
+            "model_id": None,
+            "thinking_effort": None,
+        }
 
-    # 查现有 binding，判断 provider 是否切换
+    account = await state.llm_registry.get_account(body.account_id)
+    if account is None:
+        raise HTTPException(status_code=400, detail="Account not found")
+
+    try:
+        model_spec = await state.llm_registry.get_model_spec(account, body.model_id)
+    except (KeyError, RuntimeError):
+        raise HTTPException(status_code=400, detail=f"Model {body.model_id!r} not found")
+
     existing = await state.llm_registry.get_binding(agent_type)
-    provider_changed = existing is None or existing.provider_id != body.provider_id
+    binding_changed = existing is None or (
+        existing.account_id != body.account_id or existing.model_id != body.model_id
+    )
 
-    if provider_changed:
+    if binding_changed:
         effort: str | None = None
     else:
         effort = body.thinking_effort
 
-    # NONE / ALWAYS_ON capability 强制清空
-    if record is not None and record.thinking_capability in ("none", "always_on"):
-        effort = None
+    effort = _coerce_thinking(effort, model_spec.thinking_capability)
 
     binding = await state.llm_registry.set_binding(
         agent_type,
-        body.provider_id,
+        body.account_id,
+        body.model_id,
         thinking_effort=effort,
     )
     return _binding_to_dict(binding)

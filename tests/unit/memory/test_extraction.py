@@ -53,8 +53,12 @@ class FakeRegistry:
         return ResolvedProvider(
             provider=self._provider,
             model="test",
+            context_window_tokens=200000,
             thinking_effort=None,
             capability=None,
+            thinking_format=None,
+            account_id="test-account",
+            model_display_name="Test Model",
         )
 
 
@@ -344,8 +348,12 @@ class TestMemoryExtractorExtract:
                 return ResolvedProvider(
                     provider=_RaisingProvider(),
                     model="test-model",
+                    context_window_tokens=200000,
                     thinking_effort=None,
                     capability=None,
+                    thinking_format=None,
+                    account_id="test-account",
+                    model_display_name="Test Model",
                 )
 
         extractor = MemoryExtractor(_RaisingRegistry(), max_retries=0)  # type: ignore[arg-type]

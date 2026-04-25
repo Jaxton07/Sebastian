@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sebastian.llm.crypto import encrypt
 from sebastian.store import models  # noqa: F401
 from sebastian.store.database import Base, _install_sqlite_fk_pragma
-from sebastian.store.models import LLMProviderRecord
+from sebastian.store.models import LLMAccountRecord
 
 
 @pytest.fixture
@@ -26,11 +26,6 @@ async def registry_with_db(tmp_path, monkeypatch):
     await engine.dispose()
 
 
-# ---------------------------------------------------------------------------
-# Constant value tests
-# ---------------------------------------------------------------------------
-
-
 def test_memory_extractor_binding_constant() -> None:
     from sebastian.memory.provider_bindings import MEMORY_EXTRACTOR_BINDING
 
@@ -43,44 +38,47 @@ def test_memory_consolidator_binding_constant() -> None:
     assert MEMORY_CONSOLIDATOR_BINDING == "memory_consolidator"
 
 
-# ---------------------------------------------------------------------------
-# Registry fallback tests
-# ---------------------------------------------------------------------------
-
-
-async def test_get_provider_memory_extractor_falls_back_to_default(registry_with_db) -> None:
-    """When no binding row exists for memory_extractor, resolves to the default provider."""
+async def test_get_provider_memory_extractor_falls_back_to_default(
+    registry_with_db,
+) -> None:
     from sebastian.memory.provider_bindings import MEMORY_EXTRACTOR_BINDING
 
-    default = LLMProviderRecord(
+    account = LLMAccountRecord(
         name="default",
+        catalog_provider_id="anthropic",
         provider_type="anthropic",
         api_key_enc=encrypt("sk-default"),
-        model="claude-opus-4-6",
-        is_default=True,
     )
-    await registry_with_db.create(default)
+    await registry_with_db.create_account(account)
+
+    await registry_with_db.set_binding(
+        "__default__", account.id, "claude-opus-4-7"
+    )
 
     resolved = await registry_with_db.get_provider(MEMORY_EXTRACTOR_BINDING)
 
     assert resolved.provider is not None
-    assert resolved.model == "claude-opus-4-6"
+    assert resolved.model == "claude-opus-4-7"
 
 
-async def test_get_provider_memory_consolidator_falls_back_to_default(registry_with_db) -> None:
-    """When no binding row exists for memory_consolidator, resolves to the default provider."""
+async def test_get_provider_memory_consolidator_falls_back_to_default(
+    registry_with_db,
+) -> None:
     from sebastian.memory.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
 
-    default = LLMProviderRecord(
+    account = LLMAccountRecord(
         name="default",
+        catalog_provider_id="anthropic",
         provider_type="anthropic",
         api_key_enc=encrypt("sk-default"),
-        model="claude-opus-4-6",
-        is_default=True,
     )
-    await registry_with_db.create(default)
+    await registry_with_db.create_account(account)
+
+    await registry_with_db.set_binding(
+        "__default__", account.id, "claude-opus-4-7"
+    )
 
     resolved = await registry_with_db.get_provider(MEMORY_CONSOLIDATOR_BINDING)
 
     assert resolved.provider is not None
-    assert resolved.model == "claude-opus-4-6"
+    assert resolved.model == "claude-opus-4-7"

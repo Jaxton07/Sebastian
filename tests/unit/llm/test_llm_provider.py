@@ -221,22 +221,23 @@ def test_thinking_block_stop_has_signature_field() -> None:
     assert ev2.signature is None
 
 
-def test_llm_provider_record_has_thinking_capability_field() -> None:
-    from sebastian.store.models import LLMProviderRecord
+def test_llm_account_record_has_required_fields() -> None:
+    from sebastian.store.models import LLMAccountRecord
 
-    record = LLMProviderRecord(
+    record = LLMAccountRecord(
         name="test",
+        catalog_provider_id="anthropic",
         provider_type="anthropic",
         api_key_enc="fake",
-        model="claude-opus-4-6",
-        thinking_capability="adaptive",
     )
-    assert record.thinking_capability == "adaptive"
+    assert record.catalog_provider_id == "anthropic"
+    assert record.provider_type == "anthropic"
 
-    record2 = LLMProviderRecord(
+    record2 = LLMAccountRecord(
         name="test2",
+        catalog_provider_id="custom",
         provider_type="openai",
         api_key_enc="fake",
-        model="gpt-4o",
+        base_url_override="https://my-llm.example.com",
     )
-    assert record2.thinking_capability is None
+    assert record2.base_url_override == "https://my-llm.example.com"

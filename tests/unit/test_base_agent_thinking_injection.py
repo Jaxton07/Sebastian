@@ -61,8 +61,12 @@ def _make_resolved(
     return ResolvedProvider(
         provider=provider,
         model="claude-opus-4-6",
+        context_window_tokens=200000,
         thinking_effort=thinking_effort,
         capability=capability,
+        thinking_format=None,
+        account_id="test-account",
+        model_display_name="Claude Opus 4.6",
     )
 
 

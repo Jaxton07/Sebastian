@@ -304,7 +304,7 @@ def create_app() -> FastAPI:
         agents,
         approvals,
         debug,
-        llm_providers,
+        llm_accounts,
         memory_components,
         memory_settings,
         sessions,
@@ -328,7 +328,7 @@ def create_app() -> FastAPI:
     app.include_router(approvals.router, prefix="/api/v1")
     app.include_router(stream.router, prefix="/api/v1")
     app.include_router(agents.router, prefix="/api/v1")
-    app.include_router(llm_providers.router, prefix="/api/v1")
+    app.include_router(llm_accounts.router, prefix="/api/v1")
     app.include_router(debug.router, prefix="/api/v1")
     app.include_router(memory_components.router, prefix="/api/v1")
     app.include_router(memory_settings.router, prefix="/api/v1")

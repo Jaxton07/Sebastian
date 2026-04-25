@@ -64,21 +64,13 @@ def client(tmp_path):
                 yield test_client, token
 
 
-def _create_provider(http_client, token, *, name: str, thinking_capability: str | None) -> str:
-    """Helper: create a provider and return its id."""
+def _create_account(http_client, token, *, name: str) -> str:
     resp = http_client.post(
-        "/api/v1/llm-providers",
+        "/api/v1/llm-accounts",
         json={
             "name": name,
-            "provider_type": "anthropic",
+            "catalog_provider_id": "anthropic",
             "api_key": "sk-ant-fake",
-            "model": "claude-opus-4-6",
-            "base_url": "https://api.anthropic.com",
-            **(
-                {"thinking_capability": thinking_capability}
-                if thinking_capability is not None
-                else {}
-            ),
         },
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -87,7 +79,6 @@ def _create_provider(http_client, token, *, name: str, thinking_capability: str 
 
 
 def test_list_agents_includes_sebastian_first(client) -> None:
-    """list_agents 返回的 agents 数组第一个元素是 sebastian，并带 is_orchestrator: True。"""
     http_client, token = client
 
     resp = http_client.get(
@@ -104,7 +95,6 @@ def test_list_agents_includes_sebastian_first(client) -> None:
 
 
 def test_get_binding_for_sebastian_returns_record(client) -> None:
-    """GET /agents/sebastian/llm-binding 返回 200（不再 403/404）。"""
     http_client, token = client
 
     resp = http_client.get(
@@ -114,32 +104,39 @@ def test_get_binding_for_sebastian_returns_record(client) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["agent_type"] == "sebastian"
-    # 未设置 binding 时 provider_id 为 None
-    assert data["provider_id"] is None
+    assert data["account_id"] is None
+    assert data["model_id"] is None
 
 
 def test_put_binding_with_thinking_effort(client) -> None:
-    """PUT 接受 thinking_effort，adaptive capability 下直接存储。"""
     http_client, token = client
 
-    pid = _create_provider(http_client, token, name="Adaptive", thinking_capability="adaptive")
+    aid = _create_account(http_client, token, name="Adaptive")
 
-    # 首次 PUT：provider 从无到有，强制 reset — effort 应被清空
     resp = http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid, "thinking_effort": "high"},
+        json={
+            "account_id": aid,
+            "model_id": "claude-sonnet-4-6",
+            "thinking_effort": "high",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["provider_id"] == pid
-    # provider 切换（从无到有）→ 强制清空
+    assert data["account_id"] == aid
+    assert data["model_id"] == "claude-sonnet-4-6"
+    # binding changed (none → set) → effort forced to None
     assert data["thinking_effort"] is None
 
-    # 第二次 PUT：同一 provider，不切换 → effort 直接保存
+    # Second PUT: same binding, effort preserved
     resp2 = http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid, "thinking_effort": "high"},
+        json={
+            "account_id": aid,
+            "model_id": "claude-sonnet-4-6",
+            "thinking_effort": "high",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp2.status_code == 200
@@ -147,54 +144,60 @@ def test_put_binding_with_thinking_effort(client) -> None:
     assert data2["thinking_effort"] == "high"
 
 
-def test_put_binding_switching_provider_forces_reset(client) -> None:
-    """切换 provider 时强制清空 effort，忽略请求体里的值。"""
+def test_put_binding_switching_account_forces_reset(client) -> None:
     http_client, token = client
 
-    pid_a = _create_provider(http_client, token, name="ProviderA", thinking_capability="adaptive")
-    pid_b = _create_provider(http_client, token, name="ProviderB", thinking_capability="adaptive")
+    aid_a = _create_account(http_client, token, name="AccountA")
+    aid_b = _create_account(http_client, token, name="AccountB")
 
-    # 绑定到 A，同一 provider 再次 PUT 保存 effort
     http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid_a},
+        json={"account_id": aid_a, "model_id": "claude-sonnet-4-6"},
         headers={"Authorization": f"Bearer {token}"},
     )
     http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid_a, "thinking_effort": "high"},
+        json={
+            "account_id": aid_a,
+            "model_id": "claude-sonnet-4-6",
+            "thinking_effort": "high",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    # 切换到 B，即使请求体带了 effort，应被强制清空
     resp = http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid_b, "thinking_effort": "high"},
+        json={
+            "account_id": aid_b,
+            "model_id": "claude-sonnet-4-6",
+            "thinking_effort": "high",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["provider_id"] == pid_b
+    assert data["account_id"] == aid_b
     assert data["thinking_effort"] is None
 
 
-def test_put_binding_to_none_capability_provider_clears_thinking(client) -> None:
-    """binding 到 thinking_capability='none' 的 provider，强制清空 effort。"""
+def test_put_binding_to_none_capability_model_clears_thinking(client) -> None:
     http_client, token = client
 
-    pid = _create_provider(http_client, token, name="NoThinking", thinking_capability="none")
+    aid = _create_account(http_client, token, name="NoThinking")
 
-    # 先绑定到该 provider
     http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid},
+        json={"account_id": aid, "model_id": "claude-haiku-4-5"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    # 同一 provider 再次 PUT 带上 effort — capability=none 应强制清空
     resp = http_client.put(
         "/api/v1/agents/sebastian/llm-binding",
-        json={"provider_id": pid, "thinking_effort": "high"},
+        json={
+            "account_id": aid,
+            "model_id": "claude-haiku-4-5",
+            "thinking_effort": "high",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
@@ -203,10 +206,6 @@ def test_put_binding_to_none_capability_provider_clears_thinking(client) -> None
 
 
 def test_send_turn_with_extra_thinking_effort_field_is_accepted(client) -> None:
-    """带 thinking_effort 字段的请求体不应导致 422；字段被静默忽略（pydantic 默认 extra='ignore'）。
-
-    A5 回归：DTO 里已删除该字段，客户端旧版本带此字段也不应报错。
-    """
     from unittest.mock import AsyncMock, patch
 
     http_client, token = client
@@ -233,7 +232,7 @@ def test_send_turn_with_extra_thinking_effort_field_is_accepted(client) -> None:
             "/api/v1/turns",
             json={
                 "content": "hello",
-                "thinking_effort": "high",  # 已从 DTO 移除，应被 pydantic 静默忽略
+                "thinking_effort": "high",
             },
             headers={"Authorization": f"Bearer {token}"},
         )
