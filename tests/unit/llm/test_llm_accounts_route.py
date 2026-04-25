@@ -253,6 +253,10 @@ def test_update_account_rejects_invalid_base_url(
 
 
 def test_update_account_404_when_not_found(client: TestClient, mock_registry: MagicMock) -> None:
+    # get_account returns a valid record so the pre-update 404 guard does NOT fire;
+    # update_account returns None to exercise the defensive post-update 404 guard
+    # (concurrent-delete scenario).
+    mock_registry.get_account = AsyncMock(return_value=_make_account(id="nonexistent"))
     mock_registry.update_account = AsyncMock(return_value=None)
 
     resp = client.put(
