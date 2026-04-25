@@ -36,6 +36,8 @@ data class MemoryComponentDto(
         description = description,
         boundAccountId = binding?.accountId,
         boundModelId = binding?.modelId,
+        boundAccountName = binding?.resolved?.accountName,
+        boundModelDisplayName = binding?.resolved?.modelDisplayName,
         thinkingEffort = binding?.thinkingEffort.toThinkingEffort(),
     )
 }

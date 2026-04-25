@@ -35,6 +35,7 @@ sealed class Route {
     data class SettingsAgentBindingEditor(
         val agentType: String,
         val isMemoryComponent: Boolean = false,
+        val displayName: String = "",
     ) : Route()
 
     @Serializable

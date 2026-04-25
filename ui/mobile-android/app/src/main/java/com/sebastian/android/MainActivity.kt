@@ -261,6 +261,7 @@ fun SebastianNavHost(
                 AgentBindingEditorPage(
                     agentType = route.agentType,
                     isMemoryComponent = route.isMemoryComponent,
+                    displayName = route.displayName,
                     navController = navController,
                 )
             }

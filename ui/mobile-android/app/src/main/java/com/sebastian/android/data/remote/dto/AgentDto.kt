@@ -26,6 +26,8 @@ data class AgentDto(
         description = description,
         isOrchestrator = isOrchestrator,
         boundProviderId = binding?.accountId,
+        boundAccountName = binding?.resolved?.accountName,
+        boundModelDisplayName = binding?.resolved?.modelDisplayName,
         thinkingEffort = binding?.thinkingEffort.toThinkingEffort(),
         activeSessionCount = activeSessionCount,
         maxChildren = maxChildren ?: 0,

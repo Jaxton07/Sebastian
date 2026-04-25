@@ -6,6 +6,8 @@ data class AgentInfo(
     val description: String,
     val isOrchestrator: Boolean = false,
     val boundProviderId: String? = null,
+    val boundAccountName: String? = null,
+    val boundModelDisplayName: String? = null,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
     val activeSessionCount: Int = 0,
     val maxChildren: Int = 0,

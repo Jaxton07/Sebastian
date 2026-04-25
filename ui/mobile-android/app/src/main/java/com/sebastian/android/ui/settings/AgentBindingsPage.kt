@@ -99,6 +99,7 @@ fun AgentBindingsPage(
                             Route.SettingsAgentBindingEditor(
                                 agentType = "__default__",
                                 isMemoryComponent = false,
+                                displayName = "默认模型",
                             )
                         )
                     },
@@ -115,7 +116,7 @@ fun AgentBindingsPage(
                         icon = Icons.Outlined.AutoAwesome,
                         onClick = {
                             navController.navigate(
-                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false)
+                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false, displayName = agent.displayName)
                             )
                         },
                     )
@@ -128,11 +129,13 @@ fun AgentBindingsPage(
                 items(state.memoryComponents, key = { "mem:${it.componentType}" }) { component ->
                     AgentBindingRow(
                         headline = component.displayName,
-                        subtitle = "使用默认模型",
+                        subtitle = if (component.boundModelDisplayName != null && component.boundAccountName != null)
+                            "${component.boundModelDisplayName} · ${component.boundAccountName}"
+                        else "使用默认模型",
                         icon = Icons.Outlined.Psychology,
                         onClick = {
                             navController.navigate(
-                                Route.SettingsAgentBindingEditor(component.componentType, isMemoryComponent = true)
+                                Route.SettingsAgentBindingEditor(component.componentType, isMemoryComponent = true, displayName = component.displayName)
                             )
                         },
                     )
@@ -149,7 +152,7 @@ fun AgentBindingsPage(
                         icon = Icons.Outlined.Extension,
                         onClick = {
                             navController.navigate(
-                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false)
+                                Route.SettingsAgentBindingEditor(agent.agentType, isMemoryComponent = false, displayName = agent.displayName)
                             )
                         },
                     )
@@ -159,9 +162,10 @@ fun AgentBindingsPage(
     }
 }
 
-private fun resolvedSubtitle(agent: AgentInfo): String {
-    return "使用默认模型"
-}
+private fun resolvedSubtitle(agent: AgentInfo): String =
+    if (agent.boundModelDisplayName != null && agent.boundAccountName != null)
+        "${agent.boundModelDisplayName} · ${agent.boundAccountName}"
+    else "使用默认模型"
 
 @Composable
 private fun SectionHeader(title: String) {

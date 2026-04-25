@@ -6,5 +6,7 @@ data class MemoryComponentInfo(
     val description: String,
     val boundAccountId: String? = null,
     val boundModelId: String? = null,
+    val boundAccountName: String? = null,
+    val boundModelDisplayName: String? = null,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
 )

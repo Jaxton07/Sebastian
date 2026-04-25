@@ -1,9 +1,7 @@
 package com.sebastian.android.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -56,6 +53,7 @@ import kotlinx.coroutines.launch
 fun AgentBindingEditorPage(
     agentType: String,
     isMemoryComponent: Boolean = false,
+    displayName: String = "",
     navController: NavController,
 ) {
     val vm: AgentBindingEditorViewModel =
@@ -76,9 +74,8 @@ fun AgentBindingEditorPage(
         }
     }
 
-    val pageTitle = when {
-        state.isDefault -> "默认模型"
-        else -> agentType.replaceFirstChar { it.uppercase() }
+    val pageTitle = displayName.ifBlank {
+        if (state.isDefault) "默认模型" else agentType.replaceFirstChar { it.uppercase() }
     }
 
     Scaffold(
@@ -178,65 +175,73 @@ private fun AccountSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Text(
-        "LLM Account",
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(8.dp))
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        OutlinedTextField(
-            value = selectedAccount?.name ?: "使用默认模型",
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            if (selectedAccount != null && onClear != null) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text("使用默认模型", fontWeight = FontWeight.Medium)
-                            Text(
-                                "取消此 Agent 的专属绑定",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        onClear()
-                        expanded = false
-                    },
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                "LLM Account",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedAccount?.name ?: "使用默认模型",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
                 )
-            }
-            for (account in accounts) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(account.name, fontWeight = FontWeight.Medium)
-                            Text(
-                                account.providerType,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelect(account.id)
-                        expanded = false
-                    },
-                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    if (selectedAccount != null && onClear != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("使用默认模型", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "取消此 Agent 的专属绑定",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onClear()
+                                expanded = false
+                            },
+                        )
+                    }
+                    for (account in accounts) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(account.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        account.providerType,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onSelect(account.id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -251,52 +256,60 @@ private fun ModelSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Text(
-        "Model",
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(8.dp))
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        OutlinedTextField(
-            value = selectedModel?.displayName ?: "Select a model",
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            for (model in models) {
-                val ctxLabel = if (model.contextWindowTokens >= 1_000_000) {
-                    "${model.contextWindowTokens / 1_000_000}M tokens"
-                } else {
-                    "%,d tokens".format(model.contextWindowTokens)
-                }
-                androidx.compose.material3.DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(model.displayName, fontWeight = FontWeight.Medium)
-                            Text(
-                                ctxLabel,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelect(model.id)
-                        expanded = false
-                    },
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                "Model",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedModel?.displayName ?: "Select a model",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
                 )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    for (model in models) {
+                        val ctxLabel = if (model.contextWindowTokens >= 1_000_000) {
+                            "${model.contextWindowTokens / 1_000_000}M tokens"
+                        } else {
+                            "%,d tokens".format(model.contextWindowTokens)
+                        }
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(model.displayName, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        ctxLabel,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onSelect(model.id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
             }
         }
     }
