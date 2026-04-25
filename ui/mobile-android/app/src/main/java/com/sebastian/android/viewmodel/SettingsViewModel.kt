@@ -2,7 +2,8 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sebastian.android.data.model.Provider
+import com.sebastian.android.data.model.CatalogProvider
+import com.sebastian.android.data.model.LlmAccount
 import com.sebastian.android.data.repository.SettingsRepository
 import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,8 +19,8 @@ import javax.inject.Inject
 data class SettingsUiState(
     val serverUrl: String = "",
     val theme: String = "system",
-    val providers: List<Provider> = emptyList(),
-    val currentProvider: Provider? = null,
+    val llmAccounts: List<LlmAccount> = emptyList(),
+    val catalogProviders: List<CatalogProvider> = emptyList(),
     val isLoggedIn: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -48,8 +49,6 @@ class SettingsViewModel @Inject constructor(
             combine(
                 repository.serverUrl,
                 repository.theme,
-                repository.providersFlow(),
-                repository.currentProvider,
                 repository.isLoggedIn,
             ) { args ->
                 @Suppress("UNCHECKED_CAST")
@@ -57,14 +56,13 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         serverUrl = args[0] as String,
                         theme = args[1] as String,
-                        providers = args[2] as List<Provider>,
-                        currentProvider = args[3] as Provider?,
-                        isLoggedIn = args[4] as Boolean,
+                        isLoggedIn = args[2] as Boolean,
                     )
                 }
             }.collect {}
         }
-        loadProviders()
+        loadLlmCatalog()
+        loadLlmAccounts()
     }
 
     fun saveServerUrl(url: String) {
@@ -76,38 +74,6 @@ class SettingsViewModel @Inject constructor(
     fun saveTheme(theme: String) {
         viewModelScope.launch(dispatcher) {
             repository.saveTheme(theme)
-        }
-    }
-
-    fun loadProviders() {
-        viewModelScope.launch(dispatcher) {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            repository.getProviders()
-                .onFailure { e ->
-                    _uiState.update { it.copy(isLoading = false, error = e.message) }
-                }
-                .onSuccess {
-                    // 数据更新通过 providersFlow() 流式传递，此处只清除 loading 状态
-                    _uiState.update { it.copy(isLoading = false) }
-                }
-        }
-    }
-
-    fun deleteProvider(id: String) {
-        viewModelScope.launch(dispatcher) {
-            repository.deleteProvider(id)
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = e.message) }
-                }
-        }
-    }
-
-    fun setDefaultProvider(id: String) {
-        viewModelScope.launch(dispatcher) {
-            repository.setDefaultProvider(id)
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = e.message) }
-                }
         }
     }
 
@@ -209,4 +175,27 @@ class SettingsViewModel @Inject constructor(
 
     fun clearError() = _uiState.update { it.copy(error = null) }
     fun clearConnectionTestResult() = _uiState.update { it.copy(connectionTestResult = null) }
+
+    fun loadLlmCatalog() {
+        viewModelScope.launch(dispatcher) {
+            repository.getLlmCatalog()
+                .onSuccess { catalog -> _uiState.update { it.copy(catalogProviders = catalog) } }
+        }
+    }
+
+    fun loadLlmAccounts() {
+        viewModelScope.launch(dispatcher) {
+            repository.getLlmAccounts()
+                .onSuccess { accounts -> _uiState.update { it.copy(llmAccounts = accounts) } }
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun deleteLlmAccount(accountId: String) {
+        viewModelScope.launch(dispatcher) {
+            repository.deleteLlmAccount(accountId)
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
+                .onSuccess { loadLlmAccounts() }
+        }
+    }
 }

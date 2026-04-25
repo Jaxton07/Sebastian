@@ -24,6 +24,7 @@ def _initialize_agent_instances(
     event_bus: EventBus,
     llm_registry: LLMProviderRegistry,
     db_factory: Any = None,
+    compaction_scheduler: Any = None,
 ) -> dict[str, BaseAgent]:
     """Create a singleton instance for each registered agent type."""
     instances: dict[str, BaseAgent] = {}
@@ -36,6 +37,7 @@ def _initialize_agent_instances(
             allowed_tools=cfg.allowed_tools,
             allowed_skills=cfg.allowed_skills,
             db_factory=db_factory,
+            compaction_scheduler=compaction_scheduler,
         )
         agent.name = cfg.agent_type
         instances[cfg.agent_type] = agent
@@ -153,6 +155,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.consolidation_scheduler = consolidation_scheduler
     state.memory_extractor = extractor
 
+    from sebastian.context.compaction import (
+        SessionContextCompactionWorker,
+        TurnEndCompactionScheduler,
+    )
+    from sebastian.context.estimator import TokenEstimator
+
+    _compaction_worker = SessionContextCompactionWorker(
+        session_store=session_store,
+        llm_registry=llm_registry,
+    )
+
+    async def _resolve_context_window(agent_type: str) -> int:
+        resolved = await llm_registry.get_provider(agent_type)
+        return resolved.context_window_tokens
+
+    state.context_compaction_scheduler = TurnEndCompactionScheduler(
+        worker=_compaction_worker,
+        context_window_resolver=_resolve_context_window,
+        estimator=TokenEstimator(),
+    )
+    state.context_compaction_worker = _compaction_worker
+
     # Catch-up sweep: consolidate sessions that completed while the gateway was down.
     from sebastian.memory.consolidation import sweep_unconsolidated
 
@@ -186,6 +210,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_bus=event_bus,
         llm_registry=llm_registry,
         agent_registry={cfg.agent_type: cfg for cfg in agent_configs},
+        db_factory=db_factory,
+        compaction_scheduler=state.context_compaction_scheduler,
     )
 
     state.sebastian = sebastian_agent
@@ -204,6 +230,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_bus=state.event_bus,
         llm_registry=llm_registry,
         db_factory=state.db_factory,
+        compaction_scheduler=state.context_compaction_scheduler,
     )
 
     watchdog_task = start_watchdog(
@@ -258,12 +285,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Sebastian gateway started")
     yield
     watchdog_task.cancel()
-    await completion_notifier.aclose()
-    if state.consolidation_scheduler is not None:
-        await state.consolidation_scheduler.aclose()
-    from sebastian.store.database import get_engine
+    try:
+        await completion_notifier.aclose()
+        if state.consolidation_scheduler is not None:
+            await state.consolidation_scheduler.aclose()
+    finally:
+        state.context_compaction_scheduler = None
+        state.context_compaction_worker = None
+        from sebastian.store.database import get_engine
 
-    await get_engine().dispose()
+        await get_engine().dispose()
     logger.info("Sebastian gateway shutdown")
 
 
@@ -275,7 +306,7 @@ def create_app() -> FastAPI:
         agents,
         approvals,
         debug,
-        llm_providers,
+        llm_accounts,
         memory_components,
         memory_settings,
         sessions,
@@ -299,7 +330,7 @@ def create_app() -> FastAPI:
     app.include_router(approvals.router, prefix="/api/v1")
     app.include_router(stream.router, prefix="/api/v1")
     app.include_router(agents.router, prefix="/api/v1")
-    app.include_router(llm_providers.router, prefix="/api/v1")
+    app.include_router(llm_accounts.router, prefix="/api/v1")
     app.include_router(debug.router, prefix="/api/v1")
     app.include_router(memory_components.router, prefix="/api/v1")
     app.include_router(memory_settings.router, prefix="/api/v1")

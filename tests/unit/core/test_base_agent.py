@@ -181,8 +181,12 @@ async def test_base_agent_run_streaming_derives_thinking_effort_from_registry(
     resolved = ResolvedProvider(
         provider=mock_provider,
         model="claude-opus-4-6",
+        context_window_tokens=200000,
         thinking_effort="medium",
         capability="effort",
+        thinking_format=None,
+        account_id="test-account",
+        model_display_name="Claude Opus 4.6",
     )
     registry = AsyncMock()
     registry.get_provider = AsyncMock(return_value=resolved)

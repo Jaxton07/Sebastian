@@ -1,7 +1,5 @@
 package com.sebastian.android.ui.settings
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,7 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.sebastian.android.data.model.Provider
+import com.sebastian.android.data.model.LlmAccount
 import com.sebastian.android.ui.common.SebastianIcons
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.SettingsViewModel
@@ -66,7 +65,12 @@ fun ProviderListPage(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var deleteTarget by remember { mutableStateOf<Provider?>(null) }
+    var deleteTarget by remember { mutableStateOf<LlmAccount?>(null) }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.loadLlmAccounts()
+        onPauseOrDispose {}
+    }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -75,15 +79,10 @@ fun ProviderListPage(
         }
     }
 
-    val sortedProviders = remember(uiState.providers) {
-        val (default, others) = uiState.providers.partition { it.isDefault }
-        default + others
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("模型与 Provider") },
+                title = { Text("LLM 连接") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -93,7 +92,7 @@ fun ProviderListPage(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (uiState.providers.isNotEmpty()) {
+            if (uiState.llmAccounts.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = {
                         navController.navigate(Route.SettingsProvidersNew) { launchSingleTop = true }
@@ -102,13 +101,13 @@ fun ProviderListPage(
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape,
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "添加 Provider")
+                    Icon(Icons.Filled.Add, contentDescription = "添加连接")
                 }
             }
         },
     ) { innerPadding ->
         when {
-            uiState.isLoading && uiState.providers.isEmpty() -> {
+            uiState.isLoading && uiState.llmAccounts.isEmpty() -> {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -118,7 +117,7 @@ fun ProviderListPage(
                     CircularProgressIndicator()
                 }
             }
-            uiState.providers.isEmpty() -> {
+            uiState.llmAccounts.isEmpty() -> {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -132,12 +131,12 @@ fun ProviderListPage(
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
                             Text(
-                                "尚未配置模型 Provider",
+                                "尚未配置 LLM 连接",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "添加至少一个 Provider 后，Sebastian 才能正常发起对话。",
+                                "添加至少一个 LLM 账户后，Sebastian 才能正常发起对话。",
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 8.dp),
@@ -155,7 +154,7 @@ fun ProviderListPage(
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        "添加 Provider",
+                                        "添加 LLM 连接",
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onPrimary,
@@ -176,7 +175,7 @@ fun ProviderListPage(
                 ) {
                     item {
                         Text(
-                            "管理默认模型与各 Provider 配置。左滑可删除。",
+                            "管理 LLM 账户与 API Key。左滑可删除。",
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 4.dp),
@@ -184,17 +183,23 @@ fun ProviderListPage(
                     }
 
                     items(
-                        items = sortedProviders,
+                        items = uiState.llmAccounts,
                         key = { it.id },
-                    ) { provider ->
-                        SwipeToDeleteProviderCard(
-                            provider = provider,
+                    ) { account ->
+                        val catalogDisplayName = uiState.catalogProviders
+                            .find { it.id == account.catalogProviderId }?.displayName
+                        SwipeToDeleteAccountCard(
+                            account = account,
+                            catalogDisplayName = catalogDisplayName,
                             onClick = {
-                                navController.navigate(Route.SettingsProvidersEdit(provider.id)) {
+                                navController.navigate(Route.SettingsProvidersEdit(account.id)) {
                                     launchSingleTop = true
                                 }
                             },
-                            onDelete = { deleteTarget = provider },
+                            onDelete = { deleteTarget = account },
+                            onManageModels = {
+                                // TODO (Task 8): navigate to Route.SettingsCustomModels(account.id)
+                            },
                         )
                     }
 
@@ -204,14 +209,16 @@ fun ProviderListPage(
         }
     }
 
-    deleteTarget?.let { provider ->
+    deleteTarget?.let { account ->
+        val catalogDisplayName = uiState.catalogProviders
+            .find { it.id == account.catalogProviderId }?.displayName
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("删除 Provider") },
-            text = { Text("确认删除 \"${provider.name}\"？") },
+            title = { Text("删除连接") },
+            text = { Text("确认删除 \"${account.name}\"？") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteProvider(provider.id)
+                    viewModel.deleteLlmAccount(account.id)
                     deleteTarget = null
                 }) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
@@ -228,10 +235,12 @@ fun ProviderListPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeToDeleteProviderCard(
-    provider: Provider,
+private fun SwipeToDeleteAccountCard(
+    account: LlmAccount,
+    catalogDisplayName: String?,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onManageModels: () -> Unit = {},
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -264,28 +273,25 @@ private fun SwipeToDeleteProviderCard(
             }
         },
     ) {
-        ProviderCard(provider = provider, onClick = onClick)
+        AccountCard(
+            account = account,
+            catalogDisplayName = catalogDisplayName,
+            onClick = onClick,
+            onManageModels = onManageModels,
+        )
     }
 }
 
 @Composable
-private fun ProviderCard(
-    provider: Provider,
+private fun AccountCard(
+    account: LlmAccount,
+    catalogDisplayName: String?,
     onClick: () -> Unit,
+    onManageModels: () -> Unit = {},
 ) {
-    val bgColor by animateColorAsState(
-        targetValue = if (provider.isDefault) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-        animationSpec = tween(durationMillis = 200),
-        label = "provider_card_bg",
-    )
-
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = bgColor,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
             modifier = Modifier
@@ -295,52 +301,45 @@ private fun ProviderCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = account.name,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Row(
+                    modifier = Modifier.padding(top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val subtitle = catalogDisplayName ?: "自定义"
                     Text(
-                        text = provider.name,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (provider.isDefault) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
+                        text = subtitle,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (provider.isDefault) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
+                    if (account.hasApiKey) {
+                        Text(
+                            text = "  ✓ 已配置",
+                            fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .height(20.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "默认",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    lineHeight = 20.sp,
-                                )
-                            }
-                        }
+                        )
                     }
                 }
-                Text(
-                    text = buildString {
-                        append(provider.type)
-                        if (!provider.model.isNullOrBlank()) {
-                            append(" · ")
-                            append(provider.model)
-                        }
-                    },
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+                if (account.catalogProviderId == "custom") {
+                    Surface(
+                        onClick = onManageModels,
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Text(
+                            "管理模型",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        )
+                    }
+                }
             }
             Icon(
                 SebastianIcons.RightArrow,

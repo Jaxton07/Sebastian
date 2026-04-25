@@ -59,8 +59,8 @@ async def test_base_agent_uses_injected_provider() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stream_inner_sets_turn_id_and_pci() -> None:
-    """_stream_inner 写入的 assistant items 应携带非空 turn_id 和正确的 provider_call_index。
+async def test_stream_inner_sets_assistant_turn_id_and_pci() -> None:
+    """_stream_inner 写入的 assistant items 应携带非空 assistant_turn_id。
 
     2-iteration 流程:
       iteration 0: ProviderCallStart(0), ToolCallReady (tool_use), ProviderCallEnd(tool_use)
@@ -124,11 +124,15 @@ async def test_stream_inner_sets_turn_id_and_pci() -> None:
     blocks = assistant_calls[0].kwargs.get("blocks") or []
     assert len(blocks) >= 2, f"Expected at least 2 blocks, got: {blocks}"
 
-    # All blocks share the same turn_id (26-char ULID)
-    turn_ids = {b["turn_id"] for b in blocks}
-    assert len(turn_ids) == 1, f"Expected one unique turn_id, got: {turn_ids}"
-    turn_id = next(iter(turn_ids))
-    assert len(turn_id) == 26, f"turn_id should be 26-char ULID, got: {turn_id!r}"
+    # All blocks share the same assistant_turn_id (26-char ULID)
+    assistant_turn_ids = {b["assistant_turn_id"] for b in blocks}
+    assert len(assistant_turn_ids) == 1, (
+        f"Expected one unique assistant_turn_id, got: {assistant_turn_ids}"
+    )
+    assistant_turn_id = next(iter(assistant_turn_ids))
+    assert len(assistant_turn_id) == 26, (
+        f"assistant_turn_id should be 26-char ULID, got: {assistant_turn_id!r}"
+    )
 
     # Tool block is from iteration 0
     tool_blocks = [b for b in blocks if b["type"] == "tool"]
@@ -219,11 +223,11 @@ async def test_cancel_session_flushes_pending_blocks() -> None:
     thinking_blocks = [b for b in blocks if b["type"] == "thinking"]
     assert len(thinking_blocks) >= 1, f"Expected thinking block in flushed blocks, got: {blocks}"
 
-    # Verify thinking block has correct turn_id, provider_call_index, and block_index
+    # Verify thinking block has correct assistant_turn_id, provider_call_index, and block_index
     thinking_block = thinking_blocks[0]
-    assert thinking_block["turn_id"] is not None
-    assert len(thinking_block["turn_id"]) == 26, (
-        f"turn_id should be 26-char ULID, got: {thinking_block['turn_id']!r}"
+    assert thinking_block["assistant_turn_id"] is not None
+    assert len(thinking_block["assistant_turn_id"]) == 26, (
+        f"assistant_turn_id should be 26-char ULID, got: {thinking_block['assistant_turn_id']!r}"
     )
     assert thinking_block["provider_call_index"] == 0
     assert thinking_block["block_index"] == 0
@@ -493,6 +497,65 @@ async def test_tool_dispatch_exception_persists_failed_tool_result() -> None:
 
 
 @pytest.mark.asyncio
+async def test_exchange_id_propagated_to_all_blocks() -> None:
+    """db_factory 存在时，run_streaming 应为该 exchange 分配 exchange_id/exchange_index，
+    并将其传递给 user 消息和 assistant 消息的所有 blocks。
+    """
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    provider = MockLLMProvider(
+        [
+            TextBlockStart(block_id="b0_0"),
+            TextDelta(block_id="b0_0", delta="Hi!"),
+            TextBlockStop(block_id="b0_0", text="Hi!"),
+            ProviderCallEnd(stop_reason="end_turn"),
+        ]
+    )
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are a test agent."
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_context_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+    session_store.allocate_exchange = AsyncMock(return_value=("01JEXCHANGE0000000000000001", 1))
+
+    # Pass a non-None db_factory to trigger the allocate_exchange path
+    fake_db_factory = MagicMock()
+
+    gate = MagicMock()
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(
+        gate=gate,
+        session_store=session_store,
+        provider=provider,
+        db_factory=fake_db_factory,
+    )
+
+    result = await agent.run("hi", session_id="sess_exchange")
+    assert result == "Hi!"
+
+    # allocate_exchange should have been called once
+    session_store.allocate_exchange.assert_called_once_with("sess_exchange", "test")
+
+    calls = session_store.append_message.call_args_list
+    # All calls (user + assistant) should carry exchange fields
+    for call in calls:
+        assert call.kwargs.get("exchange_id") == "01JEXCHANGE0000000000000001", (
+            f"exchange_id missing or wrong in call: {call}"
+        )
+        assert call.kwargs.get("exchange_index") == 1, (
+            f"exchange_index missing or wrong in call: {call}"
+        )
+
+
+@pytest.mark.asyncio
 async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
     """取消发生在工具执行中时，flush 不能留下孤立 tool_call。"""
     from sebastian.core.base_agent import BaseAgent
@@ -554,6 +617,7 @@ async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
 
     agent = TestAgent(gate=gate, session_store=session_store, provider=ToolThenWaitProvider())
     run_task = asyncio.create_task(agent.run("slow", session_id="sess_cancel_tool"))
+
     await asyncio.wait_for(tool_started.wait(), timeout=2.0)
 
     await agent.cancel_session("sess_cancel_tool", intent="cancel")
@@ -575,3 +639,156 @@ async def test_cancel_during_tool_call_flushes_cancelled_tool_result() -> None:
     assert tool_result["tool_call_id"] == "toolu_slow"
     assert tool_result["ok"] is False
     assert "cancel" in tool_result["model_content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_flush_carries_same_exchange_as_user_message() -> None:
+    """cancel-flush 的 append_message 应携带与 user-message 相同的 exchange_id/exchange_index。"""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    hang_event = asyncio.Event()
+
+    class SlowThinkProvider(LLMProvider):
+        """Yields a ThinkingBlockStop then hangs until cancelled."""
+
+        message_format = "anthropic"
+        call_count = 0
+
+        async def stream(
+            self,
+            *,
+            system: str,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            model: str,
+            max_tokens: int,
+            block_id_prefix: str = "",
+            thinking_effort: str | None = None,
+        ) -> AsyncGenerator[LLMStreamEvent, None]:
+            self.call_count += 1
+            yield ThinkingBlockStart(block_id="b0_0")
+            yield ThinkingBlockStop(block_id="b0_0", thinking="pondering...", signature=None)
+            await hang_event.wait()
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are a test agent."
+
+    _EXCHANGE_ID = "01JEXCHANGE_CANCEL000000001"
+    _EXCHANGE_IDX = 7
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_context_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+    session_store.allocate_exchange = AsyncMock(return_value=(_EXCHANGE_ID, _EXCHANGE_IDX))
+
+    fake_db_factory = MagicMock()
+
+    gate = MagicMock()
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    agent = TestAgent(
+        gate=gate,
+        session_store=session_store,
+        provider=SlowThinkProvider(),
+        db_factory=fake_db_factory,
+    )
+
+    run_task = asyncio.create_task(agent.run("hi", session_id="sess_cancel_exchange"))
+    await asyncio.sleep(0.05)
+
+    await agent.cancel_session("sess_cancel_exchange", intent="cancel")
+    try:
+        await asyncio.wait_for(run_task, timeout=2.0)
+    except (asyncio.CancelledError, TimeoutError):
+        pass
+
+    calls = session_store.append_message.call_args_list
+    # Every call (user + cancel-flush assistant) must carry the same exchange pair
+    assert len(calls) >= 2, "Expected user append + cancel-flush append"
+    for call in calls:
+        assert call.kwargs.get("exchange_id") == _EXCHANGE_ID, (
+            f"exchange_id mismatch in call: {call}"
+        )
+        assert call.kwargs.get("exchange_index") == _EXCHANGE_IDX, (
+            f"exchange_index mismatch in call: {call}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Compaction scheduler integration
+# ---------------------------------------------------------------------------
+
+
+class FakeCompactionScheduler:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def maybe_schedule_after_turn(self, **kwargs: Any) -> None:
+        self.calls.append(kwargs)
+
+
+@pytest.mark.asyncio
+async def test_stream_inner_schedules_compaction_after_turn() -> None:
+    """After TurnDone is persisted, the compaction scheduler receives one call
+    containing session_id, agent_type, usage (from ProviderCallEnd), messages,
+    and system_prompt.
+    """
+    from sebastian.context.usage import TokenUsage
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    fake_usage = TokenUsage(input_tokens=1000, output_tokens=200)
+
+    provider = MockLLMProvider(
+        [
+            TextBlockStart(block_id="b0_0"),
+            TextDelta(block_id="b0_0", delta="Hello."),
+            TextBlockStop(block_id="b0_0", text="Hello."),
+            ProviderCallEnd(stop_reason="end_turn", usage=fake_usage),
+        ]
+    )
+
+    class TestAgent(BaseAgent):
+        name = "test"
+        system_prompt = "You are a test agent."
+
+    session_store = MagicMock(spec=SessionStore)
+    session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
+    session_store.update_activity = AsyncMock()
+    session_store.get_messages = AsyncMock(return_value=[])
+    session_store.append_message = AsyncMock()
+
+    gate = MagicMock()
+    gate.get_tool_specs = MagicMock(return_value=[])
+    gate.get_skill_specs = MagicMock(return_value=[])
+
+    scheduler = FakeCompactionScheduler()
+
+    agent = TestAgent(
+        gate=gate,
+        session_store=session_store,
+        provider=provider,
+        compaction_scheduler=scheduler,
+    )
+
+    result = await agent.run("hi", session_id="sess_compaction")
+    assert result == "Hello."
+
+    # Scheduler must have been called exactly once
+    assert len(scheduler.calls) == 1, f"Expected 1 scheduler call, got: {scheduler.calls}"
+
+    call = scheduler.calls[0]
+    assert call["session_id"] == "sess_compaction"
+    assert call["agent_type"] == "test"
+    # usage forwarded from ProviderCallEnd
+    assert call["usage"] is fake_usage
+    # messages include user message
+    assert any(m.get("role") == "user" for m in call["messages"])
+    # system_prompt is non-empty
+    assert isinstance(call["system_prompt"], str)
+    assert len(call["system_prompt"]) > 0

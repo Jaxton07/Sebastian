@@ -180,20 +180,20 @@ async def test_concurrent_append_no_duplicate_seq(store, session_in_db):
 
 
 @pytest.mark.asyncio
-async def test_append_message_preserves_turn_id_from_blocks(store, session_in_db):
-    """append_message 传入带 turn_id 的 blocks 时，写入 DB 的 item 应保留 turn_id。"""
+async def test_append_message_preserves_assistant_turn_id_from_blocks(store, session_in_db):
+    """append_message 传入带 assistant_turn_id 的 blocks 时，写入 DB 的 item 应保留。"""
     blocks = [
         {
             "type": "thinking",
             "thinking": "thought",
-            "turn_id": "01JQTEST00000000000000000A",
+            "assistant_turn_id": "01JQTEST00000000000000000A",
             "provider_call_index": 0,
             "block_index": 0,
         },
         {
             "type": "text",
             "text": "reply",
-            "turn_id": "01JQTEST00000000000000000A",
+            "assistant_turn_id": "01JQTEST00000000000000000A",
             "provider_call_index": 0,
             "block_index": 1,
         },
@@ -209,11 +209,11 @@ async def test_append_message_preserves_turn_id_from_blocks(store, session_in_db
     thinking = next(i for i in items if i["kind"] == "thinking")
     text = next(i for i in items if i["kind"] == "assistant_message")
 
-    assert thinking["turn_id"] == "01JQTEST00000000000000000A"
+    assert thinking["assistant_turn_id"] == "01JQTEST00000000000000000A"
     assert thinking["provider_call_index"] == 0
     assert thinking["block_index"] == 0
     assert thinking["content"] == "thought"
-    assert text["turn_id"] == "01JQTEST00000000000000000A"
+    assert text["assistant_turn_id"] == "01JQTEST00000000000000000A"
     assert text["block_index"] == 1
 
 
@@ -225,14 +225,14 @@ async def test_append_message_thinking_content_replays_to_anthropic(store, sessi
             "type": "thinking",
             "thinking": "real thought",
             "signature": "sig-real",
-            "turn_id": "01JQTEST00000000000000000E",
+            "assistant_turn_id": "01JQTEST00000000000000000E",
             "provider_call_index": 0,
             "block_index": 0,
         },
         {
             "type": "text",
             "text": "answer",
-            "turn_id": "01JQTEST00000000000000000E",
+            "assistant_turn_id": "01JQTEST00000000000000000E",
             "provider_call_index": 0,
             "block_index": 1,
         },
@@ -266,7 +266,7 @@ async def test_append_message_tool_use_block_content_is_json_input(store, sessio
             "tool_id": "tc1",
             "name": "my_tool",
             "input": {"key": "value"},
-            "turn_id": "01JQTEST00000000000000000B",
+            "assistant_turn_id": "01JQTEST00000000000000000B",
             "provider_call_index": 0,
             "block_index": 0,
         }
@@ -294,7 +294,7 @@ async def test_append_message_tool_use_normalizes_legacy_id_name(store, session_
             "id": "tc_legacy",
             "name": "legacy_tool",
             "input": {"q": "weather"},
-            "turn_id": "01JQTEST00000000000000000C",
+            "assistant_turn_id": "01JQTEST00000000000000000C",
             "provider_call_index": 0,
             "block_index": 0,
         }
@@ -331,7 +331,7 @@ async def test_append_message_tool_result_normalizes_tool_use_id(store, session_
             "type": "tool_result",
             "tool_use_id": "tc_legacy",
             "content": "legacy result",
-            "turn_id": "01JQTEST00000000000000000D",
+            "assistant_turn_id": "01JQTEST00000000000000000D",
             "provider_call_index": 0,
             "block_index": 0,
         }
@@ -442,7 +442,7 @@ async def test_get_context_with_thinking_excludes_system_event(store, session_in
             "kind": "user_message",
             "role": "user",
             "content": "hi",
-            "turn_id": "t1",
+            "assistant_turn_id": "t1",
             "provider_call_index": 0,
             "block_index": 0,
         },
@@ -450,7 +450,7 @@ async def test_get_context_with_thinking_excludes_system_event(store, session_in
             "kind": "thinking",
             "role": "assistant",
             "content": "thoughts",
-            "turn_id": "t1",
+            "assistant_turn_id": "t1",
             "provider_call_index": 0,
             "block_index": 1,
             "payload": {"signature": "sig1"},
@@ -461,7 +461,7 @@ async def test_get_context_with_thinking_excludes_system_event(store, session_in
             "kind": "assistant_message",
             "role": "assistant",
             "content": "reply",
-            "turn_id": "t1",
+            "assistant_turn_id": "t1",
             "provider_call_index": 0,
             "block_index": 2,
         },
@@ -536,3 +536,138 @@ async def test_get_recent_items_selects_window_by_seq_not_effective_seq(store, s
         f"recent should select by real seq, including the newly inserted summary; got seqs: {seqs}"
     )
     assert recent[-1]["kind"] == "context_summary"
+
+
+@pytest.mark.asyncio
+async def test_append_message_persists_exchange_fields(store, session_in_db) -> None:
+    """append_message 传入 exchange_id/exchange_index 时，item 应持久化这两个字段。"""
+    await store.append_message(
+        session_in_db.id,
+        "user",
+        "hello",
+        "sebastian",
+        exchange_id="ex-1",
+        exchange_index=1,
+    )
+
+    items = await store.get_timeline_items(session_in_db.id, "sebastian")
+
+    assert items[0]["exchange_id"] == "ex-1"
+    assert items[0]["exchange_index"] == 1
+
+
+@pytest.mark.asyncio
+async def test_allocate_exchange_increments_next_exchange_index(store, session_in_db) -> None:
+    """allocate_exchange 每次调用返回递增的 exchange_index 并生成唯一 exchange_id。"""
+    ex_id1, ex_idx1 = await store.allocate_exchange(session_in_db.id, "sebastian")
+    ex_id2, ex_idx2 = await store.allocate_exchange(session_in_db.id, "sebastian")
+
+    assert ex_idx1 == 1
+    assert ex_idx2 == 2
+    assert ex_id1 != ex_id2
+    assert len(ex_id1) == 26  # ULID length
+
+
+@pytest.mark.asyncio
+async def test_compact_range_archives_source_and_inserts_summary(store, session_in_db) -> None:
+    await store.append_timeline_items(
+        session_in_db.id,
+        "sebastian",
+        [
+            {"kind": "user_message", "role": "user", "content": "u1", "exchange_index": 1},
+            {
+                "kind": "assistant_message",
+                "role": "assistant",
+                "content": "a1",
+                "exchange_index": 1,
+            },
+            {"kind": "user_message", "role": "user", "content": "u2", "exchange_index": 2},
+        ],
+    )
+
+    result = await store.compact_range(
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="summary",
+        summary_payload={"summary_version": "context_compaction_v1"},
+    )
+
+    assert result.status == "compacted"
+    context_items = await store.get_context_timeline_items(session_in_db.id, "sebastian")
+    assert [item["kind"] for item in context_items] == ["context_summary", "user_message"]
+    audit_items = await store.get_timeline_items(
+        session_in_db.id, "sebastian", include_archived=True
+    )
+    assert audit_items[0]["archived"] is True
+    assert audit_items[1]["archived"] is True
+
+
+@pytest.mark.asyncio
+async def test_compact_range_returns_already_compacted_when_any_source_archived(
+    store, session_in_db
+) -> None:
+    await store.append_timeline_items(
+        session_in_db.id,
+        "sebastian",
+        [
+            {"kind": "user_message", "role": "user", "content": "u1", "exchange_index": 1},
+            {
+                "kind": "assistant_message",
+                "role": "assistant",
+                "content": "a1",
+                "exchange_index": 1,
+            },
+        ],
+    )
+
+    # first compaction succeeds
+    first = await store.compact_range(
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="s",
+        summary_payload={"summary_version": "context_compaction_v1"},
+    )
+    assert first.status == "compacted"
+
+    # second attempt on same range
+    second = await store.compact_range(
+        session_in_db.id,
+        "sebastian",
+        source_seq_start=1,
+        source_seq_end=2,
+        summary_content="s2",
+        summary_payload={"summary_version": "context_compaction_v1"},
+    )
+    assert second.status == "already_compacted"
+    assert second.archived_item_count == 0
+
+
+@pytest.mark.asyncio
+async def test_allocate_exchange_concurrent(store, session_in_db) -> None:
+    """并发调用 allocate_exchange 两次，exchange_id 唯一且 exchange_index 连续。"""
+    results = await asyncio.gather(
+        store.allocate_exchange(session_in_db.id, "sebastian"),
+        store.allocate_exchange(session_in_db.id, "sebastian"),
+    )
+    ex_ids = {r[0] for r in results}
+    ex_indices = {r[1] for r in results}
+
+    assert len(ex_ids) == 2, f"exchange_id 应唯一，实际: {ex_ids}"
+    assert ex_indices == {1, 2}, f"exchange_index 应为 {{1, 2}}，实际: {ex_indices}"
+
+    # Verify sessions.next_exchange_index == 3
+    from sqlalchemy import text as sa_text
+
+    async with store._db_factory() as db:
+        row = (
+            await db.execute(
+                sa_text("SELECT next_exchange_index FROM sessions WHERE id = :sid"),
+                {"sid": session_in_db.id},
+            )
+        ).first()
+    assert row is not None
+    assert row[0] == 3, f"next_exchange_index 应为 3，实际: {row[0]}"

@@ -49,6 +49,7 @@ import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.ui.settings.AgentBindingEditorPage
 import com.sebastian.android.ui.settings.AgentBindingsPage
 import com.sebastian.android.ui.settings.AppearancePage
+import com.sebastian.android.ui.settings.CustomModelsPage
 import com.sebastian.android.ui.settings.DebugLoggingPage
 import com.sebastian.android.ui.settings.MemorySettingsPage
 import com.sebastian.android.ui.settings.ProviderFormPage
@@ -241,6 +242,10 @@ fun SebastianNavHost(
             composable<Route.SettingsMemory> {
                 MemorySettingsPage(navController = navController)
             }
+            composable<Route.SettingsCustomModels> { backStackEntry ->
+                val route = backStackEntry.toRoute<Route.SettingsCustomModels>()
+                CustomModelsPage(accountId = route.accountId, onBack = { navController.popBackStack() })
+            }
             composable<Route.SettingsProvidersNew> {
                 ProviderFormPage(navController = navController, providerId = null)
             }
@@ -256,6 +261,7 @@ fun SebastianNavHost(
                 AgentBindingEditorPage(
                     agentType = route.agentType,
                     isMemoryComponent = route.isMemoryComponent,
+                    displayName = route.displayName,
                     navController = navController,
                 )
             }

@@ -2,9 +2,9 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sebastian.android.data.model.AgentBinding
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.MemoryComponentInfo
-import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,7 +19,7 @@ data class AgentBindingsUiState(
     val loading: Boolean = false,
     val agents: List<AgentInfo> = emptyList(),
     val memoryComponents: List<MemoryComponentInfo> = emptyList(),
-    val providers: List<Provider> = emptyList(),
+    val defaultBinding: AgentBinding? = null,
     val errorMessage: String? = null,
 )
 
@@ -37,19 +37,19 @@ class AgentBindingsViewModel @Inject constructor(
             _uiState.update { it.copy(loading = true, errorMessage = null) }
             val agentsD = async { agentRepository.getAgents() }
             val componentsD = async { agentRepository.listMemoryComponents() }
-            val providersD = async { settingsRepository.getProviders() }
+            val defaultBindingD = async { settingsRepository.getDefaultBinding() }
             val agentsR = agentsD.await()
             val componentsR = componentsD.await()
-            val providersR = providersD.await()
+            val defaultBindingR = defaultBindingD.await()
             val err = agentsR.exceptionOrNull()
                 ?: componentsR.exceptionOrNull()
-                ?: providersR.exceptionOrNull()
+                ?: defaultBindingR.exceptionOrNull()
             _uiState.update {
                 it.copy(
                     loading = false,
                     agents = agentsR.getOrDefault(emptyList()),
                     memoryComponents = componentsR.getOrDefault(emptyList()),
-                    providers = providersR.getOrDefault(emptyList()),
+                    defaultBinding = defaultBindingR.getOrNull(),
                     errorMessage = err?.message,
                 )
             }

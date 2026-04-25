@@ -1,25 +1,32 @@
 package com.sebastian.android.data.repository
 
+import com.sebastian.android.data.model.AgentBinding
 import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.MemoryComponentInfo
-import com.sebastian.android.data.model.ThinkingEffort
-import com.sebastian.android.data.remote.dto.AgentBindingDto
 
 interface AgentRepository {
     suspend fun getAgents(): Result<List<AgentInfo>>
-    suspend fun getBinding(agentType: String): Result<AgentBindingDto>
-    suspend fun setBinding(
+
+    // ── Account-based agent binding ──────────────────────────────────────────
+    suspend fun getAgentBinding(agentType: String): Result<AgentBinding>
+    suspend fun setAgentBinding(
         agentType: String,
-        providerId: String?,
-        thinkingEffort: ThinkingEffort,
-    ): Result<Unit>
-    suspend fun clearBinding(agentType: String): Result<Unit>
+        accountId: String?,
+        modelId: String?,
+        thinkingEffort: String?,
+    ): Result<AgentBinding>
+    suspend fun clearAgentBinding(agentType: String): Result<Unit>
+
+    // ── Memory components ────────────────────────────────────────────────────
     suspend fun listMemoryComponents(): Result<List<MemoryComponentInfo>>
-    suspend fun getMemoryComponentBinding(componentType: String): Result<AgentBindingDto>
-    suspend fun setMemoryComponentBinding(
+
+    // Account-based memory binding
+    suspend fun getMemoryBinding(componentType: String): Result<AgentBinding>
+    suspend fun setMemoryBinding(
         componentType: String,
-        providerId: String?,
-        thinkingEffort: ThinkingEffort,
-    ): Result<Unit>
+        accountId: String?,
+        modelId: String?,
+        thinkingEffort: String?,
+    ): Result<AgentBinding>
     suspend fun clearMemoryComponentBinding(componentType: String): Result<Unit>
 }

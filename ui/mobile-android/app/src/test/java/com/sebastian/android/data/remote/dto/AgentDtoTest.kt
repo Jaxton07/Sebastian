@@ -19,14 +19,15 @@ class AgentDtoTest {
             "max_children": 5,
             "binding": {
                 "agent_type": "forge",
-                "provider_id": "prov-1",
+                "account_id": "acct-1",
+                "model_id": "claude-3-5-sonnet",
                 "thinking_effort": "high"
             }
         }""".trimIndent()
         val dto = adapter.fromJson(json)!!
-        assertEquals("prov-1", dto.binding?.providerId)
+        assertEquals("acct-1", dto.binding?.accountId)
         val domain = dto.toDomain()
-        assertEquals("prov-1", domain.boundProviderId)
+        assertEquals("acct-1", domain.boundProviderId)
         assertEquals(5, domain.maxChildren)
     }
 

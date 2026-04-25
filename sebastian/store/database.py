@@ -73,7 +73,6 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
     Each entry: (table, column, DDL fragment). SQLite only.
     """
     patches: list[tuple[str, str, str]] = [
-        ("llm_providers", "thinking_capability", "VARCHAR(20)"),
         ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
         ("memory_decision_log", "input_source", "TEXT"),
         ("memory_decision_log", "session_id", "TEXT"),
@@ -99,6 +98,11 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
         ("session_consolidations", "last_seen_item_seq", "INTEGER"),
         ("session_consolidations", "last_consolidated_source_seq", "INTEGER"),
         ("session_consolidations", "consolidation_mode", "VARCHAR(50) DEFAULT 'full_session'"),
+        # sessions：exchange 计数器
+        ("sessions", "next_exchange_index", "INTEGER DEFAULT 1"),
+        # session_items：exchange 边界字段
+        ("session_items", "exchange_id", "VARCHAR"),
+        ("session_items", "exchange_index", "INTEGER"),
     ]
     for table, column, ddl in patches:
         result = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
@@ -131,6 +135,12 @@ async def _normalize_confidence_types(conn: Any) -> None:
     """
     tables = ("profile_memories", "episode_memories", "relation_candidates")
     for table in tables:
+        table_exists = await conn.exec_driver_sql(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=:table",
+            {"table": table},
+        )
+        if table_exists.first() is None:
+            continue
         result = await conn.exec_driver_sql(
             f"UPDATE {table} SET confidence = CAST(confidence AS REAL) "
             f"WHERE typeof(confidence) = 'text'"
@@ -142,23 +152,51 @@ async def _normalize_confidence_types(conn: Any) -> None:
 async def _apply_idempotent_indexes(conn: Any) -> None:
     """幂等创建 session/timeline 查询索引。"""
     indexes = [
-        "CREATE INDEX IF NOT EXISTS ix_checkpoints_session"
-        " ON checkpoints (agent_type, session_id, task_id)",
-        "CREATE INDEX IF NOT EXISTS ix_session_consolidations_agent"
-        " ON session_consolidations (agent_type)",
+        (
+            "checkpoints",
+            "CREATE INDEX IF NOT EXISTS ix_checkpoints_session"
+            " ON checkpoints (agent_type, session_id, task_id)",
+        ),
+        (
+            "session_consolidations",
+            "CREATE INDEX IF NOT EXISTS ix_session_consolidations_agent"
+            " ON session_consolidations (agent_type)",
+        ),
+        (
+            "session_items",
+            "CREATE INDEX IF NOT EXISTS ix_session_items_assistant_turn"
+            " ON session_items "
+            "(agent_type, session_id, assistant_turn_id, provider_call_index, block_index)",
+        ),
+        (
+            "session_items",
+            "CREATE INDEX IF NOT EXISTS ix_session_items_exchange"
+            " ON session_items (agent_type, session_id, exchange_index, seq)",
+        ),
     ]
-    for sql in indexes:
+    for table, sql in indexes:
+        table_exists = await conn.exec_driver_sql(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=:table",
+            {"table": table},
+        )
+        if table_exists.first() is None:
+            continue
         await conn.exec_driver_sql(sql)
 
 
 async def _drop_obsolete_columns(conn: Any) -> None:
     """删除已废弃的列。idempotent：列不存在时静默跳过。"""
-    result = await conn.exec_driver_sql(
-        "SELECT name FROM pragma_table_info('agent_llm_bindings') WHERE name = 'thinking_adaptive'"
-    )
-    if result.first():
-        await conn.exec_driver_sql("ALTER TABLE agent_llm_bindings DROP COLUMN thinking_adaptive")
-        logger.info("Dropped obsolete column: agent_llm_bindings.thinking_adaptive")
+    obsolete: list[tuple[str, str]] = [
+        ("agent_llm_bindings", "thinking_adaptive"),
+        ("agent_llm_bindings", "provider_id"),
+    ]
+    for table, column in obsolete:
+        result = await conn.exec_driver_sql(
+            f"SELECT name FROM pragma_table_info('{table}') WHERE name = '{column}'"
+        )
+        if result.first():
+            await conn.exec_driver_sql(f"ALTER TABLE {table} DROP COLUMN {column}")
+            logger.info("Dropped obsolete column: %s.%s", table, column)
 
 
 async def _rebuild_pk_if_needed(

@@ -4,6 +4,56 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+- LLM 配置从单行 `LLMProviderRecord` 迁移为三层 Catalog → Account → Binding 架构；旧 `llm_providers` 表和 API 已移除，需清空 DB 重建
+- `GET/POST/PUT/DELETE /api/v1/llm-providers` 全部替换为新的 Account + Catalog + CustomModel + Binding API（见下方 Added）
+
+### Fixed
+- Android Settings: LLM 连接列表添加后返回不刷新 — 改用 LifecycleResumeEffect 每次回前台重新拉取。
+- Android Settings: Agent LLM Bindings 列表非默认项 subtitle 硬编码"使用默认模型" — 现在显示真实绑定的模型名称与账户名（无绑定时回退默认文本）。
+- 修复 LLM 绑定编辑页打开时误清空 Agent 绑定的问题。
+- 修复 Memory component 模型绑定读写到错误接口的问题。
+- 修复自定义 LLM account/model 可保存非法配置并在运行时失败的问题。
+- LLM Catalog: zhipu provider 单测断言对齐 JSON 实际值（display_name "Zhi Pu Coding" + 3 个模型，含 glm-4.7）
+- Gateway: `DELETE /api/v1/agents/__default__/llm-binding` 显式返回 400，防止默认绑定被误清空
+- Android: Settings 页不再调用已删除的 `/llm-providers` 路由（之前每次进入触发 404）
+- Docs: `sebastian/llm/README.md` TokenEstimator 已实现，移除"尚未实现"过时注释
+- Docs: 上下文压缩 spec 中 summary payload `reason` 示例对齐实现命名（`auto_usage_threshold` 等）
+
+### Added
+- 新增 session 上下文自动/手动压缩能力：provider token usage + 本地估算双阈值触发，保留完整 audit timeline，通过 `context_summary` 缩短 LLM 当前上下文；新增 `POST /api/v1/sessions/{id}/compact` 和 `GET /api/v1/sessions/{id}/compaction/status` 接口。
+- `session_items` 增加 `exchange_id` / `exchange_index` 边界字段；`sessions` 增加 `next_exchange_index` 计数器。
+- 新增 LLM 三层架构：Catalog（内置 Provider/Model 元数据）→ Account（用户 API Key 绑定）→ Binding（per-agent 模型绑定）
+- 内置 Catalog 支持 4 个 Provider（Anthropic、OpenAI、DeepSeek、智谱），10 个模型（含 GPT-5.5、GPT-5.4、Claude Opus 4.7、DeepSeek V4、GLM-5.1 等）
+- 新增 `sebastian/llm/catalog/` 模块（loader + builtin_providers.json）
+- 新增 `LLMAccountRecord`（加密存储 API Key）和 `LLMCustomModelRecord`（自定义模型元数据）
+- 新增 `AgentLLMBindingRecord` 使用 `account_id + model_id` 替代旧 `provider_id`
+- `ResolvedProvider` 扩展：`context_window_tokens`、`thinking_format`、`account_id`、`model_display_name`
+- 新增 `sebastian/gateway/routes/llm_accounts.py` — Account CRUD、Custom Model CRUD、Catalog 查询、Default Binding
+- Context Compaction 改用 per-model `context_window_tokens` 动态解析（替代静态 TokenMeter）
+- Android App：新增 LlmAccount / CatalogProvider / CatalogModel / CustomModel / AgentBinding 域模型和 DTO
+- Android App：新增 CustomModelsPage + CustomModelsViewModel（自定义模型管理）
+- Android App：ProviderListPage 改用 account 列表（显示 catalog provider + API key 状态）
+- Android App：ProviderFormPage 支持内置 catalog 选择 / 自定义模式
+- Android App：AgentBindingEditorPage 改用 account → model 二级选择
+- Android App：新增默认模型绑定行 + thinking effort 按 model capability 自动钳位
+- 新增 `sebastian/context/README.md` 模块文档与 `sebastian/README.md` 顶层 `context/` 索引
+
+### Changed
+- `GET /agents` 与 `GET /memory/components` 列表 binding 节点新增 `resolved`（account_name / model_display_name / context_window_tokens / thinking_capability），账户或模型缺失时降级为空对象。
+- Android Settings: Agent Binding Editor 顶部标题改用列表传入的 displayName（如 "Memory Extractor"），selector 改为悬浮卡片样式（与 LLM 连接表单一致）。
+- `sebastian/llm/registry.py` 完全重写：resolution chain 为 agent_type → binding → account → model_spec → instantiate
+- `sebastian/gateway/routes/agents.py` 和 `memory_components.py` 绑定字段从 `provider_id` 改为 `account_id + model_id`
+- `sebastian/gateway/routes/llm_providers.py` 已删除，由 `llm_accounts.py` 替代
+- 上下文压缩 `TurnEndCompactionScheduler` 改用 `context_window_resolver: Callable` 替代静态 `ContextTokenMeter`
+
+### Removed
+- `LLMProviderRecord` 模型（由 `LLMAccountRecord` + `LLMCustomModelRecord` 替代）
+- `sebastian/gateway/routes/llm_providers.py`（由 `llm_accounts.py` 替代）
+- 旧 `GET/POST/PUT/DELETE /api/v1/llm-providers` 端点
+- Android 旧 `Provider` data model、`ProviderPickerDialog` 与 `/llm-providers` Retrofit 端点
+- `scripts/re_encrypt_api_keys.py`（依赖已删除的 `LLMProviderRecord`）
+
 ## [0.4.0] - 2026-04-23
 
 ### Added

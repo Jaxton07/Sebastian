@@ -64,19 +64,6 @@ interface ApiService {
     @DELETE("api/v1/agents/{agentType}/llm-binding")
     suspend fun clearAgentBinding(@Path("agentType") agentType: String)
 
-    // Providers
-    @GET("api/v1/llm-providers")
-    suspend fun getProviders(): ProviderListResponse
-
-    @POST("api/v1/llm-providers")
-    suspend fun createProvider(@Body body: ProviderDto): ProviderDto
-
-    @PUT("api/v1/llm-providers/{id}")
-    suspend fun updateProvider(@Path("id") id: String, @Body body: Map<String, @JvmSuppressWildcards Any>): ProviderDto
-
-    @DELETE("api/v1/llm-providers/{id}")
-    suspend fun deleteProvider(@Path("id") id: String)
-
     // Approvals
     @GET("api/v1/approvals")
     suspend fun getPendingApprovals(): PendingApprovalsResponse
@@ -118,6 +105,54 @@ interface ApiService {
 
     @DELETE("api/v1/memory/components/{componentType}/llm-binding")
     suspend fun clearMemoryComponentBinding(@Path("componentType") componentType: String)
+
+    // ── LLM Catalog / Account / Binding endpoints ────────────────────────
+
+    @GET("api/v1/llm-catalog")
+    suspend fun getLlmCatalog(): LlmCatalogResponseDto
+
+    @GET("api/v1/llm-accounts")
+    suspend fun getLlmAccounts(): LlmAccountListResponseDto
+
+    @POST("api/v1/llm-accounts")
+    suspend fun createLlmAccount(@Body body: LlmAccountCreateRequest): LlmAccountDto
+
+    @PUT("api/v1/llm-accounts/{accountId}")
+    suspend fun updateLlmAccount(
+        @Path("accountId") accountId: String,
+        @Body body: LlmAccountUpdateRequest,
+    ): LlmAccountDto
+
+    @DELETE("api/v1/llm-accounts/{accountId}")
+    suspend fun deleteLlmAccount(@Path("accountId") accountId: String)
+
+    @GET("api/v1/llm-accounts/{accountId}/models")
+    suspend fun getCustomModels(@Path("accountId") accountId: String): CustomModelListResponseDto
+
+    @POST("api/v1/llm-accounts/{accountId}/models")
+    suspend fun createCustomModel(
+        @Path("accountId") accountId: String,
+        @Body body: CustomModelCreateRequest,
+    ): CustomModelDto
+
+    @PUT("api/v1/llm-accounts/{accountId}/models/{modelRecordId}")
+    suspend fun updateCustomModel(
+        @Path("accountId") accountId: String,
+        @Path("modelRecordId") modelRecordId: String,
+        @Body body: CustomModelUpdateRequest,
+    ): CustomModelDto
+
+    @DELETE("api/v1/llm-accounts/{accountId}/models/{modelRecordId}")
+    suspend fun deleteCustomModel(
+        @Path("accountId") accountId: String,
+        @Path("modelRecordId") modelRecordId: String,
+    )
+
+    @GET("api/v1/llm-bindings/default")
+    suspend fun getDefaultBinding(): AgentBindingDto
+
+    @PUT("api/v1/llm-bindings/default")
+    suspend fun setDefaultBinding(@Body body: SetBindingRequest): AgentBindingDto
 
     // Health
     @GET("api/v1/health")

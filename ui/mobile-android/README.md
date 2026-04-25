@@ -96,11 +96,12 @@ Route.SubAgents → AgentListScreen
 
 Route.Settings → SettingsScreen
     ├── → Route.SettingsConnection → ConnectionPage
-    ├── → Route.SettingsProviders → ProviderListPage
-    │       ├── → Route.SettingsProvidersNew → ProviderFormPage(null)
+    ├── → Route.SettingsProviders → ProviderListPage（account 列表，显示 catalog provider + API key 状态）
+    │       ├── → Route.SettingsProvidersNew → ProviderFormPage(null)（支持内置 catalog 选择 / 自定义模式）
     │       └── → Route.SettingsProvidersEdit(id) → ProviderFormPage(id)
-    └── → Route.SettingsAgentBindings → AgentBindingsPage
-            └── → Route.SettingsAgentBindingEditor(agentType) → AgentBindingEditorPage
+    ├── → Route.SettingsCustomModels(accountId) → CustomModelsPage（自定义模型管理）
+    └── → Route.SettingsAgentBindings → AgentBindingsPage（含默认模型行）
+            └── → Route.SettingsAgentBindingEditor(agentType) → AgentBindingEditorPage（account → model 二级选择）
 ```
 
 手机竖屏：Detail Pane 全屏，点击 Menu 图标滑至 List Pane，点击 Checklist 图标滑至 Extra Pane。
@@ -167,7 +168,9 @@ uvicorn sebastian.gateway.app:app --host 127.0.0.1 --port 8823 --reload
 
 - App 以 `timeline_items` 为权威来源；若后端不返回该字段，则回退到旧的 `messages` 字段（兼容旧服务端）
 - `TimelineMapper`（`data/remote/dto/`）是唯一将 timeline 行转换为 `Message + ContentBlock` 的入口
-- `context_summary` 类型映射为 `ContentBlock.SummaryBlock`，在消息列表中以折叠卡片"Compressed summary"展示
+- `context_summary` 类型映射为 `ContentBlock.SummaryBlock`，在消息列表中以折叠卡片"Compressed summary"展示（由 `StreamingMessage.kt` 中的 `SummaryCard` 渲染）
+- `TimelineItemDto` 携带 `exchange_id`（`String?`）和 `exchange_index`（`Long?`）字段，标识该 timeline 行所属的上下文压缩交换轮次；可选字段，旧 timeline 行为 `null`
+- 上下文压缩（`POST /api/v1/sessions/{id}/compact`）目前仅支持通过后端 API 直接调用；Android App 暂无调试入口，如需手动触发请直接调用该接口
 - 新 Session 使用客户端生成的 ID（`UUID`）：App 先开 SSE，再以同一 `session_id` POST 首条 turn，确保流事件不丢失
 
 ## SSE 连接机制

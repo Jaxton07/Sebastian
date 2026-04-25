@@ -13,19 +13,30 @@ from sebastian.memory.provider_bindings import (
 )
 
 
-def _make_binding(agent_type: str, provider_id: str | None = None) -> MagicMock:
+def _make_binding(
+    agent_type: str,
+    account_id: str | None = None,
+    model_id: str | None = None,
+) -> MagicMock:
     b = MagicMock()
     b.agent_type = agent_type
-    b.provider_id = provider_id
+    b.account_id = account_id
+    b.model_id = model_id
     b.thinking_effort = None
     return b
 
 
-def _make_provider_record(pid: str = "pid-1", capability: str = "none") -> MagicMock:
+def _make_account_record(aid: str = "acc-1") -> MagicMock:
     r = MagicMock()
-    r.id = pid
-    r.thinking_capability = capability
+    r.id = aid
+    r.catalog_provider_id = "anthropic"
     return r
+
+
+def _make_model_spec(capability: str = "none") -> MagicMock:
+    m = MagicMock()
+    m.thinking_capability = capability
+    return m
 
 
 @pytest.fixture
@@ -33,7 +44,8 @@ def mock_registry() -> MagicMock:
     r = MagicMock()
     r.list_bindings = AsyncMock(return_value=[])
     r.get_binding = AsyncMock(return_value=None)
-    r.get_record = AsyncMock(return_value=None)
+    r.get_account = AsyncMock(return_value=None)
+    r.get_model_spec = AsyncMock(return_value=None)
     r.set_binding = AsyncMock(return_value=_make_binding(MEMORY_EXTRACTOR_BINDING))
     r.clear_binding = AsyncMock()
     return r
@@ -54,9 +66,6 @@ def client(mock_registry: MagicMock, monkeypatch: pytest.MonkeyPatch) -> TestCli
     return TestClient(app)
 
 
-# ── GET /memory/components ──────────────────────────────────────────────────
-
-
 def test_list_returns_both_components_with_null_binding(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
@@ -75,27 +84,26 @@ def test_list_returns_both_components_with_null_binding(
 
 def test_list_shows_existing_binding(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.list_bindings = AsyncMock(
-        return_value=[_make_binding(MEMORY_EXTRACTOR_BINDING, provider_id="pid-abc")]
+        return_value=[
+            _make_binding(MEMORY_EXTRACTOR_BINDING, account_id="acc-abc", model_id="model-1")
+        ]
     )
     resp = client.get("/api/v1/memory/components")
     assert resp.status_code == 200
     by_type = {c["component_type"]: c for c in resp.json()["components"]}
-    assert by_type[MEMORY_EXTRACTOR_BINDING]["binding"]["provider_id"] == "pid-abc"
+    assert by_type[MEMORY_EXTRACTOR_BINDING]["binding"]["account_id"] == "acc-abc"
+    assert by_type[MEMORY_EXTRACTOR_BINDING]["binding"]["model_id"] == "model-1"
     assert by_type[MEMORY_CONSOLIDATOR_BINDING]["binding"] is None
 
 
-# ── GET /memory/components/{type}/llm-binding ───────────────────────────────
-
-
-def test_get_binding_no_row_returns_null_provider(
-    client: TestClient, mock_registry: MagicMock
-) -> None:
+def test_get_binding_no_row_returns_null(client: TestClient, mock_registry: MagicMock) -> None:
     mock_registry.get_binding = AsyncMock(return_value=None)
     resp = client.get(f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding")
     assert resp.status_code == 200
     body = resp.json()
     assert body["component_type"] == MEMORY_EXTRACTOR_BINDING
-    assert body["provider_id"] is None
+    assert body["account_id"] is None
+    assert body["model_id"] is None
 
 
 def test_get_binding_unknown_type_returns_404(client: TestClient) -> None:
@@ -103,36 +111,35 @@ def test_get_binding_unknown_type_returns_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-# ── PUT /memory/components/{type}/llm-binding ───────────────────────────────
-
-
-def test_put_resets_effort_when_provider_changes(
+def test_put_resets_effort_when_binding_changes(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
-    mock_registry.get_record = AsyncMock(return_value=_make_provider_record("pid-1", "adaptive"))
-    mock_registry.get_binding = AsyncMock(return_value=None)  # no existing binding
+    mock_registry.get_account = AsyncMock(return_value=_make_account_record("acc-1"))
+    mock_registry.get_model_spec = AsyncMock(return_value=_make_model_spec("adaptive"))
+    mock_registry.get_binding = AsyncMock(return_value=None)
     mock_registry.set_binding = AsyncMock(
-        return_value=_make_binding(MEMORY_EXTRACTOR_BINDING, "pid-1")
+        return_value=_make_binding(MEMORY_EXTRACTOR_BINDING, "acc-1", "model-1")
     )
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
-        json={"provider_id": "pid-1", "thinking_effort": "high"},
+        json={"account_id": "acc-1", "model_id": "model-1", "thinking_effort": "high"},
     )
     assert resp.status_code == 200
     kwargs = mock_registry.set_binding.call_args.kwargs
-    assert kwargs["thinking_effort"] is None  # reset because provider changed
+    assert kwargs["thinking_effort"] is None
 
 
-def test_put_preserves_effort_when_provider_unchanged(
+def test_put_preserves_effort_when_binding_unchanged(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
-    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "pid-1")
-    mock_registry.get_record = AsyncMock(return_value=_make_provider_record("pid-1", "adaptive"))
+    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "acc-1", "model-1")
+    mock_registry.get_account = AsyncMock(return_value=_make_account_record("acc-1"))
+    mock_registry.get_model_spec = AsyncMock(return_value=_make_model_spec("adaptive"))
     mock_registry.get_binding = AsyncMock(return_value=existing)
     mock_registry.set_binding = AsyncMock(return_value=existing)
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
-        json={"provider_id": "pid-1", "thinking_effort": "high"},
+        json={"account_id": "acc-1", "model_id": "model-1", "thinking_effort": "high"},
     )
     assert resp.status_code == 200
     assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] == "high"
@@ -141,13 +148,14 @@ def test_put_preserves_effort_when_provider_unchanged(
 def test_put_clears_effort_for_none_capability(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
-    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "pid-1")
-    mock_registry.get_record = AsyncMock(return_value=_make_provider_record("pid-1", "none"))
+    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "acc-1", "model-1")
+    mock_registry.get_account = AsyncMock(return_value=_make_account_record("acc-1"))
+    mock_registry.get_model_spec = AsyncMock(return_value=_make_model_spec("none"))
     mock_registry.get_binding = AsyncMock(return_value=existing)
     mock_registry.set_binding = AsyncMock(return_value=existing)
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
-        json={"provider_id": "pid-1", "thinking_effort": "high"},
+        json={"account_id": "acc-1", "model_id": "model-1", "thinking_effort": "high"},
     )
     assert resp.status_code == 200
     assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] is None
@@ -156,23 +164,24 @@ def test_put_clears_effort_for_none_capability(
 def test_put_clears_effort_for_always_on_capability(
     client: TestClient, mock_registry: MagicMock
 ) -> None:
-    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "pid-1")
-    mock_registry.get_record = AsyncMock(return_value=_make_provider_record("pid-1", "always_on"))
+    existing = _make_binding(MEMORY_EXTRACTOR_BINDING, "acc-1", "model-1")
+    mock_registry.get_account = AsyncMock(return_value=_make_account_record("acc-1"))
+    mock_registry.get_model_spec = AsyncMock(return_value=_make_model_spec("always_on"))
     mock_registry.get_binding = AsyncMock(return_value=existing)
     mock_registry.set_binding = AsyncMock(return_value=existing)
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
-        json={"provider_id": "pid-1", "thinking_effort": "high"},
+        json={"account_id": "acc-1", "model_id": "model-1", "thinking_effort": "high"},
     )
     assert resp.status_code == 200
     assert mock_registry.set_binding.call_args.kwargs["thinking_effort"] is None
 
 
-def test_put_unknown_provider_returns_400(client: TestClient, mock_registry: MagicMock) -> None:
-    mock_registry.get_record = AsyncMock(return_value=None)
+def test_put_unknown_account_returns_400(client: TestClient, mock_registry: MagicMock) -> None:
+    mock_registry.get_account = AsyncMock(return_value=None)
     resp = client.put(
         f"/api/v1/memory/components/{MEMORY_EXTRACTOR_BINDING}/llm-binding",
-        json={"provider_id": "nonexistent"},
+        json={"account_id": "nonexistent", "model_id": "model-1"},
     )
     assert resp.status_code == 400
 
@@ -180,12 +189,9 @@ def test_put_unknown_provider_returns_400(client: TestClient, mock_registry: Mag
 def test_put_unknown_component_returns_404(client: TestClient) -> None:
     resp = client.put(
         "/api/v1/memory/components/bad_type/llm-binding",
-        json={"provider_id": None},
+        json={"account_id": None, "model_id": None},
     )
     assert resp.status_code == 404
-
-
-# ── DELETE /memory/components/{type}/llm-binding ────────────────────────────
 
 
 def test_delete_returns_204_and_calls_clear(client: TestClient, mock_registry: MagicMock) -> None:

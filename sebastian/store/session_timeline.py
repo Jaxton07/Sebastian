@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import weakref
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Required, TypedDict
 from uuid import uuid4
@@ -15,6 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sebastian.store.models import SessionItemRecord
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class CompactRangeResult:
+    status: str  # "compacted" | "already_compacted"
+    summary_item: dict[str, Any] | None
+    archived_item_count: int
+
+
+class _AlreadyCompacted(Exception):
+    """Sentinel raised inside db.begin() to trigger rollback and skip the write."""
+
 
 # kind 值不进入"上下文窗口"投影的黑名单
 _CONTEXT_EXCLUDED_KINDS = frozenset({"thinking", "raw_block", "system_event"})
@@ -53,7 +66,15 @@ def _normalize_block_payload(block: dict[str, Any]) -> dict[str, Any]:
     payload = {
         k: v
         for k, v in block.items()
-        if k not in ("text", "content", "turn_id", "provider_call_index", "block_index")
+        if k
+        not in (
+            "text",
+            "content",
+            "assistant_turn_id",
+            "turn_id",
+            "provider_call_index",
+            "block_index",
+        )
     }
     block_type = block.get("type", "")
     if block_type in ("tool_use", "tool"):
@@ -65,6 +86,7 @@ def _normalize_block_payload(block: dict[str, Any]) -> dict[str, Any]:
         payload["tool_call_id"] = (
             block.get("tool_call_id") or block.get("tool_use_id") or block.get("tool_id") or ""
         )
+        payload.pop("model_content", None)
     return payload
 
 
@@ -74,10 +96,12 @@ class TimelineItemInput(TypedDict, total=False):
     content: str
     payload: dict[str, Any]
     archived: bool
-    turn_id: str | None
+    assistant_turn_id: str | None
     provider_call_index: int | None
     block_index: int | None
     effective_seq: int | None
+    exchange_id: str | None
+    exchange_index: int | None
 
 
 def _record_to_dict(record: SessionItemRecord) -> dict[str, Any]:
@@ -92,10 +116,12 @@ def _record_to_dict(record: SessionItemRecord) -> dict[str, Any]:
         "content": record.content,
         "payload": record.payload if record.payload is not None else {},
         "archived": record.archived,
-        "turn_id": record.turn_id,
+        "assistant_turn_id": record.assistant_turn_id,
         "provider_call_index": record.provider_call_index,
         "block_index": record.block_index,
         "created_at": record.created_at.isoformat() if record.created_at else None,
+        "exchange_id": record.exchange_id,
+        "exchange_index": record.exchange_index,
     }
 
 
@@ -179,10 +205,13 @@ class SessionTimelineStore:
                                 content=item.get("content", ""),
                                 payload=item.get("payload", {}),
                                 archived=item.get("archived", False),
-                                turn_id=item.get("turn_id"),
+                                assistant_turn_id=item.get("assistant_turn_id")
+                                or item.get("turn_id"),
                                 provider_call_index=item.get("provider_call_index"),
                                 block_index=item.get("block_index"),
                                 effective_seq=eff_seq,
+                                exchange_id=item.get("exchange_id"),
+                                exchange_index=item.get("exchange_index"),
                                 created_at=now,
                             )
                             db.add(record)
@@ -223,6 +252,14 @@ class SessionTimelineStore:
                 block_content = json.dumps(block.get("input", {}), default=str)
             elif block_type == "thinking":
                 block_content = block.get("thinking") or ""
+            elif block_type == "tool_result":
+                block_content = (
+                    block.get("model_content")
+                    or block.get("display")
+                    or block.get("text")
+                    or block.get("content")
+                    or ""
+                )
             else:
                 block_content = block.get("text") or block.get("content") or ""
 
@@ -231,7 +268,7 @@ class SessionTimelineStore:
                     "kind": kind,
                     "role": role,
                     "content": block_content,
-                    "turn_id": block.get("turn_id"),
+                    "assistant_turn_id": block.get("assistant_turn_id") or block.get("turn_id"),
                     "provider_call_index": block.get("provider_call_index"),
                     "block_index": block.get("block_index", idx),
                     "payload": _normalize_block_payload(block),
@@ -246,9 +283,15 @@ class SessionTimelineStore:
         content: str,
         agent_type: str,
         blocks: list[dict[str, Any]] | None = None,
+        exchange_id: str | None = None,
+        exchange_index: int | None = None,
     ) -> None:
         """Convert a legacy message call into timeline items and persist."""
         items = self._message_to_items(role, content, blocks)
+        if exchange_id is not None or exchange_index is not None:
+            for item in items:
+                item["exchange_id"] = exchange_id
+                item["exchange_index"] = exchange_index
         await self.append_items(session_id, agent_type, items)
 
     # ------------------------------------------------------------------
@@ -370,3 +413,115 @@ class SessionTimelineStore:
             )
             result = await db.execute(q)
             return [_record_to_dict(r) for r in result.scalars()]
+
+    # ------------------------------------------------------------------
+    # Compaction
+    # ------------------------------------------------------------------
+
+    async def compact_range(
+        self,
+        session_id: str,
+        agent_type: str,
+        *,
+        source_seq_start: int,
+        source_seq_end: int,
+        summary_content: str,
+        summary_payload: dict[str, Any],
+    ) -> CompactRangeResult:
+        """Atomically archive items in [source_seq_start, source_seq_end] and insert a
+        context_summary item with effective_seq=source_seq_start.
+
+        Returns CompactRangeResult with status "compacted" on success or
+        "already_compacted" if any item in the range is already archived (idempotent guard).
+        """
+        lock = _get_session_lock(session_id, agent_type)
+        async with lock:
+            return await self._compact_range_locked(
+                session_id,
+                agent_type,
+                source_seq_start=source_seq_start,
+                source_seq_end=source_seq_end,
+                summary_content=summary_content,
+                summary_payload=summary_payload,
+            )
+
+    async def _compact_range_locked(
+        self,
+        session_id: str,
+        agent_type: str,
+        *,
+        source_seq_start: int,
+        source_seq_end: int,
+        summary_content: str,
+        summary_payload: dict[str, Any],
+    ) -> CompactRangeResult:
+        now = datetime.now(UTC)
+        async with self._db() as db:
+            try:
+                async with db.begin():
+                    # 1. Select source items in range.
+                    # Serialization is provided by _get_session_lock (intra-process)
+                    # and SQLite's write-serialization (cross-statement); row locks
+                    # are not available on SQLite.
+                    result = await db.execute(
+                        select(SessionItemRecord).where(
+                            SessionItemRecord.session_id == session_id,
+                            SessionItemRecord.agent_type == agent_type,
+                            SessionItemRecord.seq >= source_seq_start,
+                            SessionItemRecord.seq <= source_seq_end,
+                        )
+                    )
+                    source_items = list(result.scalars())
+
+                    # 2. Guard: no items found or any already archived → already_compacted.
+                    # Raise sentinel to roll back the transaction cleanly rather than
+                    # returning from inside db.begin(), which would commit an empty txn.
+                    if not source_items or any(item.archived for item in source_items):
+                        raise _AlreadyCompacted
+
+                    # 3. Archive all source items
+                    for item in source_items:
+                        item.archived = True
+
+                    # 4. Allocate a new seq for the summary item
+                    seq_result = await db.execute(
+                        text(
+                            "UPDATE sessions SET next_item_seq = next_item_seq + 1"
+                            " WHERE id = :sid AND agent_type = :at"
+                            " RETURNING next_item_seq - 1"
+                        ),
+                        {"sid": session_id, "at": agent_type},
+                    )
+                    seq_row = seq_result.first()
+                    if seq_row is None:
+                        raise ValueError(f"Session {session_id!r} (agent={agent_type!r}) not found")
+                    summary_seq: int = seq_row[0]
+
+                    # 5. Insert context_summary item
+                    summary_record = SessionItemRecord(
+                        id=str(uuid4()),
+                        session_id=session_id,
+                        agent_type=agent_type,
+                        seq=summary_seq,
+                        kind="context_summary",
+                        role="assistant",
+                        content=summary_content,
+                        payload=summary_payload,
+                        archived=False,
+                        assistant_turn_id=None,
+                        provider_call_index=None,
+                        block_index=None,
+                        effective_seq=source_seq_start,
+                        exchange_id=None,
+                        exchange_index=None,
+                        created_at=now,
+                    )
+                    db.add(summary_record)
+                    # flush so _record_to_dict can read back the record state
+                    await db.flush()
+                    summary_dict = _record_to_dict(summary_record)
+                    archived_count = len(source_items)
+            except _AlreadyCompacted:
+                return CompactRangeResult("already_compacted", None, 0)
+
+        return CompactRangeResult("compacted", summary_dict, archived_count)

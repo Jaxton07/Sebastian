@@ -29,7 +29,7 @@ fun List<TimelineItemDto>.toMessagesFromTimeline(): List<Message> {
                 output += item.toSummaryMessage()
             }
             "assistant_message", "thinking", "tool_call", "tool_result" -> {
-                val key = item.turnId to item.providerCallIndex
+                val key = item.assistantTurnId to item.providerCallIndex
                 if (currentGroupKey != null && currentGroupKey != key) {
                     flushAssistantGroup()
                 }
@@ -48,8 +48,8 @@ fun List<TimelineItemDto>.toMessagesFromTimeline(): List<Message> {
 // ---------------------------------------------------------------------------
 
 private fun TimelineItemDto.stableBlockId(): String {
-    return if (turnId != null && providerCallIndex != null && blockIndex != null) {
-        "timeline-$sessionId-$turnId-$providerCallIndex-$blockIndex"
+    return if (assistantTurnId != null && providerCallIndex != null && blockIndex != null) {
+        "timeline-$sessionId-$assistantTurnId-$providerCallIndex-$blockIndex"
     } else {
         "timeline-$sessionId-block-$seq"
     }
@@ -88,10 +88,10 @@ private fun List<TimelineItemDto>.toAssistantMessage(): Message? {
 
     // Compute stable message ID
     val msgId = run {
-        val turnId = first.turnId
+        val assistantTurnId = first.assistantTurnId
         val pci = first.providerCallIndex
-        if (turnId != null && pci != null) {
-            "timeline-$sessionId-$turnId-$pci"
+        if (assistantTurnId != null && pci != null) {
+            "timeline-$sessionId-$assistantTurnId-$pci"
         } else {
             "timeline-$sessionId-${first.seq}"
         }
@@ -157,7 +157,7 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                     name = item.payloadString("tool_name") ?: item.payloadString("name") ?: "",
                     inputs = item.content ?: "",
                     status = status,
-                    resultSummary = result?.content,
+                    resultSummary = result?.payloadString("display") ?: result?.content,
                     error = if (status == ToolStatus.FAILED) result?.payloadString("error") else null,
                 )
             }
@@ -172,7 +172,7 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                         name = "",
                         inputs = "",
                         status = if (failed) ToolStatus.FAILED else ToolStatus.DONE,
-                        resultSummary = item.content,
+                        resultSummary = item.payloadString("display") ?: item.content,
                         error = if (failed) item.payloadString("error") else null,
                     )
                 }

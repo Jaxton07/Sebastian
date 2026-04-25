@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 
 import anthropic
 
+from sebastian.context.usage import TokenUsage
 from sebastian.core.stream_events import (
     LLMStreamEvent,
     ProviderCallEnd,
@@ -165,4 +166,12 @@ class AnthropicProvider(LLMProvider):
                     )
 
             final = await stream.get_final_message()
-            yield ProviderCallEnd(stop_reason=final.stop_reason or "end_turn")
+            usage = final.usage
+            token_usage = TokenUsage(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_creation_input_tokens=getattr(usage, "cache_creation_input_tokens", None),
+                cache_read_input_tokens=getattr(usage, "cache_read_input_tokens", None),
+                raw=usage.model_dump() if hasattr(usage, "model_dump") else None,
+            )
+            yield ProviderCallEnd(stop_reason=final.stop_reason or "end_turn", usage=token_usage)

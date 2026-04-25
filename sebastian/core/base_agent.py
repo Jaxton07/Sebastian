@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import functools
 import inspect
 import logging
 import time
@@ -14,14 +13,20 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+    from sebastian.context.compaction import CompactionScheduler
     from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
 
 from ulid import ULID
 
 from sebastian.config import settings
-from sebastian.core.agent_loop import AgentLoop, _tool_result_content
+from sebastian.core.agent_loop import AgentLoop
+from sebastian.core.compaction_hook import (
+    allocate_exchange_for_turn,
+    schedule_compaction_if_needed,
+)
 from sebastian.core.stream_events import (
+    ProviderCallEnd,
     ProviderCallStart,
     TextBlockStart,
     TextBlockStop,
@@ -33,118 +38,23 @@ from sebastian.core.stream_events import (
     ToolCallReady,
     TurnDone,
 )
-from sebastian.core.stream_events import (
-    ToolResult as StreamToolResult,
+from sebastian.core.stream_events import ToolResult as StreamToolResult
+from sebastian.core.stream_helpers import (
+    dispatch_tool_call as _dispatch_tool_call_fn,
 )
-from sebastian.core.types import ToolResult
+from sebastian.core.stream_helpers import (
+    ensure_tool_results_for_pending_calls as _ensure_tool_results_for_pending_calls,
+)
 from sebastian.memory.depth_guard import is_memory_eligible
 from sebastian.memory.working_memory import WorkingMemory
 from sebastian.permissions.gate import PolicyGate
-from sebastian.permissions.types import ToolCallContext
 from sebastian.protocol.events.bus import EventBus
 from sebastian.protocol.events.types import Event, EventType
 from sebastian.store.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
-_DISPLAY_MAX = 4000
 CancelIntent = Literal["cancel", "stop"]
-
-
-def _format_tool_display(result: ToolResult) -> str:
-    """把 ToolResult 转成人类可读的 result_summary 字符串。
-
-    优先使用 tool 自己提供的 display；否则回退 str(output)。
-    任意一种都会截断到 _DISPLAY_MAX 字符，超长加 `…`。
-
-    注意：这里的 fallback 用 str()（Python repr）不是 JSON，和 LLM-facing 的
-    agent_loop._tool_result_content 不对称是有意的——前者是 UI 显示路径，
-    只在 tool 未填 display 时起兜底作用；后者是模型输入，必须是规范 JSON。
-    不要把两者合并。
-    """
-    if result.display is not None:
-        text = result.display
-    elif result.empty_hint is not None:
-        text = result.empty_hint
-    elif result.output is not None:
-        text = str(result.output)
-    else:
-        text = ""
-    if len(text) > _DISPLAY_MAX:
-        return text[:_DISPLAY_MAX] + "…"
-    return text
-
-
-def _append_tool_result_block(
-    blocks: list[dict[str, Any]],
-    *,
-    tool_id: str,
-    tool_name: str,
-    result: StreamToolResult,
-    display: str,
-    turn_id: str | None,
-    provider_call_index: int | None,
-    block_index: int,
-) -> None:
-    block: dict[str, Any] = {
-        "type": "tool_result",
-        "tool_call_id": tool_id,
-        "tool_name": tool_name,
-        "model_content": _tool_result_content(result),
-        "display": display,
-        "ok": result.ok,
-        "turn_id": turn_id,
-        "provider_call_index": provider_call_index,
-        "block_index": block_index,
-    }
-    if result.error is not None:
-        block["error"] = result.error
-    blocks.append(block)
-
-
-def _ensure_tool_results_for_pending_calls(
-    blocks: list[dict[str, Any]],
-    *,
-    reason: str,
-) -> None:
-    """Add synthetic failed tool_result blocks for persisted tool_calls without results."""
-    result_ids = {
-        block.get("tool_call_id")
-        for block in blocks
-        if block.get("type") == "tool_result" and block.get("tool_call_id")
-    }
-    block_indexes = [
-        block_index
-        for block in blocks
-        if isinstance((block_index := block.get("block_index")), int)
-    ]
-    next_block_index = max(block_indexes, default=-1) + 1
-    for block in list(blocks):
-        if block.get("type") != "tool":
-            continue
-        tool_id = block.get("tool_call_id")
-        if not tool_id or tool_id in result_ids:
-            continue
-        tool_name = block.get("tool_name", "")
-        result = StreamToolResult(
-            tool_id=tool_id,
-            name=tool_name,
-            ok=False,
-            output=None,
-            error=reason,
-        )
-        _append_tool_result_block(
-            blocks,
-            tool_id=tool_id,
-            tool_name=tool_name,
-            result=result,
-            display=reason,
-            turn_id=block.get("turn_id"),
-            provider_call_index=block.get("provider_call_index"),
-            block_index=next_block_index,
-        )
-        next_block_index += 1
-        result_ids.add(tool_id)
 
 
 BASE_PERSONA = (
@@ -170,6 +80,7 @@ class BaseAgent(ABC):
     allowed_tools: list[str] | None = None
     allowed_skills: list[str] | None = None
     system_prompt: str = ""  # populated by build_system_prompt in __init__
+    _active_streams: dict[str, asyncio.Task[Any]]
 
     def __init__(
         self,
@@ -182,9 +93,11 @@ class BaseAgent(ABC):
         allowed_skills: list[str] | None = None,
         llm_registry: LLMProviderRegistry | None = None,
         db_factory: async_sessionmaker[AsyncSession] | None = None,
+        compaction_scheduler: CompactionScheduler | None = None,
     ) -> None:
         self._gate = gate
         self._db_factory = db_factory
+        self._compaction_scheduler = compaction_scheduler
         self._current_task_goals: dict[str, str] = {}  # session_id → goal
         self._current_depth: dict[str, int] = {}  # session_id → depth
         self._session_store = session_store
@@ -474,11 +387,20 @@ class BaseAgent(ABC):
 
         messages.append({"role": "user", "content": user_message})
 
+        exchange_id: str | None = None
+        exchange_index: int | None = None
+        if self._db_factory is not None:
+            exchange_id, exchange_index = await allocate_exchange_for_turn(
+                self._session_store, session_id, agent_context
+            )
+
         await self._session_store.append_message(
             session_id,
             "user",
             user_message,
             agent_type=agent_context,
+            exchange_id=exchange_id,
+            exchange_index=exchange_index,
         )
 
         current_stream = asyncio.create_task(
@@ -488,6 +410,8 @@ class BaseAgent(ABC):
                 task_id=task_id,
                 agent_context=agent_context,
                 thinking_effort=thinking_effort_for_llm,
+                exchange_id=exchange_id,
+                exchange_index=exchange_index,
             )
         )
         self._active_streams[session_id] = current_stream
@@ -526,6 +450,8 @@ class BaseAgent(ABC):
                             (f"{partial}\n\n[用户中断]" if cancel_intent == "cancel" else partial),
                             agent_type=agent_context,
                             blocks=pending_blocks if pending_blocks else None,
+                            exchange_id=exchange_id,
+                            exchange_index=exchange_index,
                         )
                     except Exception:
                         logger.warning("Failed to flush partial text on cancel", exc_info=True)
@@ -557,12 +483,17 @@ class BaseAgent(ABC):
         task_id: str | None,
         agent_context: str,
         thinking_effort: str | None = None,
+        exchange_id: str | None = None,
+        exchange_index: int | None = None,
     ) -> str:
+        from sebastian.context.usage import TokenUsage
+
         full_text = ""
         assistant_blocks: list[dict[str, Any]] = []
-        turn_id = str(ULID())
+        assistant_turn_id = str(ULID())
         current_pci: int = 0
         block_index: int = 0
+        last_provider_usage: TokenUsage | None = None
         todo_section = await self._session_todos_section(session_id, agent_context)
         last_user_msg = messages[-1].get("content", "") if messages else ""
         memory_section = await self._memory_section(
@@ -593,6 +524,11 @@ class BaseAgent(ABC):
                     block_index = 0
                     continue
 
+                if isinstance(event, ProviderCallEnd):
+                    if event.usage is not None:
+                        last_provider_usage = event.usage
+                    continue
+
                 if isinstance(event, TextDelta):
                     full_text += event.delta
                     self._partial_buffer[session_id] = full_text
@@ -617,7 +553,7 @@ class BaseAgent(ABC):
                     block: dict[str, Any] = {
                         "type": "thinking",
                         "thinking": event.thinking,
-                        "turn_id": turn_id,
+                        "assistant_turn_id": assistant_turn_id,
                         "provider_call_index": current_pci,
                         "block_index": block_index,
                     }
@@ -634,7 +570,7 @@ class BaseAgent(ABC):
                         {
                             "type": "text",
                             "text": event.text,
-                            "turn_id": turn_id,
+                            "assistant_turn_id": assistant_turn_id,
                             "provider_call_index": current_pci,
                             "block_index": block_index,
                         }
@@ -643,135 +579,23 @@ class BaseAgent(ABC):
                     self._pending_blocks[session_id] = assistant_blocks
 
                 if isinstance(event, ToolCallReady):
-                    await self._publish(
-                        session_id,
-                        EventType.TOOL_BLOCK_STOP,
-                        dataclasses.asdict(event),
+                    send_value, block_index = await _dispatch_tool_call_fn(
+                        event,
+                        session_id=session_id,
+                        task_id=task_id,
+                        agent_context=agent_context,
+                        assistant_turn_id=assistant_turn_id,
+                        assistant_blocks=assistant_blocks,
+                        current_pci=current_pci,
+                        block_index=block_index,
+                        gate_call=self._gate.call,
+                        update_activity=self._update_activity,
+                        publish=self._publish,
+                        current_task_goals=self._current_task_goals,
+                        current_depth=self._current_depth,
+                        allowed_tools=self.allowed_tools,
+                        pending_blocks=self._pending_blocks,
                     )
-                    await self._publish(
-                        session_id,
-                        EventType.TOOL_RUNNING,
-                        {
-                            "tool_id": event.tool_id,
-                            "name": event.name,
-                            "input": event.inputs,
-                        },
-                    )
-                    record: dict[str, Any] = {
-                        "type": "tool",
-                        "tool_call_id": event.tool_id,
-                        "tool_name": event.name,
-                        "input": event.inputs,
-                        "status": "failed",
-                        "turn_id": turn_id,
-                        "provider_call_index": current_pci,
-                        "block_index": block_index,
-                    }
-                    assistant_blocks.append(record)
-                    block_index += 1
-                    self._pending_blocks[session_id] = assistant_blocks
-                    await self._update_activity(session_id, agent_context)
-                    try:
-                        context = ToolCallContext(
-                            task_goal=self._current_task_goals.get(session_id, ""),
-                            session_id=session_id,
-                            task_id=task_id,
-                            agent_type=agent_context,
-                            depth=getattr(self, "_current_depth", {}).get(session_id, 1),
-                            allowed_tools=(
-                                frozenset(self.allowed_tools)
-                                if self.allowed_tools is not None
-                                else None
-                            ),
-                            progress_cb=functools.partial(
-                                self._publish, session_id, EventType.TOOL_RUNNING
-                            ),
-                        )
-                        result = await self._gate.call(event.name, event.inputs, context)
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:  # pragma: no cover - exercised via async failure paths
-                        logger.exception("Tool %s dispatch failed", event.name)
-                        error = str(exc)
-                        record["result"] = error
-                        stream_result = StreamToolResult(
-                            tool_id=event.tool_id,
-                            name=event.name,
-                            ok=False,
-                            output=None,
-                            error=error,
-                        )
-                        _append_tool_result_block(
-                            assistant_blocks,
-                            tool_id=event.tool_id,
-                            tool_name=event.name,
-                            result=stream_result,
-                            display=error,
-                            turn_id=turn_id,
-                            provider_call_index=current_pci,
-                            block_index=block_index,
-                        )
-                        block_index += 1
-                        self._pending_blocks[session_id] = assistant_blocks
-                        await self._publish(
-                            session_id,
-                            EventType.TOOL_FAILED,
-                            {
-                                "tool_id": event.tool_id,
-                                "name": event.name,
-                                "error": error,
-                            },
-                        )
-                        send_value = stream_result
-                    else:
-                        if result.ok:
-                            display = _format_tool_display(result)
-                            record["status"] = "done"
-                            record["result"] = display
-                            await self._publish(
-                                session_id,
-                                EventType.TOOL_EXECUTED,
-                                {
-                                    "tool_id": event.tool_id,
-                                    "name": event.name,
-                                    "result_summary": display,
-                                },
-                            )
-                        else:
-                            record["result"] = result.error or ""
-                            await self._publish(
-                                session_id,
-                                EventType.TOOL_FAILED,
-                                {
-                                    "tool_id": event.tool_id,
-                                    "name": event.name,
-                                    "error": result.error,
-                                },
-                            )
-                        stream_result = StreamToolResult(
-                            tool_id=event.tool_id,
-                            name=event.name,
-                            ok=result.ok,
-                            output=result.output,
-                            error=result.error,
-                            empty_hint=result.empty_hint,
-                        )
-                        display_content = (
-                            _format_tool_display(result) if result.ok else (result.error or "")
-                        )
-                        _append_tool_result_block(
-                            assistant_blocks,
-                            tool_id=event.tool_id,
-                            tool_name=event.name,
-                            result=stream_result,
-                            display=display_content,
-                            turn_id=turn_id,
-                            provider_call_index=current_pci,
-                            block_index=block_index,
-                        )
-                        block_index += 1
-                        self._pending_blocks[session_id] = assistant_blocks
-                        send_value = stream_result
                     continue
 
                 if isinstance(event, TurnDone):
@@ -782,6 +606,8 @@ class BaseAgent(ABC):
                         event.full_text,
                         agent_type=agent_context,
                         blocks=assistant_blocks if assistant_blocks else None,
+                        exchange_id=exchange_id,
+                        exchange_index=exchange_index,
                     )
                     await self._publish(
                         session_id,
@@ -792,6 +618,14 @@ class BaseAgent(ABC):
                         },
                     )
                     await self._update_activity(session_id, agent_context)
+                    await schedule_compaction_if_needed(
+                        scheduler=self._compaction_scheduler,
+                        session_id=session_id,
+                        agent_type=agent_context,
+                        usage=last_provider_usage,
+                        messages=messages,
+                        system_prompt=effective_system_prompt,
+                    )
                     return event.full_text
         except asyncio.CancelledError:
             # When cancelled via cancel_session(), the finally block in run_streaming
@@ -810,6 +644,8 @@ class BaseAgent(ABC):
                             full_text,
                             agent_type=agent_context,
                             blocks=assistant_blocks if assistant_blocks else None,
+                            exchange_id=exchange_id,
+                            exchange_index=exchange_index,
                         )
                     except Exception:
                         logger.warning("Failed to flush blocks on external cancel", exc_info=True)

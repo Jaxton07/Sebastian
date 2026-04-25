@@ -31,7 +31,7 @@ class TimelineItemDtoTest {
                   "content": "thinking text",
                   "payload": {"duration_ms": 1234},
                   "archived": false,
-                  "turn_id": "t1",
+                  "assistant_turn_id": "t1",
                   "provider_call_index": 0,
                   "block_index": 0,
                   "created_at": "2026-04-22T00:00:01Z"
@@ -64,5 +64,25 @@ class TimelineItemDtoTest {
             kind = "user_message",
         )
         assertTrue(!item.archived)
+    }
+
+    @Test
+    fun timelineItemParsesExchangeFields() {
+        val json = """
+            {
+              "id": "i2",
+              "session_id": "s1",
+              "seq": 2,
+              "kind": "context_summary",
+              "exchange_id": "ex-1",
+              "exchange_index": 3
+            }
+        """.trimIndent()
+
+        val adapter = moshi.adapter(TimelineItemDto::class.java)
+        val item = adapter.fromJson(json)!!
+
+        assertEquals("ex-1", item.exchangeId)
+        assertEquals(3L, item.exchangeIndex)
     }
 }

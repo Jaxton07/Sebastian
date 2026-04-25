@@ -84,14 +84,14 @@ fun SettingsScreen(navController: NavController) {
                     )
                     SettingsRow(
                         icon = Icons.Outlined.Memory,
-                        title = "模型与 Provider",
-                        subtitle = "LLM Provider 管理",
+                        title = "LLM 连接",
+                        subtitle = "管理 LLM 账户与 API Key",
                         onClick = { navController.navigate(Route.SettingsProviders) { launchSingleTop = true } },
                     )
                     SettingsRow(
                         icon = Icons.Outlined.Extension,
-                        title = "Agent LLM Bindings",
-                        subtitle = "为每个 Agent 选择 Provider",
+                        title = "默认模型 / Agent 模型绑定",
+                        subtitle = "为每个 Agent 选择模型",
                         onClick = { navController.navigate(Route.SettingsAgentBindings) { launchSingleTop = true } },
                     )
                     SettingsRow(

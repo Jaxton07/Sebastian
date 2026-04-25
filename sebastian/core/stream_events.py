@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sebastian.context.usage import TokenUsage
+
 
 @dataclass
 class ThinkingBlockStart:
@@ -73,6 +75,7 @@ class ProviderCallStart:
 @dataclass
 class ProviderCallEnd:
     stop_reason: str  # "end_turn" | "tool_use" | "max_tokens" | "stop_sequence"
+    usage: TokenUsage | None = None
 
 
 @dataclass

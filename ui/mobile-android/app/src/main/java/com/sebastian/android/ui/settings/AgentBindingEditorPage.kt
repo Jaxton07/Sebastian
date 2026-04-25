@@ -1,9 +1,7 @@
 package com.sebastian.android.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,13 +10,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -42,7 +44,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.sebastian.android.data.model.ThinkingCapability
 import com.sebastian.android.ui.settings.components.EffortSlider
-import com.sebastian.android.ui.settings.components.ProviderPickerDialog
 import com.sebastian.android.viewmodel.AgentBindingEditorViewModel
 import com.sebastian.android.viewmodel.EditorEvent
 import kotlinx.coroutines.launch
@@ -52,6 +53,7 @@ import kotlinx.coroutines.launch
 fun AgentBindingEditorPage(
     agentType: String,
     isMemoryComponent: Boolean = false,
+    displayName: String = "",
     navController: NavController,
 ) {
     val vm: AgentBindingEditorViewModel =
@@ -72,17 +74,14 @@ fun AgentBindingEditorPage(
         }
     }
 
-    var showPicker by remember { mutableStateOf(false) }
+    val pageTitle = displayName.ifBlank {
+        if (state.isDefault) "默认模型" else agentType.replaceFirstChar { it.uppercase() }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        state.selectedProvider?.name
-                            ?: agentType.replaceFirstChar { it.uppercase() },
-                    )
-                },
+                title = { Text(pageTitle) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -107,54 +106,43 @@ fun AgentBindingEditorPage(
                 .padding(padding)
                 .padding(16.dp),
         ) {
-            Text(
-                "LLM Provider",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+            AccountSelector(
+                accounts = state.accounts,
+                selectedAccount = state.selectedAccount,
+                onSelect = vm::selectAccount,
+                onClear = if (state.isDefault) null else vm::clearBinding,
             )
-            Spacer(Modifier.height(8.dp))
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showPicker = true },
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.Memory,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 14.dp),
+
+            Spacer(Modifier.height(16.dp))
+
+            if (state.selectedAccount != null) {
+                ModelSelector(
+                    models = state.availableModels,
+                    selectedModel = state.selectedModel,
+                    onSelect = vm::selectModel,
+                )
+                Spacer(Modifier.height(8.dp))
+                state.contextWindowText?.let { ctxText ->
+                    Text(
+                        text = "上下文窗口: $ctxText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            state.selectedProvider?.name ?: "Use default provider",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            state.selectedProvider?.type ?: "Follow global default",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
                 }
             }
+
             Spacer(Modifier.height(16.dp))
 
             when (val capability = state.effectiveCapability) {
                 null -> {
-                    Text(
-                        "No default provider configured",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    if (state.selectedAccount == null) {
+                        Text(
+                            if (state.isDefault) "未配置默认模型" else "使用默认模型",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 ThinkingCapability.NONE -> Unit
                 ThinkingCapability.ALWAYS_ON -> {
@@ -174,17 +162,155 @@ fun AgentBindingEditorPage(
                 }
             }
         }
+    }
+}
 
-        if (showPicker) {
-            ProviderPickerDialog(
-                currentProviderId = state.selectedProvider?.id,
-                providers = state.providers,
-                onDismiss = { showPicker = false },
-                onSelect = { pid ->
-                    vm.selectProvider(pid)
-                    showPicker = false
-                },
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AccountSelector(
+    accounts: List<com.sebastian.android.data.model.LlmAccount>,
+    selectedAccount: com.sebastian.android.data.model.LlmAccount?,
+    onSelect: (String?) -> Unit,
+    onClear: (() -> Unit)?,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                "LLM Account",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
             )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedAccount?.name ?: "使用默认模型",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    if (selectedAccount != null && onClear != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("使用默认模型", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "取消此 Agent 的专属绑定",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onClear()
+                                expanded = false
+                            },
+                        )
+                    }
+                    for (account in accounts) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(account.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        account.providerType,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onSelect(account.id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelSelector(
+    models: List<com.sebastian.android.viewmodel.ModelOption>,
+    selectedModel: com.sebastian.android.viewmodel.ModelOption?,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                "Model",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedModel?.displayName ?: "Select a model",
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    for (model in models) {
+                        val ctxLabel = if (model.contextWindowTokens >= 1_000_000) {
+                            "${model.contextWindowTokens / 1_000_000}M tokens"
+                        } else {
+                            "%,d tokens".format(model.contextWindowTokens)
+                        }
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(model.displayName, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        ctxLabel,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onSelect(model.id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

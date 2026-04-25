@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -449,4 +450,116 @@ async def get_session_recent(
         ),
         "messages": messages,
         "timeline_items": items,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Context compaction endpoints
+# ---------------------------------------------------------------------------
+
+_DEFAULT_RETAIN_RECENT_EXCHANGES = 8
+
+
+class CompactSessionBody(BaseModel):
+    mode: Literal["manual"] = "manual"
+    retain_recent_exchanges: int = _DEFAULT_RETAIN_RECENT_EXCHANGES
+    dry_run: bool = False
+
+
+def _has_active_stream(state: Any, session_id: str) -> bool:
+    """Return True if any agent currently has a live streaming task for this session."""
+    # Check sebastian agent
+    task = state.sebastian._active_streams.get(session_id)
+    if task is not None and not task.done():
+        return True
+    # Check sub-agent instances
+    for agent in state.agent_instances.values():
+        task = agent._active_streams.get(session_id)
+        if task is not None and not task.done():
+            return True
+    return False
+
+
+@router.post("/sessions/{session_id}/compact", response_model=None)
+async def compact_session(
+    session_id: str,
+    body: CompactSessionBody,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    """Trigger a manual context-compaction pass for the given session.
+
+    Returns 409 if the session has an active streaming turn in progress,
+    to avoid racing with an ongoing LLM call that is still writing context items.
+    """
+    import sebastian.gateway.state as state
+
+    session = await _resolve_session(state, session_id)
+
+    if _has_active_stream(state, session_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Session has an active streaming turn; retry after the turn completes.",
+        )
+
+    if state.context_compaction_worker is None:
+        raise HTTPException(status_code=503, detail="Context compaction worker is not available.")
+
+    result = await state.context_compaction_worker.compact_session(
+        session_id,
+        session.agent_type,
+        reason="manual",
+        retain_recent_exchanges=body.retain_recent_exchanges,
+        dry_run=body.dry_run,
+    )
+    return asdict(result)
+
+
+@router.get("/sessions/{session_id}/compaction/status")
+async def get_compaction_status(
+    session_id: str,
+    _auth: AuthPayload = Depends(require_auth),
+) -> JSONDict:
+    """Return the current compaction status for a session.
+
+    Fields:
+    - ``token_estimate``: local estimate of the current context token count.
+    - ``last_summary_seq``: seq of the most recent context_summary item, or null.
+    - ``compactable_exchange_count``: exchanges eligible for compaction (total minus retained).
+    - ``retained_recent_exchanges``: the retention window used (always 8 for now).
+    """
+    import sebastian.gateway.state as state
+    from sebastian.context.estimator import TokenEstimator
+
+    session = await _resolve_session(state, session_id)
+    items: list[dict[str, Any]] = await state.session_store.get_context_timeline_items(
+        session_id,
+        session.agent_type,
+    )
+
+    estimator = TokenEstimator()
+    token_estimate = estimator.estimate_messages(items)
+
+    # Find the last context_summary seq
+    last_summary_seq: int | None = None
+    for item in items:
+        if item.get("kind") == "context_summary":
+            seq = item.get("seq")
+            if seq is not None:
+                last_summary_seq = int(seq)
+
+    # Count non-archived, non-summary items grouped by exchange for compactable count.
+    # Reuse the same grouping logic: total groups minus retained, floor 0.
+    from sebastian.context.compaction import group_by_exchange
+
+    active_items = [
+        item for item in items if not item.get("archived") and item.get("kind") != "context_summary"
+    ]
+    groups = group_by_exchange(active_items)
+    compactable = max(0, len(groups) - _DEFAULT_RETAIN_RECENT_EXCHANGES)
+
+    return {
+        "token_estimate": token_estimate,
+        "last_summary_seq": last_summary_seq,
+        "compactable_exchange_count": compactable,
+        "retained_recent_exchanges": _DEFAULT_RETAIN_RECENT_EXCHANGES,
     }
