@@ -12,6 +12,11 @@
 - 修复 LLM 绑定编辑页打开时误清空 Agent 绑定的问题。
 - 修复 Memory component 模型绑定读写到错误接口的问题。
 - 修复自定义 LLM account/model 可保存非法配置并在运行时失败的问题。
+- LLM Catalog: zhipu provider 单测断言对齐 JSON 实际值（display_name "Zhi Pu Coding" + 3 个模型，含 glm-4.7）
+- Gateway: `DELETE /api/v1/agents/__default__/llm-binding` 显式返回 400，防止默认绑定被误清空
+- Android: Settings 页不再调用已删除的 `/llm-providers` 路由（之前每次进入触发 404）
+- Docs: `sebastian/llm/README.md` TokenEstimator 已实现，移除"尚未实现"过时注释
+- Docs: 上下文压缩 spec 中 summary payload `reason` 示例对齐实现命名（`auto_usage_threshold` 等）
 
 ### Added
 - 新增 session 上下文自动/手动压缩能力：provider token usage + 本地估算双阈值触发，保留完整 audit timeline，通过 `context_summary` 缩短 LLM 当前上下文；新增 `POST /api/v1/sessions/{id}/compact` 和 `GET /api/v1/sessions/{id}/compaction/status` 接口。
@@ -30,6 +35,7 @@
 - Android App：ProviderFormPage 支持内置 catalog 选择 / 自定义模式
 - Android App：AgentBindingEditorPage 改用 account → model 二级选择
 - Android App：新增默认模型绑定行 + thinking effort 按 model capability 自动钳位
+- 新增 `sebastian/context/README.md` 模块文档与 `sebastian/README.md` 顶层 `context/` 索引
 
 ### Changed
 - `sebastian/llm/registry.py` 完全重写：resolution chain 为 agent_type → binding → account → model_spec → instantiate
@@ -41,6 +47,8 @@
 - `LLMProviderRecord` 模型（由 `LLMAccountRecord` + `LLMCustomModelRecord` 替代）
 - `sebastian/gateway/routes/llm_providers.py`（由 `llm_accounts.py` 替代）
 - 旧 `GET/POST/PUT/DELETE /api/v1/llm-providers` 端点
+- Android 旧 `Provider` data model、`ProviderPickerDialog` 与 `/llm-providers` Retrofit 端点
+- `scripts/re_encrypt_api_keys.py`（依赖已删除的 `LLMProviderRecord`）
 
 ## [0.4.0] - 2026-04-23
 
