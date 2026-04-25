@@ -45,4 +45,7 @@ sealed class Route {
 
     @Serializable
     data object SettingsMemory : Route()
+
+    @Serializable
+    data class SettingsCustomModels(val accountId: String) : Route()
 }

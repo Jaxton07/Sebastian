@@ -2,7 +2,8 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sebastian.android.data.model.ThinkingCapability
+import com.sebastian.android.data.model.CatalogProvider
+import com.sebastian.android.data.model.LlmAccount
 import com.sebastian.android.data.repository.SettingsRepository
 import com.sebastian.android.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,19 +19,22 @@ import java.net.URI
 import javax.inject.Inject
 
 data class ProviderFormUiState(
+    val catalogProviders: List<CatalogProvider> = emptyList(),
+    val selectedCatalogId: String = "",
     val name: String = "",
-    val type: String = "anthropic",
+    val providerType: String = "anthropic",
     val baseUrl: String = "",
     val apiKey: String = "",
-    val model: String = "",
-    val thinkingCapability: ThinkingCapability = ThinkingCapability.NONE,
-    val isDefault: Boolean = false,
     val isLoading: Boolean = false,
     val isSaved: Boolean = false,
     val isDirty: Boolean = false,
     val isNew: Boolean = true,
+    val hasExistingApiKey: Boolean = false,
+    val createdAccountId: String? = null,
     val error: String? = null,
-)
+) {
+    val isCustomMode: Boolean get() = selectedCatalogId == "custom"
+}
 
 @HiltViewModel
 class ProviderFormViewModel @Inject constructor(
@@ -47,44 +50,56 @@ class ProviderFormViewModel @Inject constructor(
         _initialSnapshot,
     ) { current, initial ->
         val dirty = if (initial == null) {
-            // 新建模式：任何字段有值即算 dirty
             current.name.isNotBlank() || current.apiKey.isNotBlank() ||
-                current.model.isNotBlank() || current.baseUrl.isNotBlank()
+                current.baseUrl.isNotBlank() || current.selectedCatalogId.isNotBlank()
         } else {
             current.name.trim() != initial.name.trim() ||
-                current.type != initial.type ||
                 current.apiKey.trim() != initial.apiKey.trim() ||
-                current.model.trim() != initial.model.trim() ||
                 current.baseUrl.trim() != initial.baseUrl.trim() ||
-                current.thinkingCapability != initial.thinkingCapability ||
-                current.isDefault != initial.isDefault
+                current.selectedCatalogId != initial.selectedCatalogId ||
+                current.providerType != initial.providerType
         }
         current.copy(isDirty = dirty, isNew = initial == null)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProviderFormUiState())
 
-    fun loadProvider(id: String) {
+    init {
+        loadCatalog()
+    }
+
+    private fun loadCatalog() {
         viewModelScope.launch(dispatcher) {
-            val provider = repository.providersFlow().first().find { it.id == id } ?: return@launch
-            val loaded = ProviderFormUiState(
-                name = provider.name,
-                type = provider.type,
-                baseUrl = provider.baseUrl ?: "",
-                model = provider.model ?: "",
-                thinkingCapability = provider.thinkingCapability,
-                isDefault = provider.isDefault,
-            )
-            _formState.value = loaded
-            _initialSnapshot.value = loaded
+            repository.getLlmCatalog()
+                .onSuccess { catalog ->
+                    _formState.update { it.copy(catalogProviders = catalog) }
+                }
         }
     }
 
+    fun loadAccount(accountId: String) {
+        viewModelScope.launch(dispatcher) {
+            repository.getLlmAccounts()
+                .onSuccess { accounts ->
+                    val account = accounts.find { it.id == accountId } ?: return@launch
+                    val loaded = ProviderFormUiState(
+                        selectedCatalogId = account.catalogProviderId,
+                        name = account.name,
+                        providerType = account.providerType,
+                        baseUrl = account.baseUrlOverride ?: "",
+                        hasExistingApiKey = account.hasApiKey,
+                        createdAccountId = account.id,
+                    )
+                    _formState.value = loaded
+                    _initialSnapshot.value = loaded
+                }
+                .onFailure { e -> _formState.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun onCatalogSelect(id: String) = _formState.update { it.copy(selectedCatalogId = id) }
     fun onNameChange(v: String) = _formState.update { it.copy(name = v) }
-    fun onTypeChange(v: String) = _formState.update { it.copy(type = v) }
+    fun onProviderTypeChange(v: String) = _formState.update { it.copy(providerType = v) }
     fun onBaseUrlChange(v: String) = _formState.update { it.copy(baseUrl = v) }
     fun onApiKeyChange(v: String) = _formState.update { it.copy(apiKey = v) }
-    fun onModelChange(v: String) = _formState.update { it.copy(model = v) }
-    fun onThinkingCapabilityChange(v: ThinkingCapability) = _formState.update { it.copy(thinkingCapability = v) }
-    fun onIsDefaultChange(v: Boolean) = _formState.update { it.copy(isDefault = v) }
 
     fun save(existingId: String?) {
         val state = _formState.value
@@ -92,55 +107,53 @@ class ProviderFormViewModel @Inject constructor(
             _formState.update { it.copy(error = "名称不能为空") }
             return
         }
-        if (state.apiKey.isBlank() && existingId == null) {
+        if (state.isCustomMode) {
+            if (state.baseUrl.isBlank()) {
+                _formState.update { it.copy(error = "Base URL 不能为空") }
+                return
+            }
+            if (!isValidBaseUrl(state.baseUrl)) {
+                _formState.update { it.copy(error = "Base URL 必须是 http(s) 地址") }
+                return
+            }
+        }
+        val requireApiKey = existingId == null || state.apiKey.isNotBlank()
+        if (requireApiKey && state.apiKey.isBlank()) {
             _formState.update { it.copy(error = "API Key 不能为空") }
             return
         }
-        if (state.model.isBlank()) {
-            _formState.update { it.copy(error = "模型不能为空") }
-            return
-        }
-        if (state.baseUrl.isBlank()) {
-            _formState.update { it.copy(error = "Base URL 不能为空") }
-            return
-        }
-        if (!isValidBaseUrl(state.baseUrl)) {
-            _formState.update { it.copy(error = "Base URL 必须是 http(s) 地址") }
-            return
-        }
+
         viewModelScope.launch(dispatcher) {
             _formState.update { it.copy(isLoading = true, error = null) }
-            val capabilityStr = when (state.thinkingCapability) {
-                ThinkingCapability.NONE -> "none"
-                ThinkingCapability.ALWAYS_ON -> "always_on"
-                ThinkingCapability.TOGGLE -> "toggle"
-                ThinkingCapability.EFFORT -> "effort"
-                ThinkingCapability.ADAPTIVE -> "adaptive"
-            }
+            val catalogId = if (state.isCustomMode) "custom" else state.selectedCatalogId
+            val apiKeyToSend = state.apiKey.trim().ifEmpty { null }
+
             val result = if (existingId == null) {
-                repository.createProvider(
+                repository.createLlmAccount(
                     name = state.name.trim(),
-                    type = state.type,
-                    baseUrl = state.baseUrl.trim().ifEmpty { null },
-                    apiKey = state.apiKey.trim().ifEmpty { null },
-                    model = state.model.trim().ifEmpty { null },
-                    thinkingCapability = capabilityStr,
-                    isDefault = state.isDefault,
+                    catalogProviderId = catalogId,
+                    apiKey = apiKeyToSend ?: "",
+                    providerType = if (state.isCustomMode) state.providerType else null,
+                    baseUrlOverride = if (state.isCustomMode) state.baseUrl.trim() else null,
                 )
             } else {
-                repository.updateProvider(
-                    id = existingId,
+                repository.updateLlmAccount(
+                    accountId = existingId,
                     name = state.name.trim(),
-                    type = state.type,
-                    baseUrl = state.baseUrl.trim().ifEmpty { null },
-                    apiKey = state.apiKey.trim().ifEmpty { null },
-                    model = state.model.trim().ifEmpty { null },
-                    thinkingCapability = capabilityStr,
-                    isDefault = state.isDefault,
+                    apiKey = apiKeyToSend,
+                    baseUrlOverride = if (state.isCustomMode) state.baseUrl.trim().ifEmpty { null } else null,
                 )
             }
             result
-                .onSuccess { _formState.update { it.copy(isLoading = false, isSaved = true) } }
+                .onSuccess { account ->
+                    _formState.update {
+                        it.copy(
+                            isLoading = false,
+                            isSaved = true,
+                            createdAccountId = account.id,
+                        )
+                    }
+                }
                 .onFailure { e -> _formState.update { it.copy(isLoading = false, error = e.message) } }
         }
     }

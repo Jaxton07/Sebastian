@@ -2,9 +2,15 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sebastian.android.data.model.Provider
+import com.sebastian.android.data.model.AgentBinding
+import com.sebastian.android.data.model.CatalogModel
+import com.sebastian.android.data.model.CatalogProvider
+import com.sebastian.android.data.model.CustomModel
+import com.sebastian.android.data.model.LlmAccount
+import com.sebastian.android.data.model.ResolvedBinding
 import com.sebastian.android.data.model.ThinkingCapability
 import com.sebastian.android.data.model.ThinkingEffort
+import com.sebastian.android.data.model.toApiString
 import com.sebastian.android.data.model.toThinkingEffort
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.SettingsRepository
@@ -16,6 +22,7 @@ import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,16 +36,37 @@ data class EditorUiState(
     val agentType: String,
     val agentDisplayName: String = "",
     val isOrchestrator: Boolean = false,
-    val providers: List<Provider> = emptyList(),
-    val selectedProvider: Provider? = null,
+    val isDefault: Boolean = false,
+    val loading: Boolean = true,
+    val accounts: List<LlmAccount> = emptyList(),
+    val catalogProviders: List<CatalogProvider> = emptyList(),
+    val selectedAccount: LlmAccount? = null,
+    val availableModels: List<ModelOption> = emptyList(),
+    val selectedModel: ModelOption? = null,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.OFF,
+    val resolved: ResolvedBinding? = null,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
-    val loading: Boolean = true,
 ) {
     val effectiveCapability: ThinkingCapability?
-        get() = (selectedProvider ?: providers.firstOrNull { it.isDefault })?.thinkingCapability
+        get() = selectedModel?.thinkingCapability
+
+    val contextWindowText: String?
+        get() = selectedModel?.contextWindowTokens?.let { tokens ->
+            if (tokens >= 1_000_000) {
+                "${tokens / 1_000_000}M tokens"
+            } else {
+                "%,d tokens".format(tokens)
+            }
+        }
 }
+
+data class ModelOption(
+    val id: String,
+    val displayName: String,
+    val contextWindowTokens: Long,
+    val thinkingCapability: ThinkingCapability,
+)
 
 sealed interface EditorEvent {
     data class Snackbar(val text: String) : EditorEvent
@@ -61,7 +89,7 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
         ): AgentBindingEditorViewModel
     }
 
-    private val _uiState = MutableStateFlow(EditorUiState(agentType = agentType))
+    private val _uiState = MutableStateFlow(EditorUiState(agentType = agentType, isDefault = agentType == "__default__"))
     val uiState: StateFlow<EditorUiState> = _uiState
 
     private val _events = MutableSharedFlow<EditorEvent>(extraBufferCapacity = 1)
@@ -75,48 +103,137 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     fun load() {
         if (loadJob?.isActive == true) return
         loadJob = viewModelScope.launch {
-            val bindingR = if (isMemoryComponent) {
-                agentRepository.getMemoryComponentBinding(agentType)
+            val isDefault = agentType == "__default__"
+
+            val accountsD = async { settingsRepository.getLlmAccounts() }
+            val catalogD = async { settingsRepository.getLlmCatalog() }
+
+            val bindingD = if (isDefault) {
+                async { settingsRepository.getDefaultBinding() }
+            } else if (isMemoryComponent) {
+                async { agentRepository.getBinding(agentType) }
             } else {
-                agentRepository.getBinding(agentType)
+                async {
+                    runCatching {
+                        agentRepository.setAgentBinding(agentType, null, null, null)
+                    }.recoverCatching {
+                        agentRepository.getBinding(agentType).getOrThrow().let { legacy ->
+                            AgentBinding(
+                                agentType = legacy.agentType,
+                                accountId = null,
+                                modelId = null,
+                                thinkingEffort = legacy.thinkingEffort,
+                                resolved = null,
+                            )
+                        }
+                    }
+                }
             }
-            val providersR = settingsRepository.getProviders()
-            val err = bindingR.exceptionOrNull() ?: providersR.exceptionOrNull()
+
+            val accountsR = accountsD.await()
+            val catalogR = catalogD.await()
+            val bindingR = bindingD.await()
+
+            val err = accountsR.exceptionOrNull() ?: catalogR.exceptionOrNull() ?: bindingR.exceptionOrNull()
             if (err != null) {
                 _uiState.update { it.copy(loading = false, errorMessage = err.message) }
                 return@launch
             }
-            val dto = bindingR.getOrThrow()
-            val providers = providersR.getOrThrow()
-            val selected = providers.firstOrNull { it.id == dto.providerId }
-            val capability = (selected ?: providers.firstOrNull { it.isDefault })?.thinkingCapability
-            val (coercedEffort, wasCoerced) =
-                coerceEffort(dto.thinkingEffort.toThinkingEffort(), capability)
+
+            val accounts = accountsR.getOrThrow()
+            val catalog = catalogR.getOrThrow()
+            val binding: AgentBinding? = if (isDefault) {
+                @Suppress("UNCHECKED_CAST")
+                (bindingR.getOrNull() as? AgentBinding)
+            } else {
+                (bindingR.getOrNull() as? AgentBinding)
+            }
+
+            val selectedAccountId = binding?.accountId
+            val selectedAccount = accounts.firstOrNull { it.id == selectedAccountId }
+            val models = if (selectedAccount != null) {
+                resolveModels(selectedAccount, catalog)
+            } else {
+                emptyList()
+            }
+            val selectedModelOption = binding?.modelId?.let { mid ->
+                models.firstOrNull { it.id == mid }
+            }
+            val capability = selectedModelOption?.thinkingCapability
+            val effort = binding?.thinkingEffort.toThinkingEffort()
+            val (coercedEffort, wasCoerced) = coerceEffort(effort, capability)
+
             _uiState.update {
                 it.copy(
                     loading = false,
-                    providers = providers,
-                    selectedProvider = selected,
+                    isDefault = isDefault,
+                    accounts = accounts,
+                    catalogProviders = catalog,
+                    selectedAccount = selectedAccount,
+                    availableModels = models,
+                    selectedModel = selectedModelOption,
                     thinkingEffort = coercedEffort,
+                    resolved = binding?.resolved,
                 )
             }
             if (wasCoerced) schedulePut()
         }
     }
 
-    fun selectProvider(providerId: String?) {
+    fun selectAccount(accountId: String?) {
         val prev = _uiState.value
-        val next = prev.providers.firstOrNull { it.id == providerId }
-        val providerChanged = prev.selectedProvider?.id != providerId
+        val account = prev.accounts.firstOrNull { it.id == accountId }
+        val accountChanged = prev.selectedAccount?.id != accountId
         val hadConfig = prev.thinkingEffort != ThinkingEffort.OFF
+
+        val models = if (account != null) {
+            resolveModels(account, prev.catalogProviders)
+        } else {
+            emptyList()
+        }
+
         _uiState.update {
             it.copy(
-                selectedProvider = next,
-                thinkingEffort = if (providerChanged) ThinkingEffort.OFF else it.thinkingEffort,
+                selectedAccount = account,
+                availableModels = models,
+                selectedModel = null,
+                thinkingEffort = ThinkingEffort.OFF,
             )
         }
-        if (providerChanged && hadConfig) {
-            _events.tryEmit(EditorEvent.Snackbar("Thinking config reset for new provider"))
+        if (accountChanged && hadConfig) {
+            _events.tryEmit(EditorEvent.Snackbar("Thinking config reset for new account"))
+        }
+        schedulePut()
+    }
+
+    fun selectModel(modelId: String) {
+        val prev = _uiState.value
+        val model = prev.availableModels.firstOrNull { it.id == modelId } ?: return
+        val modelChanged = prev.selectedModel?.id != modelId
+
+        val (coercedEffort, _) = if (modelChanged) {
+            coerceEffort(ThinkingEffort.OFF, model.thinkingCapability)
+        } else {
+            Pair(prev.thinkingEffort, false)
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedModel = model,
+                thinkingEffort = coercedEffort,
+            )
+        }
+        schedulePut()
+    }
+
+    fun clearBinding() {
+        _uiState.update {
+            it.copy(
+                selectedAccount = null,
+                availableModels = emptyList(),
+                selectedModel = null,
+                thinkingEffort = ThinkingEffort.OFF,
+            )
         }
         schedulePut()
     }
@@ -124,6 +241,44 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
     fun setEffort(e: ThinkingEffort) {
         _uiState.update { it.copy(thinkingEffort = e) }
         schedulePut()
+    }
+
+    private fun resolveModels(
+        account: LlmAccount,
+        catalog: List<CatalogProvider>,
+    ): List<ModelOption> {
+        val catalogProvider = catalog.firstOrNull { it.id == account.catalogProviderId }
+        return if (catalogProvider != null) {
+            catalogProvider.models.map { m ->
+                ModelOption(
+                    id = m.id,
+                    displayName = m.displayName,
+                    contextWindowTokens = m.contextWindowTokens,
+                    thinkingCapability = m.thinkingCapability,
+                )
+            }
+        } else {
+            emptyList()
+        }
+    }
+
+    private fun loadCustomModels(accountId: String) {
+        viewModelScope.launch {
+            val result = settingsRepository.getCustomModels(accountId)
+            result.onSuccess { customs ->
+                val options = customs.map { m ->
+                    ModelOption(
+                        id = m.modelId,
+                        displayName = m.displayName,
+                        contextWindowTokens = m.contextWindowTokens,
+                        thinkingCapability = m.thinkingCapability,
+                    )
+                }
+                if (_uiState.value.selectedAccount?.id == accountId) {
+                    _uiState.update { it.copy(availableModels = options) }
+                }
+            }
+        }
     }
 
     private fun schedulePut() {
@@ -134,13 +289,20 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
             delay(300)
             val s = _uiState.value
             _uiState.update { it.copy(isSaving = true) }
-            val r = if (isMemoryComponent) {
-                agentRepository.setMemoryComponentBinding(
-                    agentType, s.selectedProvider?.id, s.thinkingEffort,
+
+            val effort = s.thinkingEffort.toApiString()
+            val r = if (s.isDefault) {
+                settingsRepository.setDefaultBinding(
+                    s.selectedAccount?.id ?: "",
+                    s.selectedModel?.id ?: "",
+                    effort,
                 )
             } else {
-                agentRepository.setBinding(
-                    agentType, s.selectedProvider?.id, s.thinkingEffort,
+                agentRepository.setAgentBinding(
+                    s.agentType,
+                    s.selectedAccount?.id,
+                    s.selectedModel?.id,
+                    effort,
                 )
             }
             putPending = false
@@ -157,13 +319,21 @@ class AgentBindingEditorViewModel @AssistedInject constructor(
         super.onCleared()
         if (putPending) {
             val s = _uiState.value
+            val effort = s.thinkingEffort.toApiString()
             applicationScope.launch {
-                if (isMemoryComponent) {
-                    agentRepository.setMemoryComponentBinding(
-                        agentType, s.selectedProvider?.id, s.thinkingEffort,
+                if (s.isDefault) {
+                    settingsRepository.setDefaultBinding(
+                        s.selectedAccount?.id ?: "",
+                        s.selectedModel?.id ?: "",
+                        effort,
                     )
                 } else {
-                    agentRepository.setBinding(agentType, s.selectedProvider?.id, s.thinkingEffort)
+                    agentRepository.setAgentBinding(
+                        s.agentType,
+                        s.selectedAccount?.id,
+                        s.selectedModel?.id,
+                        effort,
+                    )
                 }
             }
         }

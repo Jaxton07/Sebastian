@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,10 +31,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.sebastian.android.data.model.AgentInfo
 import com.sebastian.android.data.model.MemoryComponentInfo
-import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.model.ThinkingEffort
 import com.sebastian.android.data.model.displayLabel
+import com.sebastian.android.data.model.toThinkingEffort
 import com.sebastian.android.ui.common.ToastCenter
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.AgentBindingsViewModel
@@ -69,9 +71,39 @@ fun AgentBindingsPage(
         },
     ) { padding ->
         val (orchestrator, subAgents) = state.agents.partition { it.isOrchestrator }
-        val defaultProvider = state.providers.firstOrNull { it.isDefault }
 
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+
+            // ── Default Model ──────────────────────────────────────────────
+            item { SectionHeader("Default Model") }
+            item {
+                val binding = state.defaultBinding
+                val resolved = binding?.resolved
+                val subtitle = when {
+                    binding?.accountId == null -> "未配置"
+                    resolved != null -> buildString {
+                        append(resolved.modelDisplayName ?: "Unknown model")
+                        if (resolved.accountName != null) {
+                            append(" · ")
+                            append(resolved.accountName)
+                        }
+                    }
+                    else -> "已绑定"
+                }
+                AgentBindingRow(
+                    headline = "默认模型",
+                    subtitle = subtitle,
+                    icon = Icons.Outlined.Settings,
+                    onClick = {
+                        navController.navigate(
+                            Route.SettingsAgentBindingEditor(
+                                agentType = "__default__",
+                                isMemoryComponent = false,
+                            )
+                        )
+                    },
+                )
+            }
 
             // ── Orchestrator ──────────────────────────────────────────────
             if (orchestrator.isNotEmpty()) {
@@ -79,7 +111,7 @@ fun AgentBindingsPage(
                 items(orchestrator, key = { "agent:${it.agentType}" }) { agent ->
                     AgentBindingRow(
                         headline = agent.displayName,
-                        subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
+                        subtitle = resolvedSubtitle(agent),
                         icon = Icons.Outlined.AutoAwesome,
                         onClick = {
                             navController.navigate(
@@ -96,7 +128,7 @@ fun AgentBindingsPage(
                 items(state.memoryComponents, key = { "mem:${it.componentType}" }) { component ->
                     AgentBindingRow(
                         headline = component.displayName,
-                        subtitle = resolveSubtitle(component.boundProviderId, component.thinkingEffort, state.providers, defaultProvider?.name),
+                        subtitle = "使用默认模型",
                         icon = Icons.Outlined.Psychology,
                         onClick = {
                             navController.navigate(
@@ -113,7 +145,7 @@ fun AgentBindingsPage(
                 items(subAgents, key = { "agent:${it.agentType}" }) { agent ->
                     AgentBindingRow(
                         headline = agent.displayName,
-                        subtitle = resolveSubtitle(agent.boundProviderId, agent.thinkingEffort, state.providers, defaultProvider?.name),
+                        subtitle = resolvedSubtitle(agent),
                         icon = Icons.Outlined.Extension,
                         onClick = {
                             navController.navigate(
@@ -127,24 +159,8 @@ fun AgentBindingsPage(
     }
 }
 
-private fun resolveSubtitle(
-    boundProviderId: String?,
-    thinkingEffort: ThinkingEffort,
-    providers: List<Provider>,
-    defaultProviderName: String?,
-): String {
-    val bound = providers.firstOrNull { it.id == boundProviderId }
-    return when {
-        boundProviderId == null -> "Use default · ${defaultProviderName ?: "—"}"
-        bound != null -> buildString {
-            append(bound.name)
-            if (thinkingEffort != ThinkingEffort.OFF) {
-                append(" · ")
-                append(thinkingEffort.displayLabel())
-            }
-        }
-        else -> "Unknown provider"
-    }
+private fun resolvedSubtitle(agent: AgentInfo): String {
+    return "使用默认模型"
 }
 
 @Composable

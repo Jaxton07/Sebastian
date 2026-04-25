@@ -2,6 +2,8 @@ package com.sebastian.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sebastian.android.data.model.CatalogProvider
+import com.sebastian.android.data.model.LlmAccount
 import com.sebastian.android.data.model.Provider
 import com.sebastian.android.data.repository.SettingsRepository
 import com.sebastian.android.di.IoDispatcher
@@ -19,6 +21,8 @@ data class SettingsUiState(
     val serverUrl: String = "",
     val theme: String = "system",
     val providers: List<Provider> = emptyList(),
+    val llmAccounts: List<LlmAccount> = emptyList(),
+    val catalogProviders: List<CatalogProvider> = emptyList(),
     val currentProvider: Provider? = null,
     val isLoggedIn: Boolean = false,
     val isLoading: Boolean = false,
@@ -65,6 +69,8 @@ class SettingsViewModel @Inject constructor(
             }.collect {}
         }
         loadProviders()
+        loadLlmCatalog()
+        loadLlmAccounts()
     }
 
     fun saveServerUrl(url: String) {
@@ -209,4 +215,27 @@ class SettingsViewModel @Inject constructor(
 
     fun clearError() = _uiState.update { it.copy(error = null) }
     fun clearConnectionTestResult() = _uiState.update { it.copy(connectionTestResult = null) }
+
+    fun loadLlmCatalog() {
+        viewModelScope.launch(dispatcher) {
+            repository.getLlmCatalog()
+                .onSuccess { catalog -> _uiState.update { it.copy(catalogProviders = catalog) } }
+        }
+    }
+
+    fun loadLlmAccounts() {
+        viewModelScope.launch(dispatcher) {
+            repository.getLlmAccounts()
+                .onSuccess { accounts -> _uiState.update { it.copy(llmAccounts = accounts) } }
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun deleteLlmAccount(accountId: String) {
+        viewModelScope.launch(dispatcher) {
+            repository.deleteLlmAccount(accountId)
+                .onFailure { e -> _uiState.update { it.copy(error = e.message) } }
+                .onSuccess { loadLlmAccounts() }
+        }
+    }
 }
