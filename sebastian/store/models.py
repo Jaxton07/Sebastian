@@ -84,18 +84,36 @@ class UserRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class LLMProviderRecord(Base):
-    __tablename__ = "llm_providers"
+class LLMAccountRecord(Base):
+    __tablename__ = "llm_accounts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    catalog_provider_id: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     api_key_enc: Mapped[str] = mapped_column(String(600), nullable=False)
-    model: Mapped[str] = mapped_column(String(200), nullable=False)
-    thinking_format: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    base_url_override: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+
+class LLMCustomModelRecord(Base):
+    __tablename__ = "llm_custom_models"
+    __table_args__ = (
+        UniqueConstraint("account_id", "model_id", name="uq_llm_custom_models_account_model"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    account_id: Mapped[str] = mapped_column(
+        String, ForeignKey("llm_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    context_window_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     thinking_capability: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    thinking_format: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
@@ -106,11 +124,8 @@ class AgentLLMBindingRecord(Base):
     __tablename__ = "agent_llm_bindings"
 
     agent_type: Mapped[str] = mapped_column(String(100), primary_key=True)
-    provider_id: Mapped[str | None] = mapped_column(
-        String,
-        ForeignKey("llm_providers.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    account_id: Mapped[str] = mapped_column(String, nullable=False)
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     thinking_effort: Mapped[str | None] = mapped_column(String(16), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

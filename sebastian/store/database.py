@@ -73,7 +73,6 @@ async def _apply_idempotent_migrations(conn: Any) -> None:
     Each entry: (table, column, DDL fragment). SQLite only.
     """
     patches: list[tuple[str, str, str]] = [
-        ("llm_providers", "thinking_capability", "VARCHAR(20)"),
         ("agent_llm_bindings", "thinking_effort", "VARCHAR(16)"),
         ("memory_decision_log", "input_source", "TEXT"),
         ("memory_decision_log", "session_id", "TEXT"),
@@ -187,12 +186,17 @@ async def _apply_idempotent_indexes(conn: Any) -> None:
 
 async def _drop_obsolete_columns(conn: Any) -> None:
     """删除已废弃的列。idempotent：列不存在时静默跳过。"""
-    result = await conn.exec_driver_sql(
-        "SELECT name FROM pragma_table_info('agent_llm_bindings') WHERE name = 'thinking_adaptive'"
-    )
-    if result.first():
-        await conn.exec_driver_sql("ALTER TABLE agent_llm_bindings DROP COLUMN thinking_adaptive")
-        logger.info("Dropped obsolete column: agent_llm_bindings.thinking_adaptive")
+    obsolete: list[tuple[str, str]] = [
+        ("agent_llm_bindings", "thinking_adaptive"),
+        ("agent_llm_bindings", "provider_id"),
+    ]
+    for table, column in obsolete:
+        result = await conn.exec_driver_sql(
+            f"SELECT name FROM pragma_table_info('{table}') WHERE name = '{column}'"
+        )
+        if result.first():
+            await conn.exec_driver_sql(f"ALTER TABLE {table} DROP COLUMN {column}")
+            logger.info("Dropped obsolete column: %s.%s", table, column)
 
 
 async def _rebuild_pk_if_needed(
