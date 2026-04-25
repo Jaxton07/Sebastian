@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -338,6 +339,7 @@ class CompactionScheduler(Protocol):
 class TurnEndCompactionScheduler:
     """Decides whether compaction is needed and fires it as a background task.
 
+    The context window is resolved per agent_type via ``context_window_resolver``.
     The decision uses the last ProviderCallEnd usage (authoritative token count
     from the provider) when available, falling back to a local estimate derived
     from the message list.  If compaction is triggered, it is fired with
@@ -348,12 +350,14 @@ class TurnEndCompactionScheduler:
         self,
         *,
         worker: SessionContextCompactionWorker,
-        token_meter: Any,
+        context_window_resolver: Callable[[str], Awaitable[int]],
         estimator: Any,
+        fallback_context_window: int = 200_000,
     ) -> None:
         self._worker = worker
-        self._token_meter = token_meter
+        self._context_window_resolver = context_window_resolver
         self._estimator = estimator
+        self._fallback_context_window = fallback_context_window
 
     async def maybe_schedule_after_turn(
         self,
@@ -364,8 +368,21 @@ class TurnEndCompactionScheduler:
         messages: list[dict[str, Any]],
         system_prompt: str,
     ) -> None:
+        try:
+            context_window = await self._context_window_resolver(agent_type)
+        except Exception:
+            logger.debug(
+                "Failed to resolve context window for agent=%s, using fallback %d",
+                agent_type,
+                self._fallback_context_window,
+            )
+            context_window = self._fallback_context_window
+
+        from sebastian.context.token_meter import ContextTokenMeter
+
+        meter = ContextTokenMeter(context_window=context_window)
         estimate = self._estimator.estimate_messages(messages, system_prompt=system_prompt)
-        decision = self._token_meter.should_compact(usage=usage, estimate=estimate)
+        decision = meter.should_compact(usage=usage, estimate=estimate)
         if not decision.should_compact:
             return
 

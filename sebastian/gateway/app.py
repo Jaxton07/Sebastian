@@ -160,17 +160,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         TurnEndCompactionScheduler,
     )
     from sebastian.context.estimator import TokenEstimator
-    from sebastian.context.token_meter import ContextTokenMeter
 
     _compaction_worker = SessionContextCompactionWorker(
         session_store=session_store,
         llm_registry=llm_registry,
     )
-    # TODO(task-8): source context_window from model binding metadata instead of constant.
-    # 200_000 is a safe upper bound for current Claude models.
+
+    async def _resolve_context_window(agent_type: str) -> int:
+        resolved = await llm_registry.get_provider(agent_type)
+        return resolved.context_window_tokens
+
     state.context_compaction_scheduler = TurnEndCompactionScheduler(
         worker=_compaction_worker,
-        token_meter=ContextTokenMeter(context_window=200_000),
+        context_window_resolver=_resolve_context_window,
         estimator=TokenEstimator(),
     )
     state.context_compaction_worker = _compaction_worker
