@@ -10,6 +10,7 @@ import com.sebastian.android.data.remote.dto.AgentBindingDto
 import com.sebastian.android.data.remote.dto.LegacyAgentBindingDto
 import com.sebastian.android.data.remote.dto.LegacySetBindingRequest
 import com.sebastian.android.data.remote.dto.SetBindingRequest
+import com.sebastian.android.data.remote.dto.toAgentBinding
 import com.sebastian.android.di.IoDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -27,6 +28,8 @@ class AgentRepositoryImpl @Inject constructor(
             apiService.getAgents().agents.map { it.toDomain() }
         }
     }
+
+    // ── Legacy provider-based agent binding ──────────────────────────────
 
     override suspend fun getBinding(agentType: String): Result<LegacyAgentBindingDto> = runCatching {
         withContext(dispatcher) {
@@ -57,6 +60,14 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
+    // ── Account-based agent binding ──────────────────────────────────────
+
+    override suspend fun getAgentBinding(agentType: String): Result<AgentBinding> = runCatching {
+        withContext(dispatcher) {
+            apiService.getAgentBindingV2(agentType).toDomain()
+        }
+    }
+
     override suspend fun setAgentBinding(
         agentType: String,
         accountId: String?,
@@ -75,11 +86,15 @@ class AgentRepositoryImpl @Inject constructor(
         }
     }
 
+    // ── Memory components ────────────────────────────────────────────────
+
     override suspend fun listMemoryComponents(): Result<List<MemoryComponentInfo>> = runCatching {
         withContext(dispatcher) {
             apiService.listMemoryComponents().components.map { it.toDomain() }
         }
     }
+
+    // Legacy provider-based memory binding
 
     override suspend fun getMemoryComponentBinding(
         componentType: String,
@@ -88,7 +103,7 @@ class AgentRepositoryImpl @Inject constructor(
             val dto = apiService.getMemoryComponentBinding(componentType)
             LegacyAgentBindingDto(
                 agentType = dto.componentType ?: componentType,
-                providerId = dto.providerId,
+                providerId = dto.accountId,
                 thinkingEffort = dto.thinkingEffort,
             )
         }
@@ -116,6 +131,32 @@ class AgentRepositoryImpl @Inject constructor(
     ): Result<Unit> = runCatching {
         withContext(dispatcher) {
             apiService.clearMemoryComponentBinding(componentType)
+        }
+    }
+
+    // Account-based memory binding
+
+    override suspend fun getMemoryBinding(componentType: String): Result<AgentBinding> = runCatching {
+        withContext(dispatcher) {
+            apiService.getMemoryComponentBindingV2(componentType).toAgentBinding(componentType)
+        }
+    }
+
+    override suspend fun setMemoryBinding(
+        componentType: String,
+        accountId: String?,
+        modelId: String?,
+        thinkingEffort: String?,
+    ): Result<AgentBinding> = runCatching {
+        withContext(dispatcher) {
+            apiService.setMemoryComponentBindingV2(
+                componentType,
+                SetBindingRequest(
+                    accountId = accountId,
+                    modelId = modelId,
+                    thinkingEffort = thinkingEffort,
+                ),
+            ).toAgentBinding(componentType)
         }
     }
 }

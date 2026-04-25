@@ -55,6 +55,9 @@ interface ApiService {
     @GET("api/v1/agents/{agentType}/llm-binding")
     suspend fun getAgentBinding(@Path("agentType") agentType: String): LegacyAgentBindingDto
 
+    @GET("api/v1/agents/{agentType}/llm-binding")
+    suspend fun getAgentBindingV2(@Path("agentType") agentType: String): AgentBindingDto
+
     @PUT("api/v1/agents/{agentType}/llm-binding")
     suspend fun setAgentBinding(
         @Path("agentType") agentType: String,
@@ -116,10 +119,21 @@ interface ApiService {
         @Path("componentType") componentType: String,
     ): MemoryComponentBindingDto
 
+    @GET("api/v1/memory/components/{componentType}/llm-binding")
+    suspend fun getMemoryComponentBindingV2(
+        @Path("componentType") componentType: String,
+    ): MemoryComponentBindingDto
+
     @PUT("api/v1/memory/components/{componentType}/llm-binding")
     suspend fun setMemoryComponentBinding(
         @Path("componentType") componentType: String,
         @Body body: LegacySetBindingRequest,
+    ): MemoryComponentBindingDto
+
+    @PUT("api/v1/memory/components/{componentType}/llm-binding")
+    suspend fun setMemoryComponentBindingV2(
+        @Path("componentType") componentType: String,
+        @Body body: SetBindingRequest,
     ): MemoryComponentBindingDto
 
     @DELETE("api/v1/memory/components/{componentType}/llm-binding")
