@@ -241,6 +241,20 @@ WantedBy=default.target
 
 关键：去掉末尾 `exec sebastian serve`。
 
+## 6.1 dev.sh 同步
+
+[scripts/dev.sh](../../../scripts/dev.sh) 主体不变（仍 `exec sebastian serve --reload`，迁移会在 serve 启动时自动跑），只需调整：
+
+1. **首次初始化提示文案**：把 "启动后会进入初始化向导" 这段保留，再补一行说明新布局：
+   ```
+   →  首次使用开发数据目录: ~/.sebastian-dev
+      数据将分布在 ~/.sebastian-dev/{app,data,logs,run} 子目录
+   ```
+2. 不需要在 dev.sh 内显式调 `sebastian init`——`sebastian serve` 检测到无 db 会自动唤起 wizard，行为和生产路径保持一致
+3. 不需要改端口/路径变量
+
+dev.sh 改动随 commit 5（install.sh 重构）一起提交。
+
 ## 7. bootstrap.sh 收紧
 
 [bootstrap.sh](../../../bootstrap.sh) 在解压前增加目标检测：
@@ -296,7 +310,11 @@ pf = pid_path(settings.run_dir)  # 原 settings.data_dir
 
 ### 8.4 文档同步
 
-更新 [sebastian/config/README.md](../../../sebastian/config/README.md) 的目录结构表，把 `sessions/extensions/workspace` 改成新布局描述。
+需要在最后一个 commit 一并更新的文档：
+
+- [README.md](../../../README.md)（项目根）：安装/启动小节改成新布局示意 + 新增"作为系统服务运行"小节，说明 `sebastian service install` 用法；如有目录结构图同步更新
+- [sebastian/config/README.md](../../../sebastian/config/README.md)：目录结构表把 `sessions/extensions/workspace` 改成新布局描述，新增 `user_data_dir` / `logs_dir` / `run_dir` 属性说明
+- [CLAUDE.md](../../../CLAUDE.md)：第 3 节"构建与启动"和第 6 节"运行时环境变量"中关于 `~/.sebastian/` 直接放 db/secret.key 的描述全部更新为新布局；新增"系统服务"用法段
 
 ## 9. 测试
 
@@ -336,10 +354,10 @@ pf = pid_path(settings.run_dir)  # 原 settings.data_dir
 2. `feat(store): layout v2 自动迁移`
 3. `refactor(daemon,updater): pid 与 update 回滚改用 run_dir`
 4. `feat(cli): sebastian service install/uninstall/start/stop/status`
-5. `refactor(install): 拆分首启与运行，新增服务注册询问`
+5. `refactor(install,dev): 拆分首启与运行，dev.sh 提示同步`
 6. `fix(bootstrap): 目标非空时拒绝覆盖`
-7. `docs: 同步 config README 与 CLAUDE.md`
-8. `test: 布局迁移、服务安装、updater 路径单测`
+7. `test: 布局迁移、服务安装、updater 路径单测`
+8. `docs: 同步 README、config README、CLAUDE.md`
 
 ## 11. 风险与回滚
 
