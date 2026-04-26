@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-26
+
 ### Breaking Changes
 - 数据目录布局升级到 v2：sebastian.db / secret.key / workspace / extensions 移到 `~/.sebastian/data/` 子目录，PID 移到 `~/.sebastian/run/`。首次启动自动迁移，无需手动处理
 
