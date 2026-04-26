@@ -8,10 +8,15 @@
 - 数据目录布局升级到 v2：sebastian.db / secret.key / workspace / extensions 移到 `~/.sebastian/data/` 子目录，PID 移到 `~/.sebastian/run/`。首次启动自动迁移，无需手动处理
 
 ### Added
+- 常驻记忆快照（Resident Memory Snapshot）：高置信用户画像预渲染为 Markdown 快照，每轮 system prompt 固定注入，零 DB 查询延迟；动态检索阶段自动过滤已注入的重复记忆
+- 新增 `todo_write` 工具：Agent 可在会话中管理待办列表，每轮 system prompt 自动注入当前状态
+- Android Todo 面板：侧边栏展示当前会话 Todo，SSE 实时刷新，状态图标可视化
 - 新增 `sebastian service install|uninstall|start|stop|status` 子命令，支持注册为 systemd user service（Linux）或 launchd LaunchAgent（macOS），无需 sudo
 - install.sh 装完依赖后询问是否注册系统服务（默认跳过）
 
 ### Changed
+- Agent persona 不再硬编码主人名字，owner 身份改由记忆系统 resident snapshot 动态注入
+- 首页 README 新增系统架构图（可交互 HTML 版 + PNG 截图）、Forge Agent 与记忆系统演示 GIF；Feature Matrix 精简为已实现功能清单
 - install.sh 不再阻塞为长期运行进程，wizard 完成后干净退出
 - bootstrap.sh 检测目标目录已有 Sebastian 安装时拒绝覆盖，引导走 `sebastian update`
 
