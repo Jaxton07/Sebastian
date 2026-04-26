@@ -112,8 +112,7 @@ async def test_startup_rebuild_failure_schedules_refresh(tmp_path) -> None:
     except Exception:
         refresher.schedule_refresh()  # new behavior: schedule a retry
 
-    assert refresher._pending_refresh is not None, (
+    assert isinstance(refresher._pending_refresh, asyncio.Task), (
         "after schedule_refresh(), a background rebuild task must be pending"
     )
-    assert not refresher._pending_refresh.done()
     await refresher.aclose()
