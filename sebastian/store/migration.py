@@ -17,6 +17,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 LAYOUT_MARKER = ".layout-v2"
+
+
+def _safe_move(src: Path, dst: Path) -> None:
+    if dst.exists():
+        raise RuntimeError(
+            f"Migration conflict: {dst} already exists while migrating {src}. "
+            "Remove it manually or back it up before retrying."
+        )
+    shutil.move(str(src), str(dst))
 CURRENT_SCHEMA = "2"
 
 # 用户数据：从 root 搬到 data/
@@ -48,17 +57,17 @@ def migrate_layout_v2(data_root: Path) -> None:
     for name in _USER_DATA_ENTRIES:
         src = data_root / name
         if src.exists():
-            shutil.move(str(src), str(user_data / name))
+            _safe_move(src, user_data / name)
 
     # PID file → run/
     pid_src = data_root / "sebastian.pid"
     if pid_src.exists():
-        shutil.move(str(pid_src), str(data_root / "run" / "sebastian.pid"))
+        _safe_move(pid_src, data_root / "run" / "sebastian.pid")
 
     # Legacy update-rollback dir → run/update-backups/
     legacy_backups = data_root / "backups"
     if legacy_backups.exists():
-        shutil.move(str(legacy_backups), str(data_root / "run" / "update-backups"))
+        _safe_move(legacy_backups, data_root / "run" / "update-backups")
 
     # Deprecated sessions dir
     sessions = data_root / "sessions"

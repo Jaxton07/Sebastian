@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from sebastian.store.migration import LAYOUT_MARKER, migrate_layout_v2
 
 
@@ -72,3 +74,16 @@ def test_partial_v1_layout(tmp_path: Path) -> None:
     migrate_layout_v2(tmp_path)
     assert (tmp_path / "data" / "sebastian.db").read_text() == "db"
     assert (tmp_path / LAYOUT_MARKER).exists()
+
+
+def test_migration_aborts_on_target_conflict(tmp_path: Path) -> None:
+    """已存在的 data/sebastian.db 不能被静默覆盖。"""
+    (tmp_path / "sebastian.db").write_text("legacy")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sebastian.db").write_text("preexisting")
+
+    with pytest.raises(RuntimeError, match="Migration conflict"):
+        migrate_layout_v2(tmp_path)
+
+    # 标记不应落地（迁移失败）
+    assert not (tmp_path / LAYOUT_MARKER).exists()
