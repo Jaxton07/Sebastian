@@ -178,8 +178,8 @@ SEBASTIAN_GATEWAY_PORT=8823
 ```
 
 > **注意**：从 v0.2.0 起，owner 账号、JWT 签名密钥和 LLM API Key 不再由环境变量提供：
-> - Owner 账号存在 `~/.sebastian/sebastian.db` 的 `users` 表
-> - JWT 密钥和 API Key 加密密钥均来自 `~/.sebastian/secret.key`（chmod 600）
+> - Owner 账号存在 `~/.sebastian/data/sebastian.db` 的 `users` 表
+> - JWT 密钥和 API Key 加密密钥均来自 `~/.sebastian/data/secret.key`（chmod 600）
 > - 两者均由首启 Web 向导或 `sebastian init --headless` 生成
 > - LLM API Key 通过 App Settings 页面添加，加密存储在数据库中
 
@@ -193,6 +193,20 @@ SEBASTIAN_GATEWAY_PORT=8823
 
 # Android 模拟器 Settings 页填写 Server URL：http://10.0.2.2:8824
 ```
+
+### 数据目录布局（v2）
+
+```
+~/.sebastian/
+  app/         # 安装树（sebastian update 只动这里）
+  data/        # 用户数据：sebastian.db / secret.key / workspace / extensions
+  logs/        # 日志
+  run/         # PID + update 回滚备份
+  .layout-v2   # 迁移标记
+```
+
+旧版本（平铺布局）会在 `sebastian serve` 启动时自动迁移到此结构。详见
+`docs/superpowers/specs/2026-04-26-install-flow-overhaul-design.md`。
 
 ## 4) Lint 与格式化
 
@@ -230,7 +244,7 @@ SEBASTIAN_GATEWAY_PORT=8823
 ```
 
 > LLM API Key 通过 App Settings 页面管理（加密存储在数据库），不再通过环境变量。
-> JWT 签名密钥和 API Key 加密密钥统一来自 `<data_dir>/secret.key`（setup wizard 自动生成）。
+> JWT 签名密钥和 API Key 加密密钥统一来自 `<data_dir>/data/secret.key`（setup wizard 自动生成）。
 
 ## 7) Python 代码风格
 

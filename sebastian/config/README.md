@@ -13,13 +13,32 @@ config/
 └── __init__.py    # Settings 类、全局单例 settings、ensure_data_dir()，导出公共 API
 ```
 
+## 数据目录布局（v2）
+
+```
+~/.sebastian/
+  app/         # 安装树（sebastian update 只动这里）
+  data/        # 用户数据：sebastian.db / secret.key / workspace / extensions
+  logs/        # 日志
+  run/         # PID + update 回滚备份
+  .layout-v2   # 迁移标记
+```
+
+`data_dir`（`SEBASTIAN_DATA_DIR`）指向 `~/.sebastian/`，`user_data_dir` 是其 `data/` 子目录。旧版平铺布局会在 `sebastian serve` 启动时自动迁移。
+
 ## 关键字段说明
 
 | 字段 | 环境变量 | 默认值 | 说明 |
 |------|---------|--------|------|
 | `sebastian_owner_name` | `SEBASTIAN_OWNER_NAME` | `"Owner"` | 主人名字，用于系统 prompt |
 | `data_dir`（property） | `SEBASTIAN_DATA_DIR` | `~/.sebastian` | 数据根目录，自动展开 `~` |
-| `database_url`（property） | `SEBASTIAN_DB_URL` | 自动派生 | SQLite 连接串 |
+| `user_data_dir`（property） | — | `<data_dir>/data` | 用户数据子目录（db/secret.key/workspace/extensions） |
+| `logs_dir`（property） | — | `<data_dir>/logs` | 日志目录 |
+| `run_dir`（property） | — | `<data_dir>/run` | PID 文件与 update 回滚备份目录 |
+| `database_url`（property） | `SEBASTIAN_DB_URL` | 自动派生 | SQLite 连接串，路径为 `<user_data_dir>/sebastian.db` |
+| `extensions_dir`（property） | — | `<user_data_dir>/extensions` | 动态工具扩展目录 |
+| `workspace_dir`（property） | — | `<user_data_dir>/workspace` | 沙箱工作区目录 |
+| `sebastian_secret_key_path` | `SEBASTIAN_SECRET_KEY_PATH` | `""` | 显式覆盖 secret.key 路径；空时使用 `<user_data_dir>/secret.key` |
 | `sebastian_model` | `SEBASTIAN_MODEL` | `claude-opus-4-6` | 默认 LLM 模型 |
 | `sebastian_sandbox_enabled` | `SEBASTIAN_SANDBOX_ENABLED` | `false` | 是否启用代码沙箱 |
 
@@ -28,7 +47,7 @@ config/
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 新增配置字段 | [__init__.py](__init__.py) — 在 `Settings` 类添加字段 |
-| 数据目录结构（sessions/extensions/workspace 等） | [__init__.py](__init__.py) — `ensure_data_dir()` 函数 |
+| 数据目录结构（extensions/workspace 等） | [__init__.py](__init__.py) — `ensure_data_dir()` 函数 |
 | 修改 JWT 过期时间 / 算法 | [__init__.py](__init__.py) — `sebastian_jwt_*` 字段 |
 | LLM 默认模型或 max tokens | [__init__.py](__init__.py) — `sebastian_model` / `llm_max_tokens` |
 
