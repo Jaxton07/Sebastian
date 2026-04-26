@@ -44,7 +44,7 @@ def serve(
     typer.echo(f"  监听地址: http://{h}:{p}")
 
     if daemon:
-        pf = pid_path(settings.data_dir)
+        pf = pid_path(settings.run_dir)
         existing = read_pid(pf)
         if existing and is_running(existing):
             typer.echo(f"❌ Sebastian 已在运行 (PID {existing})", err=True)
@@ -79,7 +79,7 @@ def stop() -> None:
     from sebastian.cli.daemon import pid_path, stop_process
     from sebastian.config import settings
 
-    pf = pid_path(settings.data_dir)
+    pf = pid_path(settings.run_dir)
     if stop_process(pf):
         typer.echo("✓ Sebastian 已停止")
     else:
@@ -92,7 +92,7 @@ def status() -> None:
     from sebastian.cli.daemon import is_running, pid_path, read_pid, remove_pid
     from sebastian.config import settings
 
-    pf = pid_path(settings.data_dir)
+    pf = pid_path(settings.run_dir)
     pid = read_pid(pf)
     if pid and is_running(pid):
         typer.echo(f"✓ Sebastian 正在运行 (PID {pid})")

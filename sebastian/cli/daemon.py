@@ -5,9 +5,9 @@ import signal
 from pathlib import Path
 
 
-def pid_path(data_dir: Path) -> Path:
-    """Return the standard PID file path."""
-    return data_dir / "sebastian.pid"
+def pid_path(run_dir: Path) -> Path:
+    """Return the standard PID file path inside run_dir."""
+    return run_dir / "sebastian.pid"
 
 
 def write_pid(path: Path, pid: int | None = None) -> None:
