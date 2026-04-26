@@ -258,19 +258,21 @@ async def test_rebuild_dedupes_by_slot_value_key(
     )
 
     now = datetime.now(UTC)
-    # Two records with the same slot+value dedupe key; newer one should win
+    # Two records with the same slot+value dedupe key but DIFFERENT content text.
+    # Different content means the canonical-bullet check won't fire first;
+    # the slot_value dedup check is what must reject the older one.
     older = _profile_record(
         id="older",
         slot_id="user.preference.language",
-        content="用户偏好中文",
+        content="用户偏好中文交流。",
         structured_payload={"value": "中文"},
-        updated_at=now - timedelta(hours=2),
+        updated_at=now - timedelta(minutes=1),
     )
     newer = _profile_record(
         id="newer",
         slot_id="user.preference.language",
-        content="用户偏好中文",
-        structured_payload={"value": "中文"},
+        content="语言设置为中文。",
+        structured_payload={"value": "中文"},  # same value → same slot_value key
         updated_at=now,
     )
     resident_db_session.add_all([older, newer])
@@ -281,11 +283,9 @@ async def test_rebuild_dedupes_by_slot_value_key(
     await refresher.rebuild(resident_db_session)
 
     result = await refresher.read()
-    # Only the newer record should be in rendered_record_ids (dedupe)
-    # Both have same slot_value key; only one should survive
+    # Only the newer record should be kept (older is deduped by slot_value key)
+    assert result.rendered_record_ids == {"newer"}
     assert len(result.rendered_record_ids) == 1
-    # The newer one (first by updated_at DESC) is kept
-    assert "newer" in result.rendered_record_ids
 
 
 async def test_pinned_eligibility_rejects_unsafe_raw_content(
@@ -433,14 +433,24 @@ async def test_rebuild_failure_writes_error_state(
 ) -> None:
     """When the rebuild query fails, snapshot_state must be written as 'error'."""
     import json as _json
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
 
     from sebastian.memory.resident_snapshot import (
         ResidentMemorySnapshotRefresher,
         ResidentSnapshotPaths,
     )
 
+    # Provide a fake db_factory so _background_rebuild doesn't short-circuit
+    fake_session = AsyncMock()
+
+    @asynccontextmanager
+    async def _fake_db_factory():  # type: ignore[return]
+        yield fake_session
+
     refresher = ResidentMemorySnapshotRefresher(
-        paths=ResidentSnapshotPaths.from_user_data_dir(tmp_path)
+        paths=ResidentSnapshotPaths.from_user_data_dir(tmp_path),
+        db_factory=_fake_db_factory,
     )
     # Put the refresher in a known ready state
     await refresher._publish_ready_for_test(
@@ -449,17 +459,18 @@ async def test_rebuild_failure_writes_error_state(
     )
     assert (await refresher.read()).content != ""
 
-    # Make _query_and_render raise
-    async def _fail(*args: Any, **kwargs: Any) -> None:  # type: ignore[return]
+    # Make _query_and_render fail — this is what rebuild() calls internally
+    async def _fail(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("db failure")
 
     monkeypatch.setattr(refresher, "_query_and_render", _fail)
 
-    # Simulate error state write by calling _write_error_state directly
-    await refresher._write_error_state()
+    # Trigger the failure through _background_rebuild (the real error path)
+    await refresher._background_rebuild()
 
     result = await refresher.read()
     assert result.content == ""
+
     # Metadata on disk must record "error"
     assert refresher._paths.metadata.exists()
     meta_data = _json.loads(refresher._paths.metadata.read_text(encoding="utf-8"))

@@ -535,7 +535,7 @@ class ResidentMemorySnapshotRefresher:
         self._paths.directory.mkdir(parents=True, exist_ok=True)
 
         md_bytes = rendered.markdown.encode("utf-8")
-        await self._atomic_write(self._paths.markdown, md_bytes)
+        self._atomic_write(self._paths.markdown, md_bytes)
 
         meta = ResidentSnapshotMetadata(
             schema_version=_SCHEMA_VERSION,
@@ -552,7 +552,7 @@ class ResidentMemorySnapshotRefresher:
             record_count=rendered.record_count,
         )
         meta_bytes = meta.model_dump_json(indent=2).encode("utf-8")
-        await self._atomic_write(self._paths.metadata, meta_bytes)
+        self._atomic_write(self._paths.metadata, meta_bytes)
         self._cached_metadata = meta
 
     async def _write_empty_state(self, state: SnapshotState) -> None:
@@ -560,7 +560,7 @@ class ResidentMemorySnapshotRefresher:
         self._paths.directory.mkdir(parents=True, exist_ok=True)
         # Empty the markdown file first (atomic); metadata written after.
         # If this crashes before metadata is written the hash mismatch guard catches it.
-        await self._atomic_write(self._paths.markdown, b"")
+        self._atomic_write(self._paths.markdown, b"")
         meta = ResidentSnapshotMetadata(
             schema_version=_SCHEMA_VERSION,
             generated_at=datetime.now(UTC).isoformat(),
@@ -576,11 +576,11 @@ class ResidentMemorySnapshotRefresher:
             record_count=0,
         )
         meta_bytes = meta.model_dump_json(indent=2).encode("utf-8")
-        await self._atomic_write(self._paths.metadata, meta_bytes)
+        self._atomic_write(self._paths.metadata, meta_bytes)
         self._cached_metadata = meta
 
     @staticmethod
-    async def _atomic_write(dest: Path, data: bytes) -> None:
+    def _atomic_write(dest: Path, data: bytes) -> None:
         """Write data to dest atomically via tmp file + rename."""
         tmp = dest.with_suffix(dest.suffix + ".tmp")
         tmp.write_bytes(data)
