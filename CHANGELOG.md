@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+- 数据目录布局升级到 v2：sebastian.db / secret.key / workspace / extensions 移到 `~/.sebastian/data/` 子目录，PID 移到 `~/.sebastian/run/`。首次启动自动迁移，无需手动处理
+
+### Added
+- 新增 `sebastian service install|uninstall|start|stop|status` 子命令，支持注册为 systemd user service（Linux）或 launchd LaunchAgent（macOS），无需 sudo
+- install.sh 装完依赖后询问是否注册系统服务（默认跳过）
+
+### Changed
+- install.sh 不再阻塞为长期运行进程，wizard 完成后干净退出
+- bootstrap.sh 检测目标目录已有 Sebastian 安装时拒绝覆盖，引导走 `sebastian update`
+
+### Removed
+- `~/.sebastian/sessions/` 目录（已废弃，session 现存数据库）；迁移时自动清理
+
 ## [0.5.0] - 2026-04-25
 
 ### Breaking Changes

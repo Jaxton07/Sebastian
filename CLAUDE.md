@@ -205,8 +205,7 @@ SEBASTIAN_GATEWAY_PORT=8823
   .layout-v2   # 迁移标记
 ```
 
-旧版本（平铺布局）会在 `sebastian serve` 启动时自动迁移到此结构。详见
-`docs/superpowers/specs/2026-04-26-install-flow-overhaul-design.md`。
+旧版本（平铺布局）会在 `sebastian serve` 启动时自动迁移到此结构。
 
 ## 4) Lint 与格式化
 

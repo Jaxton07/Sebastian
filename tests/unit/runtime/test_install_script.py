@@ -66,3 +66,4 @@ exit 1
     assert result.returncode == 0, result.stderr
     assert "venv\n" in calls.read_text()
     assert "sebastian serve" in calls.read_text()
+    assert "service install" not in calls.read_text()

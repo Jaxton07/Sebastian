@@ -72,7 +72,7 @@ if [[ -d "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
   if [[ -f "$INSTALL_DIR/pyproject.toml" ]]; then
     color_red "❌ 检测到 $INSTALL_DIR 已有 Sebastian 安装"
     color_red "   全新安装请先删除该目录；升级请使用："
-    color_red "       cd $INSTALL_DIR && sebastian update"
+    color_red "       cd $INSTALL_DIR && .venv/bin/sebastian update"
     exit 1
   else
     color_red "❌ $INSTALL_DIR 非空但不是 Sebastian 安装目录，已中止以防覆盖"
