@@ -236,7 +236,7 @@ class BaseAgent(ABC):
             refresher = getattr(state, "resident_snapshot_refresher", None)
             if refresher is None:
                 return ResidentSnapshotReadResult(content="")
-            return await refresher.read()
+            return cast("ResidentSnapshotReadResult", await refresher.read())
         except Exception:
             logger.warning("Resident memory section read failed", exc_info=True)
             return ResidentSnapshotReadResult(content="")

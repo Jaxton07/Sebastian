@@ -7,7 +7,7 @@ import re
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -434,7 +434,7 @@ class ResidentMemorySnapshotRefresher:
         # Sort allowlisted: by allowlist order then updated_at DESC
         allowlist_order = {slot: i for i, slot in enumerate(RESIDENT_PROFILE_ALLOWLIST)}
 
-        def _allowlist_sort_key(rec: ProfileMemoryRecord) -> tuple[int, datetime]:
+        def _allowlist_sort_key(rec: ProfileMemoryRecord) -> tuple[int, timedelta]:
             order = allowlist_order.get(rec.slot_id, len(RESIDENT_PROFILE_ALLOWLIST))
             updated = rec.updated_at
             if updated.tzinfo is None:
@@ -444,7 +444,7 @@ class ResidentMemorySnapshotRefresher:
         allowlisted.sort(key=_allowlist_sort_key)
 
         # Sort pinned: confidence DESC then updated_at DESC
-        def _pinned_sort_key(rec: ProfileMemoryRecord) -> tuple[float, datetime]:
+        def _pinned_sort_key(rec: ProfileMemoryRecord) -> tuple[float, timedelta]:
             updated = rec.updated_at
             if updated.tzinfo is None:
                 updated = updated.replace(tzinfo=UTC)
