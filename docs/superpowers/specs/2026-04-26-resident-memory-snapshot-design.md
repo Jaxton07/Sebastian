@@ -4,77 +4,63 @@ last_updated: 2026-04-26
 status: planned
 ---
 
-# Resident Memory Snapshot Design
+# Resident Memory Snapshot（常驻记忆快照）设计
 
-## 1. Background
+## 1. 背景
 
-Sebastian already has a long-term memory read path through `BaseAgent._memory_section()`.
-That path is dynamic: every turn it looks at the latest user message, runs a lightweight
-retrieval planner, fetches matching memory lanes, and injects the result into the system
-prompt only for that turn.
+Sebastian 当前已有长期记忆读取路径：`BaseAgent._memory_section()`。
+这条路径是动态的：每轮根据最新用户消息运行轻量 retrieval planner，按 lane 检索相关记忆，并只在本轮 system prompt 中注入结果。
 
-This is useful for contextual recall, but it is not a reliable carrier for always-relevant
-user profile information. If the current message does not trigger the planner, the model may
-not see basic facts such as the user's preferred language, preferred form of address, or
-response style. In practice the agent often falls back to the explicit `memory_search` tool,
-which is appropriate for deep lookup but not for every-turn personalization.
+这对上下文回忆有价值，但不适合承载“每轮都应该稳定出现”的用户基础画像。如果当前消息没有触发 planner，模型可能看不到用户偏好的语言、称呼方式、回复风格等基础信息。实际使用中，agent 往往更多依赖显式 `memory_search` 工具查记忆；这适合深查，但不适合每轮个性化。
 
-This design introduces a separate resident memory path for stable, high-confidence user
-profile facts. The existing dynamic retrieval path remains, but its responsibility becomes
-clearer: it provides turn-specific historical evidence and context, not the user's baseline
-profile.
+本设计新增一条常驻记忆路径，用于稳定注入高置信、低风险的用户画像事实。现有动态检索路径继续保留，但职责重新收窄为：提供本轮相关的历史证据和上下文，而不是承载用户基础画像。
 
-## 2. Goals
+## 2. 目标
 
-- Always inject a small, stable memory section for high-confidence user profile facts.
-- Keep SQLite memory tables as the only source of truth; snapshot files are derived caches.
-- Avoid per-turn database reads for resident profile data.
-- Preserve dynamic retrieval for turn-specific recall.
-- Fit the install/data layout v2: generated memory files live under `settings.user_data_dir`.
-- Defer pin management UI/API and natural-language "pin this" behavior.
+- 每轮稳定注入一小段高置信用户画像记忆。
+- SQLite 记忆表仍是唯一真实来源；快照文件只是派生缓存。
+- 避免每轮为了常驻画像读取数据库。
+- 保留动态检索，用于本轮相关的回忆和上下文。
+- 适配安装目录 v2：生成文件放在 `settings.user_data_dir` 下。
+- 本阶段暂不做 pin 管理 UI/API，也不做自然语言“固定记住这个”流程。
 
-## 3. Non-Goals
+## 3. 非目标
 
-- No new `memory_pin` tool or REST API in this phase.
-- No natural-language "固定记住这个" workflow in this phase.
-- No automatic promotion from inferred memory to pinned memory in this phase.
-- No resident injection for sensitive memory in this phase.
-- No replacement of `memory_search`; explicit search remains the deep lookup path.
+- 本阶段不新增 `memory_pin` 工具或 REST API。
+- 本阶段不支持自然语言“固定记住这个”工作流。
+- 本阶段不做从 inferred memory 到 pinned memory 的自动提升。
+- 本阶段不把 sensitive memory 注入常驻记忆。
+- 不替代 `memory_search`；显式搜索仍是深查入口。
 
-## 4. Terminology
+## 4. 术语
 
-### Resident Memory
+### Resident Memory（常驻记忆）
 
-Memory that is expected to affect most conversations with the owner. It is injected every
-turn when available. Examples include reply language, response style, preferred name, and
-basic profile facts.
+预期影响多数对话的记忆。只要可用，每轮都会注入。典型例子包括回复语言、回复风格、用户偏好称呼、用户基础画像事实。
 
-### Dynamic Retrieved Memory
+### Dynamic Retrieved Memory（动态召回记忆）
 
-Memory selected for the current user message by the retrieval planner. It may include current
-context, historical evidence, relation records, or profile records relevant to the latest turn.
-It is ephemeral: if the next turn does not trigger the same lane, it will not appear again.
+由 retrieval planner 根据当前用户消息选择的记忆。它可以包含当前上下文、历史证据、关系记录，或与本轮相关的画像记录。它是临时的：下一轮如果没有触发同一 lane，就不会再次出现。
 
-### Pinned Notes
+### Pinned Notes（固定记忆备注）
 
-Records tagged with `policy_tags=["pinned"]`. They are supported by the resident snapshot
-renderer, but this phase does not implement any mechanism for creating or removing pins.
+带有 `policy_tags=["pinned"]` 的记录。常驻快照渲染器会支持这类记录，但本阶段不实现创建或删除 pinned 记录的机制。
 
-## 5. Architecture
+## 5. 架构
 
-The memory read plane becomes two explicit paths:
+记忆读取面拆成两条明确路径：
 
 1. `resident_memory_section`
-   - Reads a pre-rendered Markdown snapshot from disk.
-   - Injects stable, high-confidence profile facts every turn.
-   - Does not query the database on the hot path.
+   - 从预渲染 Markdown 快照文件读取。
+   - 每轮注入稳定、高置信的用户画像事实。
+   - 热路径不查询数据库。
 
 2. `dynamic_memory_section`
-   - The existing `_memory_section()` behavior.
-   - Runs planner -> lane fetch -> assemble for the latest user message.
-   - Remains allowed to return an empty string.
+   - 保留现有 `_memory_section()` 行为。
+   - 针对最新用户消息执行 planner → lane fetch → assemble。
+   - 允许返回空字符串，这是正常行为。
 
-Prompt assembly order:
+Prompt 组装顺序：
 
 ```text
 Base system prompt
@@ -89,40 +75,37 @@ Base system prompt
 ...
 ```
 
-`BaseAgent._stream_inner()` should assemble the resident section before dynamic retrieval:
+`BaseAgent._stream_inner()` 按以下顺序组装：
 
-1. Build the base system prompt.
-2. Read resident snapshot.
-3. Run dynamic memory retrieval.
-4. Read session todos.
-5. Join non-empty sections in that order.
+1. 构造基础 system prompt。
+2. 读取 resident snapshot。
+3. 执行动 dynamic memory retrieval。
+4. 读取 session todos。
+5. 按顺序拼接所有非空 section。
 
-Resident injection uses the same high-level access boundary as long-term automatic memory
-injection: owner conversations at Sebastian depth 1 only. Depth >= 2 agents do not receive
-resident memory in their system prompts. If memory is disabled through memory settings,
-resident memory is also omitted.
+常驻记忆注入使用与长期自动记忆注入相同的高层访问边界：只注入 owner 会话中的 Sebastian depth 1。depth >= 2 的 agent 不在 system prompt 中接收常驻记忆。如果全局 memory settings 关闭，常驻记忆也不注入。
 
-## 6. Snapshot Files
+## 6. 快照文件
 
-Resident memory snapshot files live under the user data directory:
+常驻记忆快照文件位于用户数据目录：
 
 ```text
 <settings.user_data_dir>/memory/resident_snapshot.md
 <settings.user_data_dir>/memory/resident_snapshot.meta.json
 ```
 
-Default install path:
+默认安装路径：
 
 ```text
 ~/.sebastian/data/memory/resident_snapshot.md
 ~/.sebastian/data/memory/resident_snapshot.meta.json
 ```
 
-The files are derived artifacts. They can be deleted and rebuilt from the database.
+这些文件是派生产物。它们可以被删除，并从数据库重建。
 
-`resident_snapshot.md` is prompt-ready Markdown.
+`resident_snapshot.md` 是可直接注入 prompt 的 Markdown。
 
-`resident_snapshot.meta.json` stores operational metadata:
+`resident_snapshot.meta.json` 存储运行元数据：
 
 ```json
 {
@@ -138,40 +121,36 @@ The files are derived artifacts. They can be deleted and rebuilt from the databa
 }
 ```
 
-The reader must validate metadata before serving the Markdown file. Metadata is not only for
-debugging: it is the freshness and safety gate for resident prompt injection.
+读取端必须先校验 metadata，才能提供 Markdown 内容。metadata 不只是调试信息，而是常驻记忆注入的 freshness 与安全门。
 
-`snapshot_state` values:
+`snapshot_state` 状态：
 
-| State | Meaning | Reader behavior |
+| State | 含义 | 读取行为 |
 | --- | --- | --- |
-| `ready` | Snapshot was successfully rebuilt from the current DB view. | May serve Markdown after validation. |
-| `dirty` | A committed memory mutation may have changed resident eligibility. | Return empty and schedule rebuild. |
-| `rebuilding` | Rebuild is in progress. | Return empty. |
-| `error` | Last rebuild failed after the snapshot was dirtied. | Return empty. |
+| `ready` | 快照已从当前 DB 视图成功重建。 | 校验通过后可以提供 Markdown。 |
+| `dirty` | 已提交的记忆变更可能影响常驻记忆资格。 | 返回空，并调度重建。 |
+| `rebuilding` | 正在重建。 | 返回空。 |
+| `error` | 快照变 dirty 后，最近一次重建失败。 | 返回空。 |
 
-`record_hash` is a deterministic hash of the selected records' prompt-relevant fields:
-`id`, `content`, `slot_id`, `kind`, `confidence`, `status`, `valid_from`, `valid_until`,
-`policy_tags`, and `updated_at`. `source_max_updated_at` is the maximum `updated_at` among
-selected records. `markdown_hash` is the SHA-256 hash of the exact Markdown file contents.
+`record_hash` 是所选记录 prompt 相关字段的确定性 hash：`id`、`content`、`slot_id`、`kind`、`confidence`、`status`、`valid_from`、`valid_until`、`policy_tags`、`updated_at`。
+`source_max_updated_at` 是所选记录中最大的 `updated_at`。
+`markdown_hash` 是 Markdown 文件字节内容的 SHA-256。
 
-The metadata file is the commit pointer. The reader may serve Markdown only when:
+metadata 文件是提交指针。读取端只有在满足以下条件时才能提供 Markdown：
 
 ```text
 snapshot_state = "ready"
-resident_snapshot.md exists
+resident_snapshot.md 存在
 sha256(resident_snapshot.md bytes) == markdown_hash
 ```
 
-This prevents a crash between Markdown and metadata writes from producing mixed served state.
-The reader does not query SQLite on the hot path to prove freshness.
+这可以防止进程在 Markdown 与 metadata 写入之间崩溃时产生“旧 metadata + 新 Markdown”的混合可服务状态。读取端不在热路径查询 SQLite 来证明 freshness。
 
-## 7. Selection Rules
+## 7. 选择规则
 
-SQLite remains the source of truth. The snapshot builder reads active memory records and
-selects only high-confidence, low-risk entries.
+SQLite 仍是真实来源。快照构建器读取 active memory records，只选择高置信、低风险条目。
 
-Common filters:
+公共过滤条件：
 
 ```text
 scope = "user"
@@ -185,13 +164,12 @@ policy_tags does not contain "needs_review"
 policy_tags does not contain "sensitive"
 ```
 
-A record enters the resident snapshot when it passes the common filters and either:
+记录通过公共过滤后，还必须满足以下任一条件：
 
-1. `slot_id` is in the resident profile allowlist.
-2. `policy_tags` contains `pinned` and the pinned record satisfies the pinned eligibility
-   contract below.
+1. `slot_id` 在 resident profile allowlist 中。
+2. `policy_tags` 包含 `pinned`，且满足本节 pinned eligibility contract。
 
-Initial resident profile allowlist:
+初始 resident profile allowlist：
 
 ```text
 user.profile.name
@@ -202,15 +180,11 @@ user.preference.response_style
 user.preference.addressing
 ```
 
-If any of these slots do not exist in the builtin slot registry, this feature should add them
-as builtin slots. The allowlist must stay small. It must not include every preference slot,
-because ordinary preferences such as food, entertainment, or shopping should not appear in
-every system prompt.
+如果这些 slot 中有任何一个不存在于 builtin slot registry，本功能应补齐为 builtin slot。allowlist 必须保持很小，不能包含所有 preference slot。食物、娱乐、购物等普通偏好不应该每轮进入 system prompt。
 
-Pinned records are not exempt from the common filters. A pinned sensitive or low-confidence
-record is skipped in this phase.
+Pinned 记录不豁免公共过滤。pinned 但 sensitive 或低置信的记录在本阶段会被跳过。
 
-Pinned eligibility contract for this phase:
+本阶段 pinned eligibility contract：
 
 ```text
 source is "explicit" or "system_derived"
@@ -220,174 +194,142 @@ content contains no fenced code blocks
 content contains no tool/system/developer instruction language
 ```
 
-This phase does not provide pin creation or owner review UI. The pinned path is included only
-so future reviewed pins can share the same snapshot mechanism. If existing manually seeded
-pinned records do not meet this contract, the builder must skip them.
+本阶段不提供 pin 创建或 owner review UI。pinned 路径只是为了让未来经过审核的 pins 可以复用同一套 snapshot 机制。如果现有手动种入的 pinned 记录不满足此契约，构建器必须跳过。
 
-## 8. Rendering
+## 8. 渲染
 
-The snapshot renderer outputs a compact section:
+快照渲染器输出紧凑 section：
 
 ```markdown
 ## Resident Memory
 
 ### Core Profile
-- 用户偏好使用中文交流。
-- 用户偏好回答简洁、直接。
+- Profile memory: 用户偏好使用中文交流。
+- Profile memory: 用户偏好回答简洁、直接。
 
 ### Pinned Notes
-- ...
+- Pinned memory: ...
 ```
 
-Rules:
+规则：
 
-- Omit `Core Profile` when no allowlisted profile records pass filters.
-- Omit `Pinned Notes` when no pinned records pass filters.
-- Omit the entire file content when both sections are empty.
-- Render each bullet as framed data, not as free-form instructions.
-- Sort profile records by allowlist order, then by `updated_at` descending.
-- Sort pinned records by `confidence` descending, then `updated_at` descending.
-- Cap `Core Profile` at 8 records.
-- Cap `Pinned Notes` at 10 records.
-- Cap each rendered bullet at 300 characters.
-- Strip Markdown headings, fenced code blocks, control characters, and leading list markers.
+- 没有 allowlisted profile records 时，省略 `Core Profile`。
+- 没有 pinned records 时，省略 `Pinned Notes`。
+- 两个 subsection 都为空时，整个文件内容为空。
+- 每条 bullet 必须渲染为被框定的数据，而不是自由形式指令。
+- Profile records 按 allowlist 顺序排序，再按 `updated_at` 降序。
+- Pinned records 按 `confidence` 降序排序，再按 `updated_at` 降序。
+- `Core Profile` 最多 8 条。
+- `Pinned Notes` 最多 10 条。
+- 每条渲染后的 bullet 最多 300 字符。
+- 去除 Markdown heading、fenced code block、控制字符和开头 list marker。
 
-The caps keep the resident section small enough to be safe for every turn.
+这些上限用于保证常驻 section 足够小，可以安全地每轮注入。
 
-Bullet format:
+Bullet 格式：
 
 ```markdown
 - Profile memory: 用户偏好使用中文交流。
 - Pinned memory: ...
 ```
 
-The wording must frame the content as memory data about the user, not as instructions that
-override the system prompt. A record whose content still looks like an instruction after
-normalization is skipped.
+措辞必须把内容框定为关于用户的记忆数据，而不是覆盖 system prompt 的指令。如果某条记录在规范化后仍像一条给 assistant 的指令，必须跳过。
 
-## 9. Refresh Lifecycle
+## 9. 刷新生命周期
 
-Introduce `ResidentMemorySnapshotRefresher`.
+新增 `ResidentMemorySnapshotRefresher`。
 
-Responsibilities:
+职责：
 
 - `rebuild()`
-  - Query eligible profile records.
-  - Render Markdown.
-  - Write Markdown and metadata atomically.
+  - 查询符合条件的 profile records。
+  - 渲染 Markdown。
+  - 原子写入 Markdown 与 metadata。
 
 - `mark_dirty()`
-  - Mark that a refresh is needed after memory state changes.
+  - 在记忆状态变化后标记需要刷新。
 
 - `schedule_refresh()`
-  - Debounce refresh requests so clustered memory writes produce a single snapshot rewrite.
+  - debounce refresh 请求，让短时间内聚集的记忆写入只触发一次快照重写。
 
-The refresher owns a process-local synchronization primitive called the resident snapshot
-barrier. It can be implemented as an async read/write lock or equivalent service-level lock.
-Both prompt-time resident reads and memory write dirty marking must participate in this
-barrier:
+Refresher 拥有一个进程内同步原语：resident snapshot barrier。它可以实现为 async read/write lock 或等价的服务级锁。prompt-time resident reads 与 memory write dirty marking 都必须参与这个 barrier：
 
-- Resident reads acquire the read side before validating metadata and reading Markdown.
-- Memory mutations acquire the write side from before DB commit through `mark_dirty()`.
-- Snapshot publication acquires the write side before replacing ready metadata.
+- Resident reads 在校验 metadata 和读取 Markdown 前获取 read side。
+- Memory mutations 从 DB commit 前到 `mark_dirty()` 完成期间持有 write side。
+- Snapshot publication 在替换 ready metadata 前获取 write side。
 
-This barrier is intentionally process-local. Sebastian's current gateway runtime is a single
-process; if future deployment supports multiple writer processes, this spec must be extended
-with an inter-process lock or DB-backed revision protocol before enabling resident snapshots
-in that mode.
+这个 barrier 有意设计为进程内机制。Sebastian 当前 gateway runtime 是单进程；如果未来支持多个 writer process，必须先用跨进程锁或 DB-backed revision protocol 扩展本 spec，才能在该模式下启用 resident snapshots。
 
-Startup behavior:
+启动行为：
 
-1. `ensure_data_dir()` creates the data layout.
-2. Gateway startup initializes memory storage.
-3. The resident snapshot refresher performs one `rebuild()`.
-4. Startup continues even if rebuild fails; the failure is logged and resident memory is
-   omitted until a later successful refresh.
+1. `ensure_data_dir()` 创建数据目录布局。
+2. Gateway startup 初始化 memory storage。
+3. Resident snapshot refresher 执行一次 `rebuild()`。
+4. 即使 rebuild 失败，startup 也继续；失败会写日志，常驻记忆在下一次成功刷新前为空。
 
-Write behavior:
+写入行为：
 
-1. A memory mutation that may affect resident eligibility acquires the resident snapshot
-   barrier write side.
-2. The memory write pipeline commits database changes.
-3. Before the write API returns or releases the memory write service lock, the caller triggers
-   `mark_dirty()`.
-4. `mark_dirty()` immediately writes metadata with `snapshot_state = "dirty"` and replaces
-   `resident_snapshot.md` with an empty file.
-5. The refresher schedules a debounce refresh outside the transaction.
+1. 可能影响 resident eligibility 的记忆变更获取 resident snapshot barrier write side。
+2. Memory write pipeline 提交数据库变更。
+3. 在写 API 返回或释放 write side 前，调用方触发 `mark_dirty()`。
+4. `mark_dirty()` 先递增 `dirty_generation`，然后立即写入 `snapshot_state = "dirty"` 的 metadata，并把 `resident_snapshot.md` 替换为空文件。
+5. Refresher 在事务外调度 debounce refresh。
 
-The refresher must not write snapshot files inside a database transaction. This avoids a
-rolled-back database write leaving a stale file that appears newer than the true state.
+Refresher 不得在数据库事务内写快照文件。这样可以避免数据库 rollback 后，文件已经刷新成未提交状态。
 
-The resident reader must never serve a stale pre-mutation snapshot after a committed mutation
-that may affect resident eligibility. When in doubt, it returns an empty resident section
-until a successful rebuild writes `snapshot_state = "ready"`.
+Resident reader 在已提交的记忆变更可能影响 resident eligibility 后，绝不能继续提供变更前的旧快照。拿不准时，读取端返回空常驻 section，直到成功重建并写入 `snapshot_state = "ready"`。
 
-The gap between DB commit and dirty metadata must be serialized by the resident snapshot
-barrier. Prompt assembly may race with a mutation before the commit is visible, but it cannot
-read resident snapshot files while a writer is between DB commit and `mark_dirty()`.
+DB commit 与 dirty metadata 之间的缝隙必须由 resident snapshot barrier 串行化。Prompt assembly 可以在 mutation commit 可见前与其并发，但不能在 writer 处于 DB commit 与 `mark_dirty()` 之间时读取 resident snapshot 文件。
 
-Ready snapshot writes use metadata as the final commit pointer:
+Ready snapshot 写入以 metadata 作为最终提交指针：
 
-1. Render Markdown bytes and compute `markdown_hash`.
-2. Write `resident_snapshot.md.tmp`.
-3. Replace `resident_snapshot.md`.
-4. Write `resident_snapshot.meta.json.tmp` with `snapshot_state = "ready"`,
-   `generation_id`, and `markdown_hash`.
-5. Replace `resident_snapshot.meta.json`.
+1. 渲染 Markdown bytes，并计算 `markdown_hash`。
+2. 写入 `resident_snapshot.md.tmp`。
+3. 替换 `resident_snapshot.md`。
+4. 写入 `resident_snapshot.meta.json.tmp`，其中 `snapshot_state = "ready"`，并包含 `generation_id` 与 `markdown_hash`。
+5. 替换 `resident_snapshot.meta.json`。
 
-If the process crashes after step 3 and before step 5, the old metadata remains. Because the
-reader verifies `markdown_hash`, it will not serve the new Markdown with old ready metadata.
+如果进程在第 3 步之后、第 5 步之前崩溃，旧 metadata 会保留。因为读取端校验 `markdown_hash`，所以不会用旧 ready metadata 提供新 Markdown。
 
-Rebuild publication must also be versioned against dirty writes:
+Rebuild publication 也必须对 dirty writes 做版本校验：
 
-1. At rebuild start, read the current `dirty_generation` from the refresher.
-2. Query DB and render Markdown without holding the write side.
-3. Before publishing `ready` metadata, acquire the barrier write side.
-4. Publish only if the current `dirty_generation` still equals the observed generation.
-5. If the generation changed, discard the rendered snapshot and reschedule rebuild.
+1. Rebuild 开始时读取 refresher 当前 `dirty_generation`。
+2. 不持有 write side 的情况下查询 DB 并渲染 Markdown。
+3. 发布 ready metadata 前，获取 barrier write side。
+4. 只有当前 `dirty_generation` 仍等于开始时观察到的 generation，才能发布。
+5. 如果 generation 已改变，丢弃本次渲染结果并重新调度 rebuild。
 
-`mark_dirty()` increments `dirty_generation` before writing dirty metadata. This prevents an
-in-flight rebuild based on an old DB view from overwriting a later dirty marker with stale
-`ready` metadata.
+`mark_dirty()` 在写 dirty metadata 前先递增 `dirty_generation`。这可以防止基于旧 DB 视图的 in-flight rebuild 覆盖之后的 dirty marker，并写出过期的 ready metadata。
 
-## 10. Error Handling
+## 10. 错误处理
 
-Resident memory is an enhancement, not a hard dependency.
+常驻记忆是增强能力，不是硬依赖。
 
-- Missing snapshot file: return an empty resident section.
-- Snapshot read failure: log warning, return empty section.
-- Metadata mismatch: write `snapshot_state = "dirty"` if possible, schedule rebuild, and
-  return empty.
-- Rebuild failure after dirty: write `snapshot_state = "error"` and an empty Markdown file;
-  keep serving without resident memory.
-- Empty eligible records: write empty Markdown and metadata with `record_count = 0`.
+- 快照文件缺失：返回空 resident section。
+- 快照读取失败：写 warning，返回空 section。
+- Metadata mismatch：尽力写入 `snapshot_state = "dirty"`，调度 rebuild，返回空。
+- Dirty 后 rebuild 失败：写入 `snapshot_state = "error"` 和空 Markdown 文件；继续运行，但不注入 resident memory。
+- 没有符合条件的记录：写入空 Markdown，并写入 `record_count = 0` 的 metadata。
 
-Dynamic retrieval failures keep existing behavior: `_memory_section()` logs and returns an
-empty string.
+Dynamic retrieval 失败保持现有行为：`_memory_section()` 写日志并返回空字符串。
 
-Serving last-known-good resident memory is not allowed after the snapshot has been dirtied.
-Last-known-good behavior is only acceptable if the metadata still says `ready` and no mutation
-has marked the snapshot dirty.
+Snapshot 被标记 dirty 后，不允许继续提供 last-known-good resident memory。只有 metadata 仍为 `ready` 且没有 mutation 把 snapshot 标记 dirty 时，才允许使用 last-known-good 行为。
 
-## 11. Current `_memory_section()` Repositioning
+## 11. 当前 `_memory_section()` 的重新定位
 
-`BaseAgent._memory_section()` currently acts as the only automatic memory injection hook. This
-design narrows its meaning:
+`BaseAgent._memory_section()` 当前是唯一自动记忆注入 hook。本设计收窄它的语义：
 
-- It is the dynamic retrieved memory section.
-- It is expected to be empty for many turns.
-- It should not be judged responsible for stable user profile injection.
-- It remains depth-gated to Sebastian depth 1.
-- It remains separate from `memory_search`, which explicitly searches all lanes.
+- 它是 dynamic retrieved memory section。
+- 它在很多 turn 返回空是预期行为。
+- 它不再负责稳定注入用户基础画像。
+- 它继续只对 Sebastian depth 1 生效。
+- 它继续独立于 `memory_search`，后者显式搜索所有 lanes。
 
-The code may keep the method name for compatibility in the first implementation, but docs and
-tests should describe it as dynamic retrieval. A later cleanup may rename it to
-`_dynamic_memory_section()` if the call surface is small enough.
+第一版实现可以保留方法名以降低兼容风险，但文档和测试应把它描述为 dynamic retrieval。后续如果调用面足够小，可以再单独清理命名为 `_dynamic_memory_section()`。
 
-## 12. Data Directory Impact
+## 12. 数据目录影响
 
-The install flow overhaul keeps `SEBASTIAN_DATA_DIR` as the root directory and introduces
-`settings.user_data_dir` for user-owned data:
+Install flow overhaul 保持 `SEBASTIAN_DATA_DIR` 指向 root，并新增 `settings.user_data_dir` 表达用户拥有的数据：
 
 ```text
 settings.data_dir       -> ~/.sebastian
@@ -396,63 +338,56 @@ settings.logs_dir       -> ~/.sebastian/logs
 settings.run_dir        -> ~/.sebastian/run
 ```
 
-Resident snapshot files must live under `settings.user_data_dir / "memory"`, not
-`settings.data_dir / "memory"`. This keeps snapshots with the database, secret key,
-workspace, and extensions, and prevents app/log/run concerns from mixing with user data.
+Resident snapshot 文件必须放在 `settings.user_data_dir / "memory"` 下，而不是 `settings.data_dir / "memory"`。这样快照与数据库、secret key、workspace、extensions 同属用户数据域，不会混进 app/log/run 关注点。
 
-## 13. Testing
+## 13. 测试
 
-Unit tests:
+单元测试：
 
-- Snapshot builder includes allowlisted records with `confidence >= 0.8`.
-- Snapshot builder excludes records below `0.8`.
-- Snapshot builder excludes `sensitive`, `needs_review`, and `do_not_auto_inject`.
-- Snapshot builder excludes inactive, expired, and future-dated records.
-- Pinned records outside the allowlist enter `Pinned Notes` when they pass common filters.
-- Pinned records still obey confidence and policy filters.
-- Renderer omits empty subsections and empty whole sections.
-- Snapshot path is `settings.user_data_dir / "memory"`.
-- Reader returns empty string when the snapshot file is missing or unreadable.
-- Atomic write writes both Markdown and metadata.
-- After a committed status, policy tag, confidence, validity, content update, or delete,
-  `mark_dirty()` prevents the reader from serving old disallowed content.
-- Rebuild failure after dirty leaves `snapshot_state = "error"` and an empty Markdown file.
-- Metadata mismatch deterministically returns empty and schedules rebuild.
-- Partial atomic write/crash leaves either a previous `ready` snapshot or an empty
-  non-ready snapshot; it must never leave mixed Markdown/metadata that is served as ready.
-- Crash after Markdown replace but before metadata replace is not served because
-  `markdown_hash` does not match.
-- A committed resident-eligible mutation racing with prompt assembly cannot be reported as
-  successful before `mark_dirty()` has made the resident reader return empty.
-- Resident reads wait behind any writer that is between DB commit and `mark_dirty()`.
-- An in-flight rebuild cannot publish stale `ready` metadata after a later dirty generation.
+- Snapshot builder 包含 allowlisted 且 `confidence >= 0.8` 的记录。
+- Snapshot builder 排除低于 `0.8` 的记录。
+- Snapshot builder 排除 `sensitive`、`needs_review`、`do_not_auto_inject`。
+- Snapshot builder 排除 inactive、expired、future-dated records。
+- Allowlist 外的 pinned records 在通过公共过滤和 pinned eligibility contract 后进入 `Pinned Notes`。
+- Pinned records 仍受 confidence 和 policy filters 约束。
+- Renderer 会省略空 subsection 和整体空 section。
+- Snapshot 路径是 `settings.user_data_dir / "memory"`。
+- 快照文件缺失或不可读时，reader 返回空字符串。
+- 原子写入会写 Markdown 与 metadata。
+- 已提交的 status、policy tag、confidence、validity、content update 或 delete 后，`mark_dirty()` 会阻止 reader 继续提供旧的不合格内容。
+- Dirty 后 rebuild 失败会留下 `snapshot_state = "error"` 和空 Markdown 文件。
+- Metadata mismatch 会确定性返回空并调度 rebuild。
+- 部分原子写入或崩溃后，只能留下旧的 `ready` snapshot 或空的 non-ready snapshot；绝不能留下会被当作 ready 提供的 Markdown/metadata 混合状态。
+- Markdown 替换后、metadata 替换前崩溃时，因为 `markdown_hash` 不匹配，所以不会提供内容。
+- 已提交且影响 resident eligibility 的 mutation 与 prompt assembly 并发时，写 API 不得在 `mark_dirty()` 让 resident reader 返回空之前报告成功。
+- Resident reads 会等待任何处在 DB commit 与 `mark_dirty()` 之间的 writer。
+- In-flight rebuild 不能在后续 dirty generation 之后发布 stale `ready` metadata。
 
-BaseAgent tests:
+BaseAgent 测试：
 
-- Prompt order is base system prompt -> resident memory -> dynamic retrieved memory -> todos.
-- Existing `_memory_section()` tests remain but are renamed/reworded as dynamic retrieval tests.
-- Dynamic retrieval returning empty no longer means resident memory is empty.
-- Prompt assembly reads resident Markdown without SQLite access on the hot path.
+- Prompt 顺序是 base system prompt → resident memory → dynamic retrieved memory → todos。
+- 现有 `_memory_section()` 测试保留，但命名/描述应调整为 dynamic retrieval tests。
+- Dynamic retrieval 返回空不等于 resident memory 为空。
+- Prompt assembly 在热路径读取 resident Markdown 时不访问 SQLite。
 
-Integration tests:
+集成测试：
 
-- Gateway startup rebuilds resident snapshot after data directory setup.
-- A memory write followed by dirty refresh updates the snapshot outside the DB transaction.
+- Gateway startup 在数据目录初始化后重建 resident snapshot。
+- 记忆写入后 dirty refresh 在 DB transaction 外更新 snapshot。
 
-## 14. Deferred Work
+## 14. 延后工作
 
-- `memory_pin` / `memory_unpin` owner-only management API.
-- Android or Web UI for pinning, unpinning, reviewing skipped pinned records.
-- Automatic pin suggestions from cross-session consolidation.
-- Manual owner-editable resident notes file.
-- Sensitive-memory redaction and policy-specific resident injection.
-- Renaming `_memory_section()` to `_dynamic_memory_section()` after compatibility review.
+- `memory_pin` / `memory_unpin` owner-only 管理 API。
+- Android 或 Web UI，用于 pin、unpin、review 被跳过的 pinned records。
+- Cross-session consolidation 产生自动 pin 建议。
+- Owner 可手动编辑的 resident notes 文件。
+- Sensitive memory 脱敏与按策略注入。
+- 兼容面审查后，将 `_memory_section()` 重命名为 `_dynamic_memory_section()`。
 
-## 15. Acceptance Criteria
+## 15. 验收标准
 
-- Every Sebastian depth-1 turn can include resident memory without querying SQLite.
-- Resident memory comes from a rebuildable snapshot under `settings.user_data_dir`.
-- Only high-confidence allowlisted profile records and filtered pinned records enter the
-  resident snapshot.
-- Dynamic retrieval remains available and clearly documented as turn-specific recall.
-- No new pin creation workflow is introduced in this phase.
+- 每个 Sebastian depth-1 turn 都可以在不查询 SQLite 的情况下包含 resident memory。
+- Resident memory 来自 `settings.user_data_dir` 下可重建的快照。
+- 只有高置信 allowlisted profile records 和通过严格过滤的 pinned records 进入 resident snapshot。
+- Dynamic retrieval 继续可用，并清楚记录为本轮相关召回。
+- 本阶段不引入新的 pin 创建工作流。
