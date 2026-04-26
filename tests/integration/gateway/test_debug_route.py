@@ -16,7 +16,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     # setup_logging before app import
     from sebastian.log import setup_logging
 
-    setup_logging(data_dir=tmp_path)
+    setup_logging(logs_dir=tmp_path / "logs")
 
     from fastapi import FastAPI
 
