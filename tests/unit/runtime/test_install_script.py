@@ -52,7 +52,11 @@ exit 1
     result = subprocess.run(
         [str(scripts / "install.sh")],
         cwd=project,
-        env={"PATH": f"{fake_bin}:{os.environ['PATH']}", "CALLS_LOG": str(calls)},
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "CALLS_LOG": str(calls),
+            "HOME": os.environ.get("HOME", str(tmp_path)),
+        },
         capture_output=True,
         text=True,
         timeout=10,
@@ -60,5 +64,8 @@ exit 1
     )
 
     assert result.returncode == 0, result.stderr
-    assert "venv\n" in calls.read_text()
-    assert "sebastian serve" in calls.read_text()
+    log = calls.read_text()
+    assert "venv\n" in log
+    # macOS / 有 $DISPLAY → sebastian serve；headless Linux → sebastian init --headless
+    assert ("sebastian serve" in log) or ("sebastian init --headless" in log)
+    assert "service install" not in log

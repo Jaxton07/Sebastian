@@ -18,8 +18,9 @@ cat <<'BANNER'
     2. 从 GitHub 获取最新 release 信息
     3. 下载 sebastian-backend-<ver>.tar.gz 与 SHA256SUMS
     4. 校验 SHA256 指纹
-    5. 解压到 $INSTALL_DIR
-    6. 运行 ./scripts/install.sh（venv + 依赖 + 首启向导）
+    5. 检查目标目录（非空时拒绝覆盖）
+    6. 解压到 $INSTALL_DIR
+    7. 运行 ./scripts/install.sh（venv + 依赖 + 首启向导）
   按 Ctrl+C 随时中止
 ============================================
 BANNER
@@ -66,15 +67,25 @@ color_ylw "→ 校验 SHA256 指纹..."
 )
 color_grn "✓ SHA256 校验通过"
 
-# 5. 解压
+# 5. 目标目录保护
+if [[ -d "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
+  if [[ -f "$INSTALL_DIR/pyproject.toml" ]]; then
+    color_red "❌ 检测到 $INSTALL_DIR 已有 Sebastian 安装"
+    color_red "   全新安装请先删除该目录；升级请使用："
+    color_red "       cd $INSTALL_DIR && .venv/bin/sebastian update"
+    exit 1
+  else
+    color_red "❌ $INSTALL_DIR 非空但不是 Sebastian 安装目录，已中止以防覆盖"
+    exit 1
+  fi
+fi
+
+# 6. 解压
 color_ylw "→ 解压到 $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
-if [[ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
-  color_ylw "⚠ 目标目录非空，已有内容将被覆盖（仅同名文件）"
-fi
 tar xzf "${TMPDIR}/${TAR_NAME}" -C "$INSTALL_DIR" --strip-components=1
 
-# 6. 运行 install.sh
+# 7. 运行 install.sh
 cd "$INSTALL_DIR"
 if [[ ! -x scripts/install.sh ]]; then
   color_red "❌ 解压后未找到 scripts/install.sh"

@@ -92,6 +92,39 @@ sebastian update             # Update to latest release (auto-rollback on failur
 sebastian update --check     # Check for updates without installing
 ```
 
+## 🖥️ Running as a System Service
+
+After installation, you can register Sebastian to start automatically:
+
+```bash
+sebastian service install   # Register and start the service
+sebastian service status    # Check service status
+sebastian service stop      # Stop the service
+sebastian service uninstall # Uninstall the service
+```
+
+- **macOS**: `~/Library/LaunchAgents/com.sebastian.plist`
+- **Linux**: `~/.config/systemd/user/sebastian.service` (user-level, no sudo required)
+
+Linux users who want auto-start on login need to enable linger:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+### Data Directory Layout
+
+```
+~/.sebastian/
+  app/         # Installation tree (sebastian update only touches this)
+  data/        # User data: sebastian.db / secret.key / workspace / extensions
+  logs/        # Log files
+  run/         # PID file + update rollback backups
+  .layout-v2   # Migration marker
+```
+
+Upgrading from an older version? `sebastian serve` automatically migrates the flat layout to this structure on first run.
+
 ## 🏗️ Architecture
 
 ```

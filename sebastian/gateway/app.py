@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     ensure_data_dir()
     setup_logging(
-        data_dir=settings.data_dir,
+        logs_dir=settings.logs_dir,
         llm_stream=settings.sebastian_log_llm_stream,
         sse=settings.sebastian_log_sse,
     )
@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with db_factory() as _bootstrap_session:
         await bootstrap_slot_registry(_bootstrap_session, DEFAULT_SLOT_REGISTRY)
 
-    session_store = SessionStore(settings.sessions_dir, db_factory=db_factory)
+    session_store = SessionStore(db_factory=db_factory)
     todo_store = TodoStore(db_factory=db_factory)
 
     from sebastian.llm.registry import LLMProviderRegistry

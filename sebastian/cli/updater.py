@@ -12,7 +12,7 @@ Flow:
 4. Download ``sebastian-backend-<tag>.tar.gz`` + ``SHA256SUMS`` to a tmp dir.
 5. Verify SHA256.
 6. Extract into a staging dir, then atomically swap top-level entries with
-   the existing install dir, keeping a backup under ``~/.sebastian/backups/``
+   the existing install dir, keeping a backup under ``~/.sebastian/run/update-backups/``
    for rollback.
 7. Re-run ``pip install -e .`` inside the same interpreter so dependency
    changes take effect.
@@ -38,7 +38,7 @@ from urllib.error import URLError
 
 REPO = "PhantomButler/Sebastian"
 # Top-level entries that we own and may safely replace inside the install dir.
-# Anything not in this list (.venv, .env, data/, ~/.sebastian/secret.key, etc.)
+# Anything not in this list (.venv, .env, ~/.sebastian/data/, etc.)
 # is left untouched.
 MANAGED_ENTRIES = (
     "sebastian",
@@ -173,8 +173,10 @@ def extract_tarball(tarball: Path, into: Path) -> Path:
 
 
 def _backup_parent() -> Path:
-    """Return ``~/.sebastian/backups``, creating it if needed."""
-    d = Path.home() / ".sebastian" / "backups"
+    """Return run_dir/update-backups, creating it if needed."""
+    from sebastian.config import settings
+
+    d = settings.run_dir / "update-backups"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -263,7 +265,7 @@ def _try_restart_daemon(printer: Callable[[str], None]) -> None:
     from sebastian.cli.daemon import is_running, pid_path, read_pid, stop_process
     from sebastian.config import settings
 
-    pf = pid_path(settings.data_dir)
+    pf = pid_path(settings.run_dir)
     pid = read_pid(pf)
     if pid is None or not is_running(pid):
         printer("提示：未检测到后台进程，请手动运行 `sebastian serve`。")

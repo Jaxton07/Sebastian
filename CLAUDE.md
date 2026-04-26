@@ -10,7 +10,6 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统，灵感来自黑
 **架构 Spec 索引**：`docs/architecture/spec/INDEX.md`
 开始工作前必读，包含完整架构决策的分模块索引（总体架构、三层 Agent 模型、核心运行时、LLM Provider、System Prompt、日志系统等）。
 
-**关系说明**：OpenJax（`/Users/ericw/work/code/ai/openJax`）是前驱技术探索，Sebastian 继承其设计经验，不继承代码。
 
 **目录 README 索引**：
 - `sebastian/README.md`：后端主包结构、模块职责、常见开发入口
@@ -178,8 +177,8 @@ SEBASTIAN_GATEWAY_PORT=8823
 ```
 
 > **注意**：从 v0.2.0 起，owner 账号、JWT 签名密钥和 LLM API Key 不再由环境变量提供：
-> - Owner 账号存在 `~/.sebastian/sebastian.db` 的 `users` 表
-> - JWT 密钥和 API Key 加密密钥均来自 `~/.sebastian/secret.key`（chmod 600）
+> - Owner 账号存在 `~/.sebastian/data/sebastian.db` 的 `users` 表
+> - JWT 密钥和 API Key 加密密钥均来自 `~/.sebastian/data/secret.key`（chmod 600）
 > - 两者均由首启 Web 向导或 `sebastian init --headless` 生成
 > - LLM API Key 通过 App Settings 页面添加，加密存储在数据库中
 
@@ -193,6 +192,19 @@ SEBASTIAN_GATEWAY_PORT=8823
 
 # Android 模拟器 Settings 页填写 Server URL：http://10.0.2.2:8824
 ```
+
+### 数据目录布局（v2）
+
+```
+~/.sebastian/
+  app/         # 安装树（sebastian update 只动这里）
+  data/        # 用户数据：sebastian.db / secret.key / workspace / extensions
+  logs/        # 日志
+  run/         # PID + update 回滚备份
+  .layout-v2   # 迁移标记
+```
+
+旧版本（平铺布局）会在 `sebastian serve` 启动时自动迁移到此结构。
 
 ## 4) Lint 与格式化
 
@@ -230,7 +242,7 @@ SEBASTIAN_GATEWAY_PORT=8823
 ```
 
 > LLM API Key 通过 App Settings 页面管理（加密存储在数据库），不再通过环境变量。
-> JWT 签名密钥和 API Key 加密密钥统一来自 `<data_dir>/secret.key`（setup wizard 自动生成）。
+> JWT 签名密钥和 API Key 加密密钥统一来自 `<data_dir>/data/secret.key`（setup wizard 自动生成）。
 
 ## 7) Python 代码风格
 
@@ -365,7 +377,7 @@ git checkout -b feat/your-feature   # 或 fix/ chore/ docs/ 等前缀
   - 类型：`feat` / `fix` / `docs` / `refactor` / `chore` / `test` / `style` / `ci`
   - 可在类型前加 emoji（参考现有历史记录风格）
 - message 末尾附：`Co-Authored-By: Claude <noreply@anthropic.com>`
-  （或写当前实际模型，例如 `Claude Opus 4.6` / `Claude Sonnet 4.6`）
+  （或写当前实际模型，例如 `Claude Opus 4.6` / `Claude Sonnet 4.6` / `gpt 5.5`）
 - 保持改动原子化，一个 commit 只做一件事
 
 ### 推送与 PR

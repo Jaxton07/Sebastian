@@ -6,7 +6,10 @@ import sys
 import typer
 import uvicorn
 
+from sebastian.cli.service import app as service_app
+
 app = typer.Typer(name="sebastian", help="Sebastian — Personal AI Butler")
+app.add_typer(service_app, name="service")
 
 
 @app.command()
@@ -35,7 +38,7 @@ def serve(
             version = tomllib.load(_f)["project"]["version"]
     else:
         version = importlib.metadata.version("sebastian")
-    log_file = settings.data_dir / "logs" / "main.log"
+    log_file = settings.logs_dir / "main.log"
 
     # --- startup banner ---
     typer.echo(f"Sebastian v{version}")
@@ -44,7 +47,7 @@ def serve(
     typer.echo(f"  监听地址: http://{h}:{p}")
 
     if daemon:
-        pf = pid_path(settings.data_dir)
+        pf = pid_path(settings.run_dir)
         existing = read_pid(pf)
         if existing and is_running(existing):
             typer.echo(f"❌ Sebastian 已在运行 (PID {existing})", err=True)
@@ -52,7 +55,7 @@ def serve(
 
         typer.echo(f"  运行模式: 后台 (PID 文件: {pf})")
 
-        log_dir = settings.data_dir / "logs"
+        log_dir = settings.logs_dir
         log_dir.mkdir(parents=True, exist_ok=True)
 
         pid = os.fork()
@@ -79,7 +82,7 @@ def stop() -> None:
     from sebastian.cli.daemon import pid_path, stop_process
     from sebastian.config import settings
 
-    pf = pid_path(settings.data_dir)
+    pf = pid_path(settings.run_dir)
     if stop_process(pf):
         typer.echo("✓ Sebastian 已停止")
     else:
@@ -92,7 +95,7 @@ def status() -> None:
     from sebastian.cli.daemon import is_running, pid_path, read_pid, remove_pid
     from sebastian.config import settings
 
-    pf = pid_path(settings.data_dir)
+    pf = pid_path(settings.run_dir)
     pid = read_pid(pf)
     if pid and is_running(pid):
         typer.echo(f"✓ Sebastian 正在运行 (PID {pid})")
@@ -112,7 +115,7 @@ def logs(
 
     from sebastian.config import settings
 
-    log_file = settings.data_dir / "logs" / "main.log"
+    log_file = settings.logs_dir / "main.log"
     if not log_file.exists():
         typer.echo(f"日志文件不存在: {log_file}")
         raise typer.Exit(code=1)
