@@ -118,37 +118,44 @@ class ResidentSnapshotPaths:
 
 
 class AsyncRWLock:
-    """Simple async read/write lock.
+    """Async read/write lock.
 
-    Multiple concurrent readers are allowed; writers get exclusive access.
+    Multiple concurrent readers are allowed; a writer gets exclusive access.
+    New readers that arrive while a writer holds the lock are blocked until
+    the write side is released — the lock itself enforces this, not external flags.
     """
 
     def __init__(self) -> None:
-        self._read_count = 0
-        self._write_lock = asyncio.Lock()
-        self._no_readers = asyncio.Event()
-        self._no_readers.set()
-        self._read_mutex = asyncio.Lock()
+        self._condition = asyncio.Condition()
+        self._readers: int = 0
+        self._writer: bool = False
 
     @asynccontextmanager
     async def read(self) -> AsyncGenerator[None, None]:
-        async with self._read_mutex:
-            self._read_count += 1
-            if self._read_count == 1:
-                self._no_readers.clear()
+        async with self._condition:
+            while self._writer:
+                await self._condition.wait()
+            self._readers += 1
         try:
             yield
         finally:
-            async with self._read_mutex:
-                self._read_count -= 1
-                if self._read_count == 0:
-                    self._no_readers.set()
+            async with self._condition:
+                self._readers -= 1
+                if self._readers == 0:
+                    self._condition.notify_all()
 
     @asynccontextmanager
     async def write(self) -> AsyncGenerator[None, None]:
-        async with self._write_lock:
-            await self._no_readers.wait()
+        async with self._condition:
+            while self._readers > 0 or self._writer:
+                await self._condition.wait()
+            self._writer = True
+        try:
             yield
+        finally:
+            async with self._condition:
+                self._writer = False
+                self._condition.notify_all()
 
 
 # ---------------------------------------------------------------------------

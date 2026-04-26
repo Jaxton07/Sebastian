@@ -598,3 +598,34 @@ async def test_write_empty_state_produces_valid_markdown_hash(tmp_path: Path) ->
         f"markdown_hash should be {expected_hash!r}, got {meta['markdown_hash']!r}"
     )
     assert paths.markdown.read_bytes() == b""
+
+
+# ---------------------------------------------------------------------------
+# RW lock correctness test
+# ---------------------------------------------------------------------------
+
+
+async def test_rw_lock_write_blocks_new_readers() -> None:
+    """write() must block new readers that arrive while the writer is active."""
+    from sebastian.memory.resident_snapshot import AsyncRWLock
+
+    lock = AsyncRWLock()
+    order: list[str] = []
+    writer_inside = asyncio.Event()
+
+    async def do_write() -> None:
+        async with lock.write():
+            writer_inside.set()
+            await asyncio.sleep(0)  # yield — lets reader attempt lock
+            order.append("write-complete")
+
+    async def do_read() -> None:
+        await writer_inside.wait()  # start only after writer is inside
+        async with lock.read():
+            order.append("read-complete")
+
+    await asyncio.gather(do_write(), do_read())
+
+    assert order == ["write-complete", "read-complete"], (
+        f"reader should not enter read section before writer exits, got {order}"
+    )
