@@ -278,6 +278,15 @@ async def _rebuild_if_missing_fk(conn: Any, table: str) -> None:
     new_cols = [col.name for col in Base.metadata.tables[table].columns]
     common_cols = [col for col in new_cols if col in old_cols]
     quoted_cols = ", ".join(f'"{col}"' for col in common_cols)
+    # 删除孤儿行：对应 session 不存在的 todo 无意义，迁移时清理
+    await conn.exec_driver_sql(
+        f"DELETE FROM {tmp}"
+        f" WHERE NOT EXISTS ("
+        f"   SELECT 1 FROM sessions"
+        f"   WHERE sessions.agent_type = {tmp}.agent_type"
+        f"   AND sessions.id = {tmp}.session_id"
+        f" )"
+    )
     await conn.exec_driver_sql(
         f"INSERT INTO {table} ({quoted_cols}) SELECT {quoted_cols} FROM {tmp}"
     )
