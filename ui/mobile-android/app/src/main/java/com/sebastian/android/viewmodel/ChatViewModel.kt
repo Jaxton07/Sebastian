@@ -81,6 +81,9 @@ class ChatViewModel @Inject constructor(
     private var sendTurnJob: Job? = null
     private var currentAssistantMessageId: String? = null
     private var pendingTurnSessionId: String? = null
+    // Number of TurnReceived events to skip during SSE replay after switchSession.
+    // Prevents duplicate assistant messages when replaying already-hydrated completed turns.
+    private var sseReplayTurnSkipCount = 0
 
     private var pendingTimeoutJob: Job? = null
     private var pendingTimeoutElapsedMs: Long = 0L
@@ -182,6 +185,10 @@ class ChatViewModel @Inject constructor(
         cancelPendingTimeout()
         when (event) {
             is StreamEvent.TurnReceived -> {
+                if (sseReplayTurnSkipCount > 0) {
+                    sseReplayTurnSkipCount--
+                    return  // skip replayed completed turn; currentAssistantMessageId stays null
+                }
                 pendingTurnSessionId = event.sessionId
                 currentAssistantMessageId = UUID.randomUUID().toString()
             }
@@ -575,6 +582,7 @@ class ChatViewModel @Inject constructor(
         pendingDeltas.clear()
         currentAssistantMessageId = null
         pendingTurnSessionId = null
+        sseReplayTurnSkipCount = 0
         _uiState.update {
             it.copy(
                 activeSessionId = sessionId,
@@ -585,16 +593,26 @@ class ChatViewModel @Inject constructor(
             )
         }
         viewModelScope.launch(dispatcher) {
+            // Determine SSE lastEventId before hydrating, then adjust after REST history is known.
+            var lastEventId: String? = lastDeliveredSseEventIds[sessionId]
             chatRepository.getMessages(sessionId)
                 .onSuccess { history ->
                     _uiState.update { it.copy(messages = history) }
+                    // First visit to a session whose last message is USER means a turn is still
+                    // in progress. Replay from ring buffer start ("0") so that TurnReceived is
+                    // delivered and in-progress streaming events are visible immediately.
+                    if (lastEventId == null && history.lastOrNull()?.role == MessageRole.USER) {
+                        // Skip TurnReceived for turns already loaded via REST to avoid duplicates.
+                        sseReplayTurnSkipCount = history.count { it.role == MessageRole.ASSISTANT }
+                        lastEventId = "0"
+                    }
                 }
             chatRepository.getTodos(sessionId).onSuccess { todos ->
                 _uiState.update { state ->
                     if (state.activeSessionId == sessionId) state.copy(todos = todos) else state
                 }
             }
-            startSseCollection(sessionId = sessionId)
+            startSseCollection(sessionId = sessionId, lastEventId = lastEventId)
         }
     }
 
@@ -605,6 +623,7 @@ class ChatViewModel @Inject constructor(
         pendingDeltas.clear()
         currentAssistantMessageId = null
         pendingTurnSessionId = null
+        sseReplayTurnSkipCount = 0
         _uiState.update {
             it.copy(
                 activeSessionId = null,
