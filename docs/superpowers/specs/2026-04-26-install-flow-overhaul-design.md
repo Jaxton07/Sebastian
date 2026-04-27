@@ -1,3 +1,8 @@
+---
+integrated_to: infra/install-flow.md
+integrated_at: 2026-04-27
+---
+
 # Install Flow Overhaul — Design
 
 **Date**: 2026-04-26

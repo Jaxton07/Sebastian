@@ -2,6 +2,8 @@
 version: "1.0"
 last_updated: 2026-04-26
 status: planned
+integrated_to: memory/resident-snapshot.md
+integrated_at: 2026-04-27
 ---
 
 # Resident Memory Snapshot（常驻记忆快照）设计
