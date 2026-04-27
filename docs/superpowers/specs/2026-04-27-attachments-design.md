@@ -285,13 +285,18 @@ Composer 左下角新增附件按钮。点击后弹出选择菜单：
 
 ### 9.2 状态归属
 
+Android 端区分两类模型：
+
+- **发送前模型**：只存在于 Composer / ChatViewModel，用于选择、预览、上传进度和失败重试。
+- **历史内容模型**：进入 timeline 后映射为 `ContentBlock.ImageBlock` / `ContentBlock.FileBlock`，用于消息列表渲染。
+
 `ChatViewModel` 持有：
 
 - `pendingAttachments: List<PendingAttachment>`
-- 当前 provider 能力快照
+- 当前 provider 能力快照：`ModelInputCapabilities`
 - 上传状态：`local` / `uploading` / `uploaded` / `failed`
 
-`Composer` 只负责展示。`AttachmentSlot` 打开选择器，`AttachmentPreviewBar` 展示待发送附件、缩略图、文件名、大小、移除按钮和失败状态。
+`Composer` 只负责展示，不直接读 `Uri`、不调用 Repository。`AttachmentSlot` 打开选择器，`AttachmentPreviewBar` 展示待发送附件、缩略图、文件名、大小、移除按钮和失败状态。
 
 `onSend` 从：
 
@@ -307,20 +312,164 @@ onSend: (text: String, attachments: List<PendingAttachment>) -> Unit
 
 ### 9.3 Android 数据模型
 
-新增：
+推荐直接扩展现有 `ContentBlock` sealed class，不新增独立 `AttachmentBlock` 继承层。原因：现有消息列表、timeline hydration、block toggle 都围绕 `ContentBlock` 工作；附件进入历史后也是消息内容的一种。
+
+`ContentBlock.kt` 新增：
 
 ```kotlin
-sealed class AttachmentBlock : ContentBlock
-data class ImageBlock(...)
-data class FileBlock(...)
+data class ImageBlock(
+    override val blockId: String,
+    val attachmentId: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val downloadUrl: String,
+    val thumbnailUrl: String? = null,
+) : ContentBlock()
+
+data class FileBlock(
+    override val blockId: String,
+    val attachmentId: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val downloadUrl: String,
+    val textExcerpt: String? = null,
+) : ContentBlock()
 ```
 
-或在现有 `ContentBlock` 下新增：
+并更新 `isDone`：
 
-- `ImageBlock`
-- `FileBlock`
+```kotlin
+val isDone: Boolean get() = when (this) {
+    is TextBlock -> done
+    is ThinkingBlock -> done
+    is ToolBlock -> status == ToolStatus.DONE || status == ToolStatus.FAILED
+    is SummaryBlock -> true
+    is ImageBlock -> true
+    is FileBlock -> true
+}
+```
 
-`TimelineMapper` 是唯一把 `attachment` timeline item 映射为 UI block 的入口。
+### 9.4 发送前附件模型
+
+发送前不要使用 `ContentBlock`，避免把本地选择态和已入库历史态混在一起。新增 Composer/ViewModel 层模型：
+
+```kotlin
+data class PendingAttachment(
+    val localId: String,
+    val uri: Uri,
+    val kind: AttachmentKind,
+    val filename: String,
+    val mimeType: String?,
+    val sizeBytes: Long?,
+    val uploadState: AttachmentUploadState,
+    val attachmentId: String? = null,
+    val downloadUrl: String? = null,
+    val thumbnailUrl: String? = null,
+    val errorMessage: String? = null,
+)
+
+enum class AttachmentKind {
+    IMAGE,
+    TEXT_FILE,
+}
+
+sealed class AttachmentUploadState {
+    data object Local : AttachmentUploadState()
+    data object Uploading : AttachmentUploadState()
+    data object Uploaded : AttachmentUploadState()
+    data class Failed(val reason: String) : AttachmentUploadState()
+}
+```
+
+`PendingAttachment.localId` 用于 Compose key 和上传前删除；`attachmentId` 只有上传成功后才有值。发送 turn 时只提交已上传成功的 `attachmentId` 列表。
+
+### 9.5 Provider 能力快照
+
+Chat 页面需要知道当前模型是否支持图片输入。Android 领域模型新增：
+
+```kotlin
+data class ModelInputCapabilities(
+    val supportsImageInput: Boolean,
+    val supportsTextFileInput: Boolean = true,
+)
+```
+
+能力来源是后端 binding/resolved model DTO：
+
+```json
+{
+  "supports_image_input": true,
+  "supports_text_file_input": true
+}
+```
+
+使用规则：
+
+- 点击附件按钮时不检查能力。
+- 弹出菜单选择「图片」后，先读 `supportsImageInput`。
+- 为 false 时只 Toast，不打开 Photo Picker。
+- 为 true 时打开 Photo Picker。
+- 选择「文件」不依赖 `supportsImageInput`，但仍受 P0 后缀限制。
+
+后端 400 仍是最终防线，处理 App 能力快照过期或外部 API 调用绕过 UI 的情况。
+
+### 9.6 DTO 与 Timeline 映射
+
+上传接口新增 DTO：
+
+```kotlin
+data class AttachmentUploadResponseDto(
+    val attachmentId: String,
+    val kind: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val sha256: String,
+    val downloadUrl: String,
+    val thumbnailUrl: String?,
+)
+```
+
+turn 请求 DTO 扩展：
+
+```kotlin
+data class SendTurnRequest(
+    val content: String,
+    val sessionId: String? = null,
+    val attachmentIds: List<String> = emptyList(),
+)
+```
+
+`TimelineMapper` 是唯一把 `attachment` timeline item 映射为 UI block 的入口。规则：
+
+```kotlin
+when (item.payloadString("kind")) {
+    "image" -> ContentBlock.ImageBlock(...)
+    "text_file" -> ContentBlock.FileBlock(...)
+}
+```
+
+同一个 exchange 下的 `user_message + attachment` 必须合并为一条 user bubble：
+
+```text
+Message(role=USER)
+  text = user_message.content
+  blocks = [
+    ImageBlock(...),
+    FileBlock(...),
+  ]
+```
+
+如果只有附件没有文本，`text` 为空字符串，`blocks` 不为空，消息仍然渲染。
+
+### 9.7 UI 渲染约定
+
+- `ImageBlock`：渲染缩略图；点击后打开大图预览或下载原图。
+- `FileBlock`：渲染文件卡片，展示文件名、大小、后缀图标和可选 `textExcerpt`。
+- `PendingAttachment`：渲染在 `AttachmentPreviewBar`，展示本地缩略图/文件名/大小、上传中状态、失败原因、移除按钮。
+- 历史消息不展示上传状态；只有发送前附件展示上传状态。
 
 ## 10. 生命周期与清理
 
