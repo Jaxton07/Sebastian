@@ -40,6 +40,8 @@
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/AttachmentModels.kt` | Create | `PendingAttachment` / `AttachmentKind` / `AttachmentUploadState` / `ModelInputCapabilities` |
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AttachmentDto.kt` | Create | 上传响应 DTO |
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TurnDto.kt` | Modify | `SendTurnRequest.attachmentIds` |
+| `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentBindingDto.kt` | Modify | 解析 resolved provider/model 输入能力 |
+| `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentDto.kt` | Modify | Agent/session 页面需要时透传能力字段 |
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TimelineMapper.kt` | Modify | 合并同 exchange 的 `user_message + attachment` |
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/ApiService.kt` | Modify | multipart upload endpoint |
 | `ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepository.kt` | Modify | sendTurn/sendSessionTurn 支持附件 |
@@ -171,11 +173,31 @@ async def test_text_file_rejects_over_size(...)
 
 Expected: 抛出 `ValueError` 或项目内具体异常；实现时保持异常类型稳定，Gateway 再映射为 HTTP 400。
 
-- [ ] **Step 3: 写失败测试：图片 MIME 白名单**
+- [ ] **Step 3: 写失败测试：文本 MIME 必须在白名单内**
+
+添加 2 个测试：
+
+```python
+async def test_text_file_accepts_supported_mime_and_extension(...)
+async def test_text_file_rejects_unsupported_mime_even_with_supported_extension(...)
+```
+
+第二个测试使用 `filename="notes.md"`、`content_type="application/pdf"`、UTF-8 bytes，期望拒绝。这样防止实现只看后缀和解码。
+
+- [ ] **Step 4: 写失败测试：图片 MIME 白名单**
 
 测试 `image/jpeg` 成功，`image/svg+xml` 失败。
 
-- [ ] **Step 4: 实现 AttachmentStore**
+- [ ] **Step 5: 写失败测试：read_text_content 返回完整内容而非 excerpt**
+
+上传超过 `TEXT_EXCERPT_CHARS` 的 `.md` 文件，断言：
+
+- record 的 `text_excerpt` 被截断。
+- `AttachmentStore.read_text_content(record)` 返回完整文本。
+
+LLM context 投影必须使用 `read_text_content()`，不能使用 `text_excerpt`。
+
+- [ ] **Step 6: 实现 AttachmentStore**
 
 `sebastian/store/attachments.py` 结构：
 
@@ -197,6 +219,15 @@ from sebastian.store.models import AttachmentRecord
 
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 ALLOWED_TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".log"}
+ALLOWED_TEXT_MIME_TYPES = {
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/x-ndjson",
+    "text/x-log",
+    "application/octet-stream",  # SAF/providers often omit text MIME; extension + UTF-8 still required.
+}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 TEXT_EXCERPT_CHARS = 2000
@@ -221,20 +252,24 @@ class AttachmentStore:
 
 - `upload_bytes(*, filename, content_type, kind, data) -> UploadedAttachment`
 - `get(attachment_id) -> AttachmentRecord | None`
+- `validate_attachable(attachment_ids) -> list[AttachmentRecord]`（只读校验：存在、status=uploaded、未绑定 session）
 - `mark_attached(attachment_ids, agent_type, session_id) -> list[AttachmentRecord]`
 - `mark_session_orphaned(agent_type, session_id) -> int`
 - `cleanup(now=None) -> int`
 - `blob_absolute_path(record) -> Path`
+- `read_text_content(record) -> str`（读取完整文本文件 blob，不能使用 `text_excerpt` 作为 LLM 输入）
 
 Blob 写入要求：先写 `tmp/<uuid>`，fsync 可选，最后 `os.replace(tmp, final)`。
 
-- [ ] **Step 5: 运行单元测试**
+文本文件校验必须同时检查后缀、MIME 与 UTF-8 解码：允许的后缀见 `ALLOWED_TEXT_EXTENSIONS`，允许的 MIME 见 `ALLOWED_TEXT_MIME_TYPES`。如果 MIME 缺失或为 `application/octet-stream`，仍必须通过后缀 + UTF-8 检查；如果 MIME 是明确不支持的值（如 `application/pdf`），即使后缀是 `.md` 也拒绝。
+
+- [ ] **Step 7: 运行单元测试**
 
 Run: `pytest tests/unit/store/test_attachments.py -v`
 
 Expected: PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add sebastian/store/attachments.py tests/unit/store/test_attachments.py
@@ -313,6 +348,7 @@ git commit -m "feat(gateway): 新增附件上传与下载 API"
 - Modify: `sebastian/gateway/routes/turns.py`
 - Modify: `sebastian/gateway/routes/sessions.py`
 - Modify: `sebastian/store/session_timeline.py`
+- Modify: `sebastian/store/attachments.py`
 - Modify: `tests/integration/test_gateway_attachments.py`
 
 - [ ] **Step 1: 写失败测试：发送 turn 携带附件写入同 exchange**
@@ -332,7 +368,29 @@ body `{ "content": "", "attachment_ids": ["..."] }` 应 200。
 
 body `{ "content": "", "attachment_ids": [] }` 应 400。
 
-- [ ] **Step 4: 扩展 SendTurnRequest**
+- [ ] **Step 4: 写失败测试：单 turn 超过 5 个附件拒绝且不写 timeline**
+
+上传 6 个 `.txt` 附件，调用 turn API，期望：
+
+- HTTP 400。
+- session timeline 没有新增 `user_message` / `attachment`。
+- 6 个 attachment 仍是 `uploaded`。
+
+- [ ] **Step 5: 写失败测试：不支持图片时拒绝且不写 timeline**
+
+设置当前 resolved provider/model `supports_image_input=False`，上传图片并发送 turn，期望：
+
+- HTTP 400。
+- 不调用 LLM。
+- 不分配 exchange。
+- 不写 `user_message` / `attachment` timeline item。
+- 图片 attachment 仍是 `uploaded`。
+
+- [ ] **Step 6: 写失败测试：已被引用的 attachment 再次使用返回 409**
+
+同一个 `attachment_id` 成功发送一次后，再次发送，期望 409，且第二次不写 timeline。
+
+- [ ] **Step 7: 扩展 SendTurnRequest**
 
 `turns.py`：
 
@@ -345,7 +403,7 @@ class SendTurnRequest(BaseModel):
 
 `sessions.py` 复用同样字段。
 
-- [ ] **Step 5: 抽出共享 helper**
+- [ ] **Step 8: 抽出共享 helper**
 
 在 `sessions.py` 或新 helper 中实现：
 
@@ -362,12 +420,28 @@ async def _persist_user_turn_with_attachments(
 行为：
 
 - 校验 content/attachments 非空。
-- 调 `SessionStore.allocate_exchange()`。
-- 写 `user_message`（content 可为空）。
-- 写每个 `attachment` item。
-- 调 `AttachmentStore.mark_attached()`。
+- 校验 attachment 数量 <= 5。
+- 调 `AttachmentStore.validate_attachable(attachment_ids)`，确认全部存在、`status=uploaded`、未绑定 session。
+- 校验当前 resolved provider/model 对图片附件的支持；不支持时立即 400。
+- 以上任何校验失败时，不能分配 exchange，不能写 timeline，不能更新 attachment 状态。
+- 校验通过后，进入单一 DB transaction 或等价的原子 helper：分配 exchange、写 `user_message`、写每个 `attachment` item、将 attachment 状态更新为 `attached`。
 
-- [ ] **Step 6: 调整 BaseAgent 入口避免重复写 user_message**
+原子性要求：timeline 写入和 attachment status transition 必须同成同败。不要先写 timeline 再调用可能失败的 `mark_attached()`。推荐新增 store helper：
+
+```python
+async def attach_to_turn_atomically(
+    *,
+    session_id: str,
+    agent_type: str,
+    content: str,
+    attachment_records: list[AttachmentRecord],
+) -> tuple[str, int]:
+    ...
+```
+
+该 helper 在一个事务内完成 exchange 分配、timeline insert 和 attachment update。
+
+- [ ] **Step 9: 调整 BaseAgent 入口避免重复写 user_message**
 
 当前 `BaseAgent.run_streaming(content, session.id)` 会自行写用户消息。实现时需要引入一个最小改造，避免 turn API 预写附件 timeline 后 BaseAgent 再写一条 user_message。
 
@@ -384,13 +458,13 @@ await agent.run_streaming(
 
 若改动过大，替代方案是在 BaseAgent 增加 `run_streaming_from_persisted_user_turn(...)`。不要用事后删除重复消息的补丁方案。
 
-- [ ] **Step 7: 跑集成测试**
+- [ ] **Step 10: 跑集成测试**
 
 Run: `pytest tests/integration/test_gateway_attachments.py -v`
 
 Expected: PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add sebastian/gateway/routes/turns.py sebastian/gateway/routes/sessions.py sebastian/store/session_timeline.py sebastian/core/base_agent.py tests/integration/test_gateway_attachments.py
@@ -409,7 +483,7 @@ git commit -m "feat(gateway): turn 请求支持附件 timeline 写入"
 
 - [ ] **Step 1: 写失败测试：文本文件投影为边界清晰的 text block**
 
-构造 timeline items：`user_message + attachment(text_file)`，AttachmentStore 返回文件内容 `hello`，断言 Anthropic projection 中 content list 包含：
+构造 timeline items：`user_message + attachment(text_file)`，AttachmentStore `read_text_content()` 返回文件完整内容 `hello`，断言 Anthropic projection 中 content list 包含：
 
 ````text
 用户上传了文本文件：notes.md
@@ -418,15 +492,23 @@ hello
 ```
 ````
 
-- [ ] **Step 2: 写失败测试：图片不支持时拒绝**
+- [ ] **Step 2: 写失败测试：投影使用完整文本，不使用 text_excerpt**
+
+上传一个超过 `TEXT_EXCERPT_CHARS` 的文本文件，record 的 `text_excerpt` 是截断预览。构造 timeline 并投影，断言 LLM content 包含完整尾部文本。这样确保 `text_excerpt` 只用于 UI 预览。
+
+- [ ] **Step 3: 写失败测试：文本文件超过 token 预算时拒绝**
+
+构造超出 P0 token 预算的文本附件，调用 turn helper 或 context projection，期望 400/明确异常，且不写 timeline。实现可复用 `TokenEstimator`；不要自动摘要。
+
+- [ ] **Step 4: 写失败测试：图片不支持时拒绝**
 
 当前 resolved provider `supports_image_input=False` 且 attachment kind=image 时，turn helper 返回 HTTP 400 或 context builder 抛明确异常。
 
-- [ ] **Step 3: 增加 catalog 能力字段**
+- [ ] **Step 5: 增加 catalog 能力字段**
 
 内置视觉模型设 `supports_image_input: true`，文本文件默认 true。非视觉模型 false。Custom model CRUD 需要允许用户配置此字段；若表结构暂不加列，P0 可先在 model spec JSON 层处理内置模型，自定义模型默认为 false。
 
-- [ ] **Step 4: 扩展 registry resolved DTO**
+- [ ] **Step 6: 扩展 registry resolved DTO**
 
 在返回 Android binding/resolved model 时包含：
 
@@ -437,7 +519,7 @@ hello
 }
 ```
 
-- [ ] **Step 5: 实现 `attachment` context 投影**
+- [ ] **Step 7: 实现 `attachment` context 投影**
 
 在 `session_context.py`：
 
@@ -446,17 +528,17 @@ hello
 - 图片：追加 `{ "type": "image", "source": { "type": "base64", "media_type": "...", "data": "..." } }`。
 - OpenAI-compatible：P0 对图片默认拒绝，文本文件作为普通 text。
 
-- [ ] **Step 6: Anthropic provider 透传 image blocks**
+- [ ] **Step 8: Anthropic provider 透传 image blocks**
 
 `anthropic.py` 当前把 messages 原样给 SDK；确认 content block list 已符合 SDK 格式即可。若 SDK 类型检查需要，保持 dict 格式。
 
-- [ ] **Step 7: 跑单元测试**
+- [ ] **Step 9: 跑单元测试**
 
 Run: `pytest tests/unit/store/test_session_context_attachments.py -v`
 
 Expected: PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add sebastian/llm/catalog/builtin_providers.json sebastian/llm/catalog/loader.py sebastian/llm/registry.py sebastian/store/session_context.py sebastian/llm/anthropic.py tests/unit/store/test_session_context_attachments.py
@@ -470,6 +552,8 @@ git commit -m "feat(llm): 支持附件 provider 能力与上下文投影"
 - Create: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/AttachmentModels.kt`
 - Create: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AttachmentDto.kt`
 - Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TurnDto.kt`
+- Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentBindingDto.kt`
+- Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentDto.kt`
 - Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TimelineMapper.kt`
 - Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/ApiService.kt`
 - Modify: `ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepository.kt`
@@ -493,7 +577,33 @@ git commit -m "feat(llm): 支持附件 provider 能力与上下文投影"
 - `AttachmentUploadState`
 - `ModelInputCapabilities`
 
-- [ ] **Step 4: 新增 Attachment DTO 和 multipart API**
+- [ ] **Step 4: 写失败测试：后端能力字段映射到 ModelInputCapabilities**
+
+构造 `AgentBindingDto` / resolved DTO JSON：
+
+```json
+{
+  "resolved": {
+    "supports_image_input": true,
+    "supports_text_file_input": true
+  }
+}
+```
+
+断言 mapper 输出 `ModelInputCapabilities(supportsImageInput=true, supportsTextFileInput=true)`。没有字段时默认 `false/true`。
+
+- [ ] **Step 5: 实现 provider 能力 DTO 解析**
+
+在 `AgentBindingDto.kt`（以及 Chat 页面实际读取 binding 的 DTO 路径）加入：
+
+```kotlin
+@param:Json(name = "supports_image_input") val supportsImageInput: Boolean = false,
+@param:Json(name = "supports_text_file_input") val supportsTextFileInput: Boolean = true,
+```
+
+Repository/ViewModel 需要把 resolved binding 转为 `ModelInputCapabilities`，存到 `ChatUiState` 或 `ChatViewModel` 当前状态中。不要只在测试里手动塞布尔值。
+
+- [ ] **Step 6: 新增 Attachment DTO 和 multipart API**
 
 `ApiService.kt`：
 
@@ -506,7 +616,7 @@ suspend fun uploadAttachment(
 ): AttachmentUploadResponseDto
 ```
 
-- [ ] **Step 5: 扩展 ChatRepository**
+- [ ] **Step 7: 扩展 ChatRepository**
 
 接口：
 
@@ -516,20 +626,20 @@ suspend fun sendTurn(sessionId: String?, content: String, attachmentIds: List<St
 suspend fun sendSessionTurn(sessionId: String, content: String, attachmentIds: List<String>): Result<Unit>
 ```
 
-- [ ] **Step 6: 实现 Repository multipart upload**
+- [ ] **Step 8: 实现 Repository multipart upload**
 
 从 `ContentResolver` 读取 Uri stream，构造 `RequestBody`。上传成功后返回 `PendingAttachment.copy(uploadState=Uploaded, attachmentId=...)`。
 
-- [ ] **Step 7: 跑 Android 单元测试**
+- [ ] **Step 9: 跑 Android 单元测试**
 
 Run: `cd ui/mobile-android && ./gradlew test`
 
 Expected: PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/ContentBlock.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/AttachmentModels.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AttachmentDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TurnDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TimelineMapper.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/ApiService.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepository.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepositoryImpl.kt ui/mobile-android/app/src/test
+git add ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/ContentBlock.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/model/AttachmentModels.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AttachmentDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TurnDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentBindingDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/AgentDto.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/dto/TimelineMapper.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/remote/ApiService.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepository.kt ui/mobile-android/app/src/main/java/com/sebastian/android/data/repository/ChatRepositoryImpl.kt ui/mobile-android/app/src/test
 git commit -m "feat(android): 增加附件数据模型与上传 API"
 ```
 
@@ -545,22 +655,30 @@ git commit -m "feat(android): 增加附件数据模型与上传 API"
 
 - [ ] **Step 1: 写 ViewModel 测试：不支持图片时只发 effect**
 
-给 `ChatViewModel` 设置 `supportsImageInput=false`，调用 `onAttachmentMenuImageSelected()`，断言发出 Toast effect，不进入 picker request 状态。
+通过 repository/DTO hydration 给 `ChatViewModel` 当前 binding 注入 `ModelInputCapabilities(supportsImageInput=false)`，调用 `onAttachmentMenuImageSelected()`，断言发出 Toast effect，不进入 picker request 状态。测试不能直接绕过 hydration 手动塞裸布尔值。
 
 - [ ] **Step 2: 写 ViewModel 测试：空文本 + 附件可发送**
 
 设置一个 `PendingAttachment(uploadState=Uploaded, attachmentId="att_1")`，调用 send，断言 repository 收到 `content=""` 和 `attachmentIds=["att_1"]`。
 
-- [ ] **Step 3: 实现 AttachmentSlot**
+- [ ] **Step 3: 写 ViewModel 测试：选择第 6 个附件时拒绝**
+
+已有 5 个 pending attachments 时，再选择一个文件，期望 Toast/错误 effect，`pendingAttachments` 不增加。
+
+- [ ] **Step 4: 写 ViewModel 测试：不支持后缀不会加入 PendingAttachment**
+
+模拟 SAF 返回 `report.pdf` 或未知后缀，期望 Toast/错误 effect，`pendingAttachments` 不增加。
+
+- [ ] **Step 5: 实现 AttachmentSlot**
 
 UI：
 
 - 左下角 icon button。
 - 点击弹出菜单：图片 / 文件。
 - 图片项调用 ViewModel 能力检查。
-- 文件项直接打开 SAF。
+- 文件项打开 SAF。配置 MIME 为 `text/plain`, `text/markdown`, `text/csv`, `application/json`, `application/octet-stream`；选择返回后仍必须按文件名后缀 `.txt/.md/.csv/.json/.log` 做二次校验。
 
-- [ ] **Step 4: 实现 AttachmentPreviewBar**
+- [ ] **Step 6: 实现 AttachmentPreviewBar**
 
 展示：
 
@@ -569,7 +687,7 @@ UI：
 - 上传中 progress。
 - 失败原因、重试、移除。
 
-- [ ] **Step 5: 改 Composer 签名**
+- [ ] **Step 7: 改 Composer 签名**
 
 新增 props：
 
@@ -582,7 +700,7 @@ onSend: (String, List<PendingAttachment>) -> Unit
 
 发送按钮启用条件：`text.isNotBlank() || pendingAttachments.isNotEmpty()`。
 
-- [ ] **Step 6: ChatViewModel 串联上传与 turn**
+- [ ] **Step 8: ChatViewModel 串联上传与 turn**
 
 发送流程：
 
@@ -590,8 +708,9 @@ onSend: (String, List<PendingAttachment>) -> Unit
 2. 任一失败则保留 Composer 状态，不发送 turn。
 3. 全部 uploaded 后调用 sendTurn/sendSessionTurn。
 4. 成功后清空 pending attachments 和文本。
+5. 选择附件时 enforce 单 turn 最多 5 个，后端仍保留 400 兜底。
 
-- [ ] **Step 7: 跑 Android 测试与 Kotlin 编译**
+- [ ] **Step 9: 跑 Android 测试与 Kotlin 编译**
 
 Run:
 
@@ -603,7 +722,7 @@ cd ui/mobile-android
 
 Expected: PASS。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add ui/mobile-android/app/src/main/java/com/sebastian/android/ui/composer/AttachmentSlot.kt ui/mobile-android/app/src/main/java/com/sebastian/android/ui/composer/AttachmentPreviewBar.kt ui/mobile-android/app/src/main/java/com/sebastian/android/ui/composer/Composer.kt ui/mobile-android/app/src/main/java/com/sebastian/android/viewmodel/ChatViewModel.kt ui/mobile-android/app/src/main/java/com/sebastian/android/ui/chat/ChatScreen.kt ui/mobile-android/app/src/test
