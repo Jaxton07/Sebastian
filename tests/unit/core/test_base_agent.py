@@ -775,3 +775,46 @@ async def test_run_streaming_persist_false_uses_preallocated_exchange(tmp_path: 
 
     # allocate_exchange_for_turn must NOT have been called
     mock_allocate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_require_attachments_false_when_store_none(
+    tmp_path: Path,
+) -> None:
+    """run_streaming must call get_context_messages with require_attachments=False when attachment_store is None."""
+    from unittest.mock import MagicMock
+
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+
+    store = SessionStore(tmp_path / "sessions")
+    await store.create_session(
+        Session(id="req-att-test", agent_type="sebastian", title="t")
+    )
+
+    # db_factory non-None → get_context_messages branch is taken; attachment_store=None (default)
+    agent = TestAgent(MagicMock(), store, db_factory=MagicMock())
+
+    captured_kwargs: dict = {}
+
+    async def spy_get_context_messages(session_id, agent_ctx, provider_format, **kwargs):
+        captured_kwargs.update(kwargs)
+        return []
+
+    agent._session_store.get_context_messages = spy_get_context_messages  # type: ignore[method-assign]
+
+    try:
+        await agent.run_streaming("hello", "req-att-test")
+    except Exception:
+        pass  # no LLM wired — expected
+
+    assert captured_kwargs, "get_context_messages must have been called"
+    assert captured_kwargs.get("attachment_store") is None
+    assert captured_kwargs.get("require_attachments") is False, (
+        f"require_attachments must be False when attachment_store is None; "
+        f"got: {captured_kwargs.get('require_attachments')!r}"
+    )
