@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-CONTEXT_COMPACTION_SYSTEM_PROMPT = """你是 Sebastian 的上下文压缩器。Sebastian 是一个通用 AI 管家，服务范围涵盖日常对话、任务调度、信息查询、代码协助等多种场景。
+CONTEXT_COMPACTION_SYSTEM_PROMPT = """你是 Sebastian 的上下文压缩器。
+Sebastian 是一个通用 AI 管家，服务范围涵盖日常对话、任务调度、信息查询、代码协助等多种场景。
 
 将被压缩的对话段落浓缩为一份可供 AI 续接的运行时摘要。
 
