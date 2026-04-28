@@ -118,12 +118,16 @@ async def create_agent_session(
             validate_and_write_attachment_turn,
         )
 
-        _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
-            content=content,
-            attachment_ids=body.attachment_ids,
-            session_id=session.id,
-            agent_type=agent_type,
-        )
+        try:
+            _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
+                content=content,
+                attachment_ids=body.attachment_ids,
+                session_id=session.id,
+                agent_type=agent_type,
+            )
+        except HTTPException:
+            await state.session_store.delete_session(session)
+            raise
         persist_user_message = False
         preallocated_exchange = (exchange_id, exchange_index)
 

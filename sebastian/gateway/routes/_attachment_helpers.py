@@ -1,6 +1,7 @@
 """Shared attachment validation helpers for turn and session creation endpoints."""
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
@@ -65,10 +66,10 @@ async def validate_and_write_attachment_turn(
         from sebastian.context.estimator import TokenEstimator
 
         estimator = TokenEstimator()
-        total_tokens = sum(
-            estimator.estimate_text(state.attachment_store.read_text_content(r))
-            for r in text_records
-        )
+        total_tokens = 0
+        for r in text_records:
+            text = await asyncio.to_thread(state.attachment_store.read_text_content, r)
+            total_tokens += estimator.estimate_text(text)
         if total_tokens > 100_000:
             raise HTTPException(400, "text attachments exceed token budget")
 

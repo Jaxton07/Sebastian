@@ -82,14 +82,16 @@ async def send_turn(
 
     await _ensure_llm_ready("sebastian")
 
+    content = body.content.strip()
+
     if body.attachment_ids:
         # Attachment path: validate first, then create/get session, then write atomically
         # Use first attachment filename as session goal hint if content is empty
-        session_goal = body.content or "(attachment)"
+        session_goal = content or "(attachment)"
         session = await state.sebastian.get_or_create_session(body.session_id, session_goal)
 
         _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
-            content=body.content,
+            content=content,
             attachment_ids=body.attachment_ids,
             session_id=session.id,
             agent_type="sebastian",
@@ -97,7 +99,7 @@ async def send_turn(
 
         task = _create_task(
             state.sebastian.run_streaming(
-                body.content,
+                content,
                 session.id,
                 persist_user_message=False,
                 preallocated_exchange=(exchange_id, exchange_index),
@@ -106,10 +108,10 @@ async def send_turn(
         task.add_done_callback(_log_background_turn_failure)
     else:
         # No attachments: existing path unchanged
-        if not body.content.strip():
+        if not content:
             raise HTTPException(400, "content or attachment_ids required")
-        session = await state.sebastian.get_or_create_session(body.session_id, body.content)
-        task = _create_task(state.sebastian.run_streaming(body.content, session.id))
+        session = await state.sebastian.get_or_create_session(body.session_id, content)
+        task = _create_task(state.sebastian.run_streaming(content, session.id))
         task.add_done_callback(_log_background_turn_failure)
 
     return {
