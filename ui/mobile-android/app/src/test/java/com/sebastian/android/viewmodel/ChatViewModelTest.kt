@@ -69,7 +69,7 @@ class ChatViewModelTest {
         whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
         runBlocking {
-            whenever(chatRepository.sendTurn(any(), any())).thenReturn(Result.success("s1"))
+            whenever(chatRepository.sendTurn(any(), any(), any())).thenReturn(Result.success("s1"))
             whenever(chatRepository.grantApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
@@ -269,15 +269,17 @@ class ChatViewModelTest {
             override fun sessionStream(baseUrl: String, sessionId: String, lastEventId: String?) = sseFlow
             override fun globalStream(baseUrl: String, lastEventId: String?) = flowOf<SseEnvelope>()
             override suspend fun getMessages(sessionId: String) = Result.success(emptyList<Message>())
-            override suspend fun sendTurn(sessionId: String?, content: String) =
+            override suspend fun sendTurn(sessionId: String?, content: String, attachmentIds: List<String>) =
                 Result.failure<String>(RuntimeException("网络错误"))
-            override suspend fun sendSessionTurn(sessionId: String, content: String) =
+            override suspend fun sendSessionTurn(sessionId: String, content: String, attachmentIds: List<String>) =
                 Result.success(Unit)
             override suspend fun cancelTurn(sessionId: String) = Result.success(Unit)
             override suspend fun grantApproval(approvalId: String) = Result.success(Unit)
             override suspend fun denyApproval(approvalId: String) = Result.success(Unit)
             override suspend fun getPendingApprovals() = Result.success(emptyList<ApprovalSnapshot>())
             override suspend fun getTodos(sessionId: String) = Result.success(emptyList<com.sebastian.android.data.model.TodoItem>())
+            override suspend fun uploadAttachment(pending: com.sebastian.android.data.model.PendingAttachment, contentResolver: android.content.ContentResolver): Result<com.sebastian.android.data.model.PendingAttachment> =
+                Result.failure(UnsupportedOperationException())
         }
         viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }
@@ -474,7 +476,7 @@ class ChatViewModelTest {
         activateSession()  // getMessages #1
         // 构造 IDLE_READY：发送失败后 ViewModel 会把 composerState 拨到 IDLE_READY + 保留 error
         runBlocking {
-            whenever(chatRepository.sendTurn(any(), any()))
+            whenever(chatRepository.sendTurn(any(), any(), any()))
                 .thenReturn(Result.failure(RuntimeException("boom")))
         }
         viewModel.sendMessage("半截话")
@@ -599,7 +601,7 @@ class ChatViewModelTest {
     fun `cancelTurn with null activeSessionId cancels sendTurnJob and resets to IDLE_READY`() = vmTest {
         // No active session initially — simulates first ever message
         // Mock sendTurn to hang so we can cancel while PENDING
-        whenever(chatRepository.sendTurn(anyOrNull(), any())).doSuspendableAnswer {
+        whenever(chatRepository.sendTurn(anyOrNull(), any(), any())).doSuspendableAnswer {
             kotlinx.coroutines.delay(30_000)
             Result.success("s1")
         }
@@ -781,7 +783,7 @@ class ChatViewModelTest {
         }
         // sendTurn mock must return success with the fixedClientId (already set up in @Before as "s1",
         // but we override to return the client id so the provisional flow doesn't restart SSE)
-        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(Result.success(fixedClientId))
+        whenever(chatRepository.sendTurn(anyOrNull(), any(), any())).thenReturn(Result.success(fixedClientId))
 
         viewModel.sendMessage("hello")
         dispatcher.scheduler.advanceTimeBy(200)
@@ -794,12 +796,12 @@ class ChatViewModelTest {
         assertEquals("activeSessionId must be the client id", fixedClientId, viewModel.uiState.value.activeSessionId)
 
         // Verify sendTurn was called with the same client id
-        runBlocking { verify(chatRepository).sendTurn(fixedClientId, "hello") }
+        runBlocking { verify(chatRepository).sendTurn(fixedClientId, "hello", emptyList()) }
     }
 
     @Test
     fun `new main session failure removes user bubble and clears active session`() = vmTest {
-        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(
+        whenever(chatRepository.sendTurn(anyOrNull(), any(), any())).thenReturn(
             Result.failure(RuntimeException("net error"))
         )
 
@@ -824,7 +826,7 @@ class ChatViewModelTest {
 
     @Test
     fun `new main session failure emits uiEffects for rollback`() = vmTest {
-        whenever(chatRepository.sendTurn(anyOrNull(), any())).thenReturn(
+        whenever(chatRepository.sendTurn(anyOrNull(), any(), any())).thenReturn(
             Result.failure(RuntimeException("net error"))
         )
 
@@ -916,7 +918,7 @@ class ChatViewModelTest {
             sseFlow
         }
         runBlocking {
-            whenever(chatRepository.sendSessionTurn(any(), any())).thenReturn(Result.success(Unit))
+            whenever(chatRepository.sendSessionTurn(any(), any(), any())).thenReturn(Result.success(Unit))
         }
 
         activateSession("s1")
@@ -1111,7 +1113,7 @@ class ChatViewModelTest {
         runBlocking {
             whenever(chatRepository.getMessages("s1")).thenReturn(Result.success(listOf(completedMsg)))
             whenever(chatRepository.getTodos("s1")).thenReturn(Result.success(todos))
-            whenever(chatRepository.sendTurn(any(), any())).thenReturn(Result.success("s1"))
+            whenever(chatRepository.sendTurn(any(), any(), any())).thenReturn(Result.success("s1"))
         }
 
         // 先 switchSession 让 activeSessionId = "s1"
@@ -1144,15 +1146,17 @@ class ChatViewModelTest {
                 throwingFlow
             override fun globalStream(baseUrl: String, lastEventId: String?) = flowOf<SseEnvelope>()
             override suspend fun getMessages(sessionId: String) = Result.success(emptyList<Message>())
-            override suspend fun sendTurn(sessionId: String?, content: String) =
+            override suspend fun sendTurn(sessionId: String?, content: String, attachmentIds: List<String>) =
                 Result.success("s1")
-            override suspend fun sendSessionTurn(sessionId: String, content: String) =
+            override suspend fun sendSessionTurn(sessionId: String, content: String, attachmentIds: List<String>) =
                 Result.success(Unit)
             override suspend fun cancelTurn(sessionId: String) = Result.success(Unit)
             override suspend fun grantApproval(approvalId: String) = Result.success(Unit)
             override suspend fun denyApproval(approvalId: String) = Result.success(Unit)
             override suspend fun getPendingApprovals() = Result.success(emptyList<ApprovalSnapshot>())
             override suspend fun getTodos(sessionId: String) = Result.success(emptyList<com.sebastian.android.data.model.TodoItem>())
+            override suspend fun uploadAttachment(pending: com.sebastian.android.data.model.PendingAttachment, contentResolver: android.content.ContentResolver): Result<com.sebastian.android.data.model.PendingAttachment> =
+                Result.failure(UnsupportedOperationException())
         }
 
         viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)

@@ -171,6 +171,8 @@ private fun AssistantMessageBlocks(
                             .fillMaxWidth()
                             .alpha(alpha),
                     )
+                    is ContentBlock.ImageBlock -> Unit  // TODO: render attachment image
+                    is ContentBlock.FileBlock -> Unit   // TODO: render file attachment
                 }
                 Spacer(Modifier.height(8.dp))
             }
