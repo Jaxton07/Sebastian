@@ -391,6 +391,8 @@ class ChatViewModel @Inject constructor(
                 if (uploadedAttachments == null) {
                     // uploadPendingAttachments already set composerState=IDLE_READY and showed toast.
                     // Also clean up the provisional session state.
+                    // Note: pendingAttachments is intentionally NOT cleared here — failed-upload
+                    // entries retain AttachmentUploadState.Failed so the user can retry or remove them.
                     cancelPendingTimeout()
                     sendTurnJob = null
                     isProvisionalSession = false
