@@ -8,7 +8,7 @@ data class ModelInputCapabilities(
 )
 
 sealed class AttachmentUploadState {
-    object Pending : AttachmentUploadState()
+    object Local : AttachmentUploadState()
     data class Uploading(val progress: Float = 0f) : AttachmentUploadState()
     data class Uploaded(val attachmentId: String) : AttachmentUploadState()
     data class Failed(val reason: String) : AttachmentUploadState()
@@ -21,7 +21,7 @@ data class PendingAttachment(
     val filename: String,
     val mimeType: String,
     val sizeBytes: Long,
-    val uploadState: AttachmentUploadState = AttachmentUploadState.Pending,
+    val uploadState: AttachmentUploadState = AttachmentUploadState.Local,
 ) {
     val attachmentId: String? get() = (uploadState as? AttachmentUploadState.Uploaded)?.attachmentId
 }

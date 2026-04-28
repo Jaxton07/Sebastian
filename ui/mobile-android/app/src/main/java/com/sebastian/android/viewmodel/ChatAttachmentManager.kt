@@ -86,7 +86,7 @@ internal class ChatAttachmentManager(
         uiState.update {
             it.copy(
                 pendingAttachments = it.pendingAttachments.map { a ->
-                    if (a.localId == localId) a.copy(uploadState = AttachmentUploadState.Pending) else a
+                    if (a.localId == localId) a.copy(uploadState = AttachmentUploadState.Local) else a
                 },
             )
         }
