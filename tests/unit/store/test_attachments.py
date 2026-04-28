@@ -142,6 +142,33 @@ async def test_image_rejects_svg(attachment_store):
         )
 
 
+async def test_image_rejects_supported_mime_with_unsupported_extension(attachment_store):
+    with pytest.raises(AttachmentValidationError):
+        await attachment_store.upload_bytes(
+            filename="payload.txt",
+            content_type="image/png",
+            kind="image",
+            data=b"png-bytes",
+        )
+
+
+async def test_image_accepts_jpg_and_jpeg_extensions(attachment_store):
+    jpg = await attachment_store.upload_bytes(
+        filename="photo.jpg",
+        content_type="image/jpeg",
+        kind="image",
+        data=b"jpeg-bytes-1",
+    )
+    jpeg = await attachment_store.upload_bytes(
+        filename="photo.jpeg",
+        content_type="image/jpeg",
+        kind="image",
+        data=b"jpeg-bytes-2",
+    )
+    assert jpg.kind == "image"
+    assert jpeg.kind == "image"
+
+
 # Step 5：read_text_content 返回完整内容
 async def test_read_text_content_returns_full_not_excerpt(attachment_store):
     from sebastian.store.attachments import TEXT_EXCERPT_CHARS

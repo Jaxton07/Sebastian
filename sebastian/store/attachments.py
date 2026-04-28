@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sebastian.store.models import AttachmentRecord
 
 ALLOWED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
+ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
 ALLOWED_TEXT_EXTENSIONS = frozenset({".txt", ".md", ".csv", ".json", ".log"})
 ALLOWED_TEXT_MIME_TYPES = frozenset({
     "text/plain",
@@ -61,7 +62,7 @@ class AttachmentStore:
         data: bytes,
     ) -> UploadedAttachment:
         if kind == "image":
-            self._validate_image(content_type, data)
+            self._validate_image(filename, content_type, data)
         elif kind == "text_file":
             self._validate_text_file(filename, content_type, data)
         else:
@@ -243,7 +244,10 @@ class AttachmentStore:
 
     # --- 校验私有方法 ---
 
-    def _validate_image(self, content_type: str, data: bytes) -> None:
+    def _validate_image(self, filename: str, content_type: str, data: bytes) -> None:
+        suffix = Path(filename).suffix.lower()
+        if suffix not in ALLOWED_IMAGE_EXTENSIONS:
+            raise AttachmentValidationError(f"Unsupported image extension: {suffix!r}")
         if content_type not in ALLOWED_IMAGE_MIME_TYPES:
             raise AttachmentValidationError(f"Unsupported image MIME: {content_type!r}")
         if len(data) > MAX_IMAGE_BYTES:
