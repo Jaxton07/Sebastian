@@ -357,6 +357,7 @@ class SessionStore:
         agent_type: str,
         provider_format: str,
         include_thinking: bool = False,
+        attachment_store: Any | None = None,
     ) -> list[dict[str, Any]]:
         """Project timeline items into provider-specific message dicts.
 
@@ -365,6 +366,7 @@ class SessionStore:
             agent_type: Agent type (e.g. "sebastian").
             provider_format: "anthropic" or "openai".
             include_thinking: Include thinking blocks (Anthropic only).
+            attachment_store: AttachmentStore for resolving attachment content.
 
         Requires db_factory.
         """
@@ -376,7 +378,12 @@ class SessionStore:
             items = await self._timeline.get_context_items(session_id, agent_type)
         from sebastian.store.session_context import build_context_messages
 
-        return build_context_messages(items, provider_format, include_thinking=include_thinking)
+        return await build_context_messages(
+            items,
+            provider_format,
+            include_thinking=include_thinking,
+            attachment_store=attachment_store,
+        )
 
     async def append_user_turn_with_attachments(
         self,

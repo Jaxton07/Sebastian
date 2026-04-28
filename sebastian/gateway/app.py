@@ -26,6 +26,7 @@ def _initialize_agent_instances(
     llm_registry: LLMProviderRegistry,
     db_factory: Any = None,
     compaction_scheduler: Any = None,
+    attachment_store: Any = None,
 ) -> dict[str, BaseAgent]:
     """Create a singleton instance for each registered agent type."""
     instances: dict[str, BaseAgent] = {}
@@ -39,6 +40,7 @@ def _initialize_agent_instances(
             allowed_skills=cfg.allowed_skills,
             db_factory=db_factory,
             compaction_scheduler=compaction_scheduler,
+            attachment_store=attachment_store,
         )
         agent.name = cfg.agent_type
         instances[cfg.agent_type] = agent
@@ -235,6 +237,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         agent_registry={cfg.agent_type: cfg for cfg in agent_configs},
         db_factory=db_factory,
         compaction_scheduler=state.context_compaction_scheduler,
+        attachment_store=attachment_store,
     )
 
     state.sebastian = sebastian_agent
@@ -254,6 +257,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         llm_registry=llm_registry,
         db_factory=state.db_factory,
         compaction_scheduler=state.context_compaction_scheduler,
+        attachment_store=attachment_store,
     )
 
     watchdog_task = start_watchdog(

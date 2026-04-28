@@ -9,6 +9,8 @@ Only produces plain ``dict`` output — no provider SDK types involved.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from typing import Any
 
@@ -17,11 +19,13 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def build_context_messages(
+async def build_context_messages(
     items: list[dict[str, Any]],
     provider_format: str,
     *,
     include_thinking: bool = False,
+    attachment_store: Any | None = None,
+    require_attachments: bool = True,
 ) -> list[dict[str, Any]]:
     """Project timeline items into provider-specific message dicts.
 
@@ -29,12 +33,23 @@ def build_context_messages(
         items: Timeline item dicts ordered by (effective_seq, seq).
         provider_format: ``"anthropic"`` or ``"openai"``.
         include_thinking: When True, include thinking blocks in Anthropic output.
+        attachment_store: AttachmentStore instance for reading attachment content.
+            Required when timeline contains ``attachment`` items and
+            ``require_attachments=True``.
+        require_attachments: When True (default), raise ValueError if an
+            attachment item is encountered but ``attachment_store`` is None.
+            When False, silently skip attachment items without a store.
 
     Returns:
         List of message dicts ready to pass to the provider SDK.
     """
     if provider_format == "anthropic":
-        return _build_anthropic(items, include_thinking=include_thinking)
+        return await _build_anthropic(
+            items,
+            include_thinking=include_thinking,
+            attachment_store=attachment_store,
+            require_attachments=require_attachments,
+        )
     if provider_format in ("openai", "openai_compat"):
         return _build_openai(items)
     raise ValueError(f"Unknown provider_format: {provider_format!r}")
@@ -76,7 +91,7 @@ def build_legacy_messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "created_at": item.get("created_at"),
                 }
             )
-        # tool_call, tool_result, thinking, raw_block, system_event 不进入 legacy messages
+        # tool_call, tool_result, thinking, raw_block, system_event, attachment 不进入 legacy messages
     return result
 
 
@@ -85,15 +100,19 @@ def build_legacy_messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _build_anthropic(
+async def _build_anthropic(
     items: list[dict[str, Any]],
     *,
     include_thinking: bool,
+    attachment_store: Any | None,
+    require_attachments: bool,
 ) -> list[dict[str, Any]]:
     """Build Anthropic-format messages from timeline items.
 
     Rules:
-    - user_message → {"role": "user", "content": str}
+    - user_message → {"role": "user", "content": str} (or list when attachments follow)
+    - attachment items that share the same exchange_id as the preceding user_message
+      are merged into that user message's content list
     - assistant_message, tool_call, thinking within the same
       (assistant_turn_id, provider_call_index) group → merged into one assistant message
       whose content is a list of blocks.
@@ -107,13 +126,87 @@ def _build_anthropic(
     # Pending tool_result blocks to attach to the next user message.
     _pending_tool_results: list[dict[str, Any]] = []
 
+    # Pending user turn accumulation for attachment merging.
+    # When we encounter a user_message we don't emit immediately; we buffer it
+    # so that subsequent attachment items (same exchange_id) can be merged in.
+    _pending_user_exchange: str | None = None
+    _pending_user_content_list: list[dict[str, Any]] | None = None
+
     # Group consecutive items that share the same (assistant_turn_id, provider_call_index)
     # so we can merge assistant blocks correctly.
     groups = _group_by_call(items)
 
+    async def _flush_pending_user() -> None:
+        nonlocal _pending_user_exchange, _pending_user_content_list
+        if _pending_user_content_list is None:
+            return
+        content_list = _pending_user_content_list
+        _pending_user_exchange = None
+        _pending_user_content_list = None
+        _flush_tool_results_into_user_list(messages, _pending_tool_results, content_list)
+
     for group in groups:
         first = group[0]
         kind = first["kind"]
+
+        # --- attachment --------------------------------------------------------
+        if kind == "attachment":
+            exchange_id = first.get("exchange_id")
+            if (
+                exchange_id
+                and exchange_id == _pending_user_exchange
+                and _pending_user_content_list is not None
+            ):
+                # Merge into the buffered user message
+                payload = first.get("payload") or {}
+                att_id = payload.get("attachment_id")
+                att_kind = payload.get("kind")
+                filename = payload.get("original_filename", "file")
+
+                if attachment_store is None:
+                    if require_attachments:
+                        raise ValueError(
+                            "attachment_store is required for attachment timeline items"
+                        )
+                    # else: silently skip this attachment
+                elif att_kind == "text_file":
+                    record = await attachment_store.get(att_id)
+                    if record is not None:
+                        text = await asyncio.to_thread(
+                            attachment_store.read_text_content, record
+                        )
+                        fenced = (
+                            f"用户上传了文本文件：{filename}\n"
+                            f"```{filename}\n{text}\n```"
+                        )
+                        _pending_user_content_list.append({"type": "text", "text": fenced})
+                elif att_kind == "image":
+                    record = await attachment_store.get(att_id)
+                    if record is not None:
+                        blob_path = attachment_store.blob_absolute_path(record)
+                        data = await asyncio.to_thread(blob_path.read_bytes)
+                        encoded = base64.b64encode(data).decode()
+                        _pending_user_content_list.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": record.mime_type,
+                                    "data": encoded,
+                                },
+                            }
+                        )
+            else:
+                # Attachment with no matching pending user context: flush then skip.
+                await _flush_pending_user()
+                if attachment_store is None and require_attachments:
+                    raise ValueError(
+                        "attachment_store is required for attachment timeline items"
+                    )
+            continue
+
+        # Flush any pending user turn before processing a non-attachment group
+        await _flush_pending_user()
 
         # --- context_summary ---------------------------------------------------
         if kind == "context_summary":
@@ -131,8 +224,12 @@ def _build_anthropic(
 
         # --- pure user_message group -------------------------------------------
         if all(item["kind"] == "user_message" for item in group):
-            _flush_tool_results_into_user(messages, _pending_tool_results, first["content"])
-            _pending_tool_results = []
+            # Buffer for potential subsequent attachment merging
+            user_content = first["content"]
+            _pending_user_exchange = first.get("exchange_id")
+            _pending_user_content_list = (
+                [{"type": "text", "text": user_content}] if user_content else []
+            )
             continue
 
         # --- tool_result -------------------------------------------------------
@@ -163,6 +260,9 @@ def _build_anthropic(
                 else:
                     messages.append({"role": "assistant", "content": blocks})
             continue
+
+    # Flush any remaining pending user turn
+    await _flush_pending_user()
 
     # Flush any remaining pending tool results as a standalone user message
     _flush_tool_results(messages, _pending_tool_results)
@@ -224,6 +324,34 @@ def _flush_tool_results(
     pending.clear()
 
 
+def _flush_tool_results_into_user_list(
+    messages: list[dict[str, Any]],
+    pending: list[dict[str, Any]],
+    content_list: list[dict[str, Any]],
+) -> None:
+    """Combine pending tool_result blocks with a user content list, then emit.
+
+    If there are pending results, prepend them to the content list.
+    Simplifies back to a plain string if the result is a single text block
+    with no pending tool results (preserves backward compat).
+    """
+    if pending:
+        combined: list[dict[str, Any]] = list(pending) + content_list
+        pending.clear()
+        messages.append({"role": "user", "content": combined})
+        return
+
+    # No pending tool results
+    if len(content_list) == 1 and content_list[0].get("type") == "text":
+        # Single text block → simplify to string for backward compat
+        messages.append({"role": "user", "content": content_list[0]["text"]})
+    elif content_list:
+        messages.append({"role": "user", "content": content_list})
+    else:
+        # Empty content: emit an empty string user message
+        messages.append({"role": "user", "content": ""})
+
+
 def _flush_tool_results_into_user(
     messages: list[dict[str, Any]],
     pending: list[dict[str, Any]],
@@ -262,6 +390,7 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     - context_summary → {"role": "user", "content": str}
     - thinking → skipped (OpenAI format does not support thinking blocks)
     - system_event → skipped
+    - attachment → skipped (P0: only Anthropic projection)
     """
     messages: list[dict[str, Any]] = []
     groups = _group_by_call(items)
@@ -279,6 +408,10 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         if kind == "thinking":
             # OpenAI has no thinking format — skip
+            continue
+
+        if kind == "attachment":
+            # OpenAI projection does not support attachments (P0: Anthropic only)
             continue
 
         if all(item["kind"] == "user_message" for item in group):
@@ -367,7 +500,7 @@ def _group_by_call(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     - user_message: always singleton (becomes a user message)
     - tool_result: always singleton (held as pending in Anthropic, emitted as
       role=tool in OpenAI)
-    - context_summary / system_event: always singleton
+    - context_summary / system_event / attachment: always singleton
     - items missing assistant_turn_id or provider_call_index: singleton
 
     Within each group items retain their original order (already sorted by

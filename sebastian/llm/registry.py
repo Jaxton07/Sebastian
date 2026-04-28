@@ -143,8 +143,8 @@ class LLMProviderRegistry:
             thinking_format=model_spec.thinking_format,
             account_id=account.id,
             model_display_name=model_spec.display_name,
-            supports_image_input=False,
-            supports_text_file_input=True,
+            supports_image_input=model_spec.supports_image_input,
+            supports_text_file_input=model_spec.supports_text_file_input,
         )
 
     # ------------------------------------------------------------------

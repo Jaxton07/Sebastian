@@ -95,9 +95,11 @@ class BaseAgent(ABC):
         llm_registry: LLMProviderRegistry | None = None,
         db_factory: async_sessionmaker[AsyncSession] | None = None,
         compaction_scheduler: CompactionScheduler | None = None,
+        attachment_store: Any | None = None,
     ) -> None:
         self._gate = gate
         self._db_factory = db_factory
+        self._attachment_store = attachment_store
         self._compaction_scheduler = compaction_scheduler
         self._current_task_goals: dict[str, str] = {}  # session_id → goal
         self._current_depth: dict[str, int] = {}  # session_id → depth
@@ -413,7 +415,8 @@ class BaseAgent(ABC):
 
         if self._db_factory is not None:
             messages = await self._session_store.get_context_messages(
-                session_id, agent_context, provider_format
+                session_id, agent_context, provider_format,
+                attachment_store=self._attachment_store,
             )
         else:
             raw = await self._session_store.get_messages(session_id, agent_context, limit=50)
