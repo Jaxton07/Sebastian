@@ -19,12 +19,16 @@ import androidx.compose.ui.Modifier
 fun AttachmentSlot(
     onImageClick: () -> Unit,
     onFileClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier) {
-        IconButton(onClick = { expanded = true }) {
+        IconButton(
+            onClick = { if (enabled) expanded = true },
+            enabled = enabled,
+        ) {
             Icon(Icons.Default.AttachFile, contentDescription = "附件")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

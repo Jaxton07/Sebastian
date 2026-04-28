@@ -64,6 +64,7 @@ import com.sebastian.android.ui.composer.Composer
 import com.sebastian.android.ui.navigation.Route
 import com.sebastian.android.viewmodel.ChatUiEffect
 import com.sebastian.android.viewmodel.ChatViewModel
+import com.sebastian.android.viewmodel.ComposerState
 import com.sebastian.android.viewmodel.SessionViewModel
 
 private fun resolveUriMeta(contentResolver: ContentResolver, uri: Uri): Triple<String, String, Long> {
@@ -394,6 +395,8 @@ fun ChatScreen(
                                     arrayOf("text/plain", "text/markdown", "text/csv", "application/json", "text/x-log")
                                 )
                             },
+                            enabled = chatState.composerState == ComposerState.IDLE_EMPTY
+                                || chatState.composerState == ComposerState.IDLE_READY,
                         )
                     },
                     attachmentPreviewSlot = if (chatState.pendingAttachments.isNotEmpty()) {
