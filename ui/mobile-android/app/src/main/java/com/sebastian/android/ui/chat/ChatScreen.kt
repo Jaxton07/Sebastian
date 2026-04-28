@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -69,6 +70,7 @@ import com.sebastian.android.viewmodel.ChatUiEffect
 import com.sebastian.android.viewmodel.ChatViewModel
 import com.sebastian.android.viewmodel.ComposerState
 import com.sebastian.android.viewmodel.SessionViewModel
+import kotlinx.coroutines.delay
 
 private fun resolveUriMeta(contentResolver: ContentResolver, uri: Uri): Triple<String, String, Long> {
     var filename = uri.lastPathSegment ?: "attachment"
@@ -127,6 +129,19 @@ fun ChatScreen(
         init = { mutableStateOf(SidePane.NONE) },
     )
     var deleteTarget by remember { mutableStateOf<Session?>(null) }
+
+    // Session 切换淡出：点击 session 时立即开始淡出，等面板动画结束后再做实际切换
+    var messagesFading by remember { mutableStateOf(false) }
+    val switchScope = rememberCoroutineScope()
+    // ViewModel 接管后（isSessionSwitching=true）清除本地淡出标志，避免双重控制
+    LaunchedEffect(chatState.isSessionSwitching) {
+        if (chatState.isSessionSwitching) messagesFading = false
+    }
+    val messageListAlpha by animateFloatAsState(
+        targetValue = if (chatState.isSessionSwitching || messagesFading) 0f else 1f,
+        animationSpec = tween(durationMillis = if (chatState.isSessionSwitching || messagesFading) 120 else 260),
+        label = "messageListAlpha",
+    )
 
     // Load appropriate sessions based on mode, and refresh model input capabilities
     LaunchedEffect(agentId) {
@@ -199,8 +214,12 @@ fun ChatScreen(
                 activeSessionId = chatState.activeSessionId,
                 agentName = agentName,
                 onSessionClick = { session ->
-                    chatViewModel.switchSession(session.id)
+                    messagesFading = true
                     activePane = SidePane.NONE
+                    switchScope.launch {
+                        delay(350) // 等 spring 动画视觉完成后再做重布局
+                        chatViewModel.switchSession(session.id)
+                    }
                 },
                 onDeleteSession = { deleteTarget = it },
                 onNavigateToSettings = {
@@ -217,11 +236,6 @@ fun ChatScreen(
         mainPane = {
             val glassState = rememberGlassState(MaterialTheme.colorScheme.background)
             val context = LocalContext.current
-            val messageListAlpha by animateFloatAsState(
-                targetValue = if (chatState.isSessionSwitching) 0f else 1f,
-                animationSpec = tween(durationMillis = if (chatState.isSessionSwitching) 120 else 260),
-                label = "messageListAlpha",
-            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
