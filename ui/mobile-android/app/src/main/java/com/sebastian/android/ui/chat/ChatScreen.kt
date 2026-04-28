@@ -366,7 +366,7 @@ fun ChatScreen(
                 Composer(
                     state = chatState.composerState,
                     glassState = glassState,
-                    onSend = { text ->
+                    onSend = { text, _ ->
                         if (agentId != null) {
                             chatViewModel.sendAgentMessage(agentId, text)
                         } else {
