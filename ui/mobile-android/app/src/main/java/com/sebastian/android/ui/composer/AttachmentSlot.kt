@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 
 @Composable
@@ -31,6 +32,7 @@ fun AttachmentSlot(
         IconButton(
             onClick = { expanded = true },
             enabled = enabled,
+            modifier = Modifier.focusProperties { canFocus = false },
         ) {
             Icon(Icons.Default.AttachFile, contentDescription = "附件", tint = iconTint)
         }
