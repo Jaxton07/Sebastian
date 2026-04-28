@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -267,7 +268,7 @@ async def test_orphan_attachment_skipped_when_require_attachments_false() -> Non
 
 
 async def test_openai_attachment_skipped() -> None:
-    """OpenAI format silently skips attachment items."""
+    """OpenAI format silently skips attachment items when no store is provided."""
     items: list[dict[str, Any]] = [
         {"kind": "user_message", "content": "hi", "exchange_id": "exch-1"},
         {
@@ -281,7 +282,119 @@ async def test_openai_attachment_skipped() -> None:
             },
         },
     ]
-    messages = await build_context_messages(items, "openai", attachment_store=None)
+    messages = await build_context_messages(
+        items, "openai", attachment_store=None, require_attachments=False
+    )
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_openai_projection_merges_text_attachment_into_user_message(tmp_path: Path) -> None:
+    from pathlib import Path as _Path
+    from types import SimpleNamespace
+
+    record = SimpleNamespace(id="att-1", kind="text_file", mime_type="text/markdown")
+
+    class FakeAttachmentStore:
+        async def get(self, attachment_id: str):
+            return record
+
+        def read_text_content(self, rec) -> str:
+            return "# Notes"
+
+        def blob_absolute_path(self, rec):
+            p = tmp_path / rec.id
+            p.write_bytes(b"")
+            return p
+
+    store = FakeAttachmentStore()
+    items = [
+        {
+            "kind": "user_message",
+            "role": "user",
+            "content": "read this",
+            "exchange_id": "exc-1",
+            "seq": 1,
+        },
+        {
+            "kind": "attachment",
+            "role": "user",
+            "content": "notes.md",
+            "exchange_id": "exc-1",
+            "seq": 2,
+            "payload": {
+                "attachment_id": "att-1",
+                "kind": "text_file",
+                "original_filename": "notes.md",
+            },
+        },
+    ]
+
+    messages = await build_context_messages(
+        items,
+        "openai",
+        attachment_store=store,
+    )
+
+    assert messages == [
+        {
+            "role": "user",
+            "content": "read this\n\n用户上传了文本文件：notes.md\n```notes.md\n# Notes\n```",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_projection_merges_image_attachment_as_image_url(tmp_path: Path) -> None:
+    from pathlib import Path as _Path
+    from types import SimpleNamespace
+
+    record = SimpleNamespace(id="att-img", kind="image", mime_type="image/png")
+
+    class FakeAttachmentStore:
+        async def get(self, attachment_id: str):
+            return record
+
+        def read_text_content(self, rec) -> str:
+            return ""
+
+        def blob_absolute_path(self, rec):
+            p = tmp_path / rec.id
+            p.write_bytes(b"png-bytes")
+            return p
+
+    store = FakeAttachmentStore()
+    items = [
+        {
+            "kind": "user_message",
+            "role": "user",
+            "content": "what is this?",
+            "exchange_id": "exc-1",
+            "seq": 1,
+        },
+        {
+            "kind": "attachment",
+            "role": "user",
+            "content": "photo.png",
+            "exchange_id": "exc-1",
+            "seq": 2,
+            "payload": {
+                "attachment_id": "att-img",
+                "kind": "image",
+                "original_filename": "photo.png",
+            },
+        },
+    ]
+
+    messages = await build_context_messages(
+        items,
+        "openai",
+        attachment_store=store,
+    )
+
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"][0] == {"type": "text", "text": "what is this?"}
+    assert messages[0]["content"][1]["type"] == "image_url"
+    assert messages[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")

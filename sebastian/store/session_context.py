@@ -54,7 +54,11 @@ async def build_context_messages(
             require_attachments=require_attachments,
         )
     if provider_format in ("openai", "openai_compat"):
-        return _build_openai(items)
+        return await _build_openai(
+            items,
+            attachment_store=attachment_store,
+            require_attachments=require_attachments,
+        )
     raise ValueError(f"Unknown provider_format: {provider_format!r}")
 
 
@@ -94,7 +98,8 @@ def build_legacy_messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "created_at": item.get("created_at"),
                 }
             )
-        # tool_call, tool_result, thinking, raw_block, system_event, attachment 不进入 legacy messages
+        # tool_call, tool_result, thinking, raw_block, system_event, attachment
+        # 不进入 legacy messages
     return result
 
 
@@ -379,11 +384,20 @@ def _flush_tool_results_into_user(
 # ---------------------------------------------------------------------------
 
 
-def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+async def _build_openai(
+    items: list[dict[str, Any]],
+    *,
+    attachment_store: Any | None,
+    require_attachments: bool,
+) -> list[dict[str, Any]]:
     """Build OpenAI-format messages from timeline items.
 
     Rules:
-    - user_message → {"role": "user", "content": str}
+    - user_message → buffered for potential attachment merging
+    - attachment same exchange_id as pending user → merged into that user message
+      - text_file: appended as fenced text block to string content
+      - image: content converted to list with text + image_url blocks
+    - attachment with no matching pending user or no store → skip (or raise)
     - assistant_message → {"role": "assistant", "content": str}
     - tool_call(s) within same provider_call_index → single assistant message
       with tool_calls list
@@ -391,38 +405,123 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     - context_summary → {"role": "user", "content": str}
     - thinking → skipped (OpenAI format does not support thinking blocks)
     - system_event → skipped
-    - attachment → skipped (P0: only Anthropic projection)
     """
     messages: list[dict[str, Any]] = []
     groups = _group_by_call(items)
+
+    # Pending user turn state for attachment buffering
+    _pending_user_exchange: str | None = None
+    _pending_user_content: str = ""
+    # None = string mode; list = already converted to content-block list mode
+    _pending_user_blocks: list[dict[str, Any]] | None = None
+
+    def _flush_pending_user() -> None:
+        nonlocal _pending_user_exchange, _pending_user_content, _pending_user_blocks
+        if _pending_user_exchange is None:
+            return
+        if _pending_user_blocks is not None:
+            messages.append({"role": "user", "content": _pending_user_blocks})
+        else:
+            messages.append({"role": "user", "content": _pending_user_content})
+        _pending_user_exchange = None
+        _pending_user_content = ""
+        _pending_user_blocks = None
 
     for group in groups:
         first = group[0]
         kind = first["kind"]
 
         if kind == "context_summary":
+            _flush_pending_user()
             messages.append({"role": "user", "content": first["content"]})
             continue
 
         if kind == "system_event":
+            _flush_pending_user()
             continue
 
         if kind == "thinking":
             # OpenAI has no thinking format — skip
+            _flush_pending_user()
             continue
 
         if kind == "attachment":
-            # OpenAI projection does not support attachments (P0: Anthropic only)
-            payload = first.get("payload") or {}
-            _logger.warning(
-                "Attachment %s skipped in OpenAI context projection (not yet supported)",
-                payload.get("attachment_id", "unknown"),
-            )
+            exchange_id = first.get("exchange_id")
+            if (
+                exchange_id
+                and exchange_id == _pending_user_exchange
+            ):
+                # Merge into buffered user message
+                payload = first.get("payload") or {}
+                att_id = payload.get("attachment_id")
+                att_kind = payload.get("kind")
+                filename = payload.get("original_filename", "file")
+
+                if attachment_store is None:
+                    if require_attachments:
+                        raise ValueError(
+                            "attachment_store is required for attachment timeline items"
+                        )
+                    # else: silently skip this attachment
+                elif att_kind == "text_file":
+                    record = await attachment_store.get(att_id)
+                    if record is not None:
+                        text = await asyncio.to_thread(
+                            attachment_store.read_text_content, record
+                        )
+                        fenced = (
+                            f"用户上传了文本文件：{filename}\n"
+                            f"```{filename}\n{text}\n```"
+                        )
+                        if _pending_user_blocks is not None:
+                            _pending_user_blocks.append({"type": "text", "text": fenced})
+                        else:
+                            # Append to string content
+                            _pending_user_content = (
+                                f"{_pending_user_content}\n\n{fenced}"
+                                if _pending_user_content
+                                else fenced
+                            )
+                elif att_kind == "image":
+                    record = await attachment_store.get(att_id)
+                    if record is not None:
+                        blob_path = attachment_store.blob_absolute_path(record)
+                        data = await asyncio.to_thread(blob_path.read_bytes)
+                        encoded = base64.b64encode(data).decode()
+                        # Convert to block list mode if not already
+                        if _pending_user_blocks is None:
+                            _pending_user_blocks = []
+                            if _pending_user_content:
+                                _pending_user_blocks.append(
+                                    {"type": "text", "text": _pending_user_content}
+                                )
+                        _pending_user_blocks.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{record.mime_type};base64,{encoded}"
+                                },
+                            }
+                        )
+            else:
+                # Attachment with no matching pending user context: guard then flush then skip.
+                if attachment_store is None and require_attachments:
+                    raise ValueError(
+                        "attachment_store is required for attachment timeline items"
+                    )
+                _flush_pending_user()
             continue
 
         if all(item["kind"] == "user_message" for item in group):
-            messages.append({"role": "user", "content": first["content"]})
+            # Flush any previous pending user before buffering this one
+            _flush_pending_user()
+            _pending_user_exchange = first.get("exchange_id")
+            _pending_user_content = first.get("content", "")
+            _pending_user_blocks = None
             continue
+
+        # All non-user groups flush pending first
+        _flush_pending_user()
 
         if all(item["kind"] == "tool_result" for item in group):
             for item in group:
@@ -488,6 +587,9 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "content": payload.get("model_content", item.get("content", "")),
                 }
             )
+
+    # Flush any remaining pending user turn
+    _flush_pending_user()
 
     return messages
 
