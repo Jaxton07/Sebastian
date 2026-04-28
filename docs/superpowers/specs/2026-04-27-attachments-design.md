@@ -2,6 +2,8 @@
 version: "1.0"
 last_updated: 2026-04-27
 status: planned
+integrated_to: mobile/attachments.md
+integrated_at: 2026-04-28
 ---
 
 # 图片与文本文件附件输入设计
