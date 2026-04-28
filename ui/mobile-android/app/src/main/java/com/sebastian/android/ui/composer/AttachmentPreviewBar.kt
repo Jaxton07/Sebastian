@@ -28,8 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import com.sebastian.android.data.model.AttachmentKind
 import com.sebastian.android.data.model.AttachmentUploadState
 import com.sebastian.android.data.model.PendingAttachment
@@ -141,14 +144,30 @@ private fun ImageAttachmentPreview(
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = att.uri,
                 contentDescription = att.filename,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
-            )
+            ) {
+                when (painter.state) {
+                    is AsyncImagePainter.State.Error -> {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.errorContainer),
+                        )
+                    }
+                    else -> SubcomposeAsyncImageContent()
+                }
+            }
             Row(
-                modifier = Modifier.align(Alignment.TopEnd),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .background(
+                        Color.Black.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                    ),
             ) {
                 if (state is AttachmentUploadState.Failed) {
                     IconButton(
@@ -173,7 +192,7 @@ private fun ImageAttachmentPreview(
                     )
                 }
             }
-            if (state is AttachmentUploadState.Uploading) {
+            if (state is AttachmentUploadState.Uploading || state is AttachmentUploadState.Local) {
                 CircularProgressIndicator(
                     modifier = Modifier
                         .size(20.dp)
@@ -186,9 +205,9 @@ private fun ImageAttachmentPreview(
                     Icons.Default.Warning,
                     contentDescription = "上传失败",
                     modifier = Modifier
+                        .padding(2.dp)
                         .size(20.dp)
-                        .align(Alignment.BottomStart)
-                        .padding(2.dp),
+                        .align(Alignment.BottomStart),
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
