@@ -100,6 +100,7 @@ class Sebastian(BaseAgent):
         "stop_agent",
         "todo_write",
         "todo_read",
+        "send_file",
         "memory_save",
         "memory_search",
         "Read",

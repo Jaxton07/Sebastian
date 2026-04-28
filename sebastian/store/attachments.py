@@ -167,6 +167,41 @@ class AttachmentStore:
                 raise AttachmentConflictError(f"Attachment {r.id!r} is already bound to a session")
         return records
 
+    async def mark_agent_sent(
+        self,
+        attachment_id: str,
+        agent_type: str,
+        session_id: str,
+    ) -> AttachmentRecord:
+        async with self._db_factory() as session:
+            record = await session.get(AttachmentRecord, attachment_id)
+        if record is None:
+            raise AttachmentNotFoundError(f"Attachment not found: {attachment_id!r}")
+        if record.status != "uploaded" or record.session_id is not None:
+            raise AttachmentConflictError(
+                f"Attachment {attachment_id!r} cannot be sent: status={record.status!r}, "
+                f"session_id={record.session_id!r}"
+            )
+        now = datetime.now(UTC)
+        async with self._db_factory() as session:
+            await session.execute(
+                update(AttachmentRecord)
+                .where(AttachmentRecord.id == attachment_id)
+                .values(
+                    status="attached",
+                    agent_type=agent_type,
+                    session_id=session_id,
+                    attached_at=now,
+                )
+            )
+            await session.commit()
+            record = await session.get(AttachmentRecord, attachment_id)
+        if record is None:
+            raise AttachmentValidationError(
+                f"Attachment lost after mark_agent_sent: {attachment_id!r}"
+            )
+        return record
+
     # Internal only: opens its own DB session and is NOT atomic with timeline writes.
     # The canonical status transition is done inline in
     # SessionStore.append_user_turn_with_attachments.
