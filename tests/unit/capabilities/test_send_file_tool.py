@@ -294,6 +294,23 @@ async def test_send_file_unsupported_type_returns_error(
 
 
 @pytest.mark.asyncio
+async def test_send_file_too_large_returns_error(patched_state, set_ctx, tmp_path: Path) -> None:
+    MAX_TEXT_BYTES = 2 * 1024 * 1024  # 2MB
+    too_large = tmp_path / "big.txt"
+    too_large.write_bytes(b"x" * (MAX_TEXT_BYTES + 1))
+    set_ctx("s1", "sebastian")
+
+    from sebastian.capabilities.tools.send_file import send_file
+
+    result = await send_file(str(too_large))
+
+    assert result.ok is False
+    assert "Do not retry automatically" in result.error
+    size_words = ["large", "exceeds", "limit", "bytes", "mb"]
+    assert any(word in result.error.lower() for word in size_words)
+
+
+@pytest.mark.asyncio
 async def test_send_file_attachment_store_unavailable(
     patched_state, set_ctx, tmp_path: Path
 ) -> None:

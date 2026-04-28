@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +25,7 @@ async def db_factory():
         yield factory
     finally:
         await engine.dispose()
+        await asyncio.sleep(0)
 
 
 @pytest.fixture

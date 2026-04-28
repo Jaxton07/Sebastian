@@ -85,7 +85,7 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
         return ToolResult(
             ok=False,
             error=(
-                f"File not found: {file_path}. Do not retry automatically; "
+                f"File not found: {path}. Do not retry automatically; "
                 "ask the user to provide an existing file path."
             ),
         )
@@ -94,7 +94,7 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
         return ToolResult(
             ok=False,
             error=(
-                f"Path is a directory, not a file: {file_path}. Do not retry automatically; "
+                f"Path is a directory, not a file: {path}. Do not retry automatically; "
                 "ask the user for a file path."
             ),
         )
@@ -130,14 +130,14 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
             kind=kind,
             data=data,
         )
-    except AttachmentValidationError as e:
-        msg = str(e)
+    except AttachmentValidationError as exc:
+        msg = str(exc)
         if "exceeds" in msg or "limit" in msg:
             return ToolResult(
                 ok=False,
                 error=(
-                    f"File {filename} is too large and exceeds the allowed size limit. "
-                    "Do not retry automatically; ask the user to provide a smaller file."
+                    f"File {filename!r} is too large to send: {exc}. "
+                    "Do not retry automatically; ask the user to choose a smaller file."
                 ),
             )
         return ToolResult(

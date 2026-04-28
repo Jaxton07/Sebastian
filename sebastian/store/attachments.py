@@ -173,34 +173,22 @@ class AttachmentStore:
         agent_type: str,
         session_id: str,
     ) -> AttachmentRecord:
-        async with self._db_factory() as session:
-            record = await session.get(AttachmentRecord, attachment_id)
-        if record is None:
-            raise AttachmentNotFoundError(f"Attachment not found: {attachment_id!r}")
-        if record.status != "uploaded" or record.session_id is not None:
-            raise AttachmentConflictError(
-                f"Attachment {attachment_id!r} cannot be sent: status={record.status!r}, "
-                f"session_id={record.session_id!r}"
-            )
         now = datetime.now(UTC)
-        async with self._db_factory() as session:
-            await session.execute(
-                update(AttachmentRecord)
-                .where(AttachmentRecord.id == attachment_id)
-                .values(
-                    status="attached",
-                    agent_type=agent_type,
-                    session_id=session_id,
-                    attached_at=now,
+        async with self._db_factory() as db:
+            record = await db.get(AttachmentRecord, attachment_id)
+            if record is None:
+                raise AttachmentNotFoundError(f"Attachment not found: {attachment_id}")
+            if record.status != "uploaded" or record.session_id is not None:
+                raise AttachmentConflictError(
+                    f"Attachment {attachment_id!r} is not available for agent send"
                 )
-            )
-            await session.commit()
-            record = await session.get(AttachmentRecord, attachment_id)
-        if record is None:
-            raise AttachmentValidationError(
-                f"Attachment lost after mark_agent_sent: {attachment_id!r}"
-            )
-        return record
+            record.status = "attached"
+            record.agent_type = agent_type
+            record.session_id = session_id
+            record.attached_at = now
+            await db.commit()
+            await db.refresh(record)
+            return record
 
     # Internal only: opens its own DB session and is NOT atomic with timeline writes.
     # The canonical status transition is done inline in
