@@ -70,9 +70,20 @@ private fun resolveUriMeta(contentResolver: ContentResolver, uri: Uri): Triple<S
     var filename = uri.lastPathSegment ?: "attachment"
     var mimeType = "application/octet-stream"
     var sizeBytes = 0L
-    contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+    contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+        null, null, null,
+    )?.use { cursor ->
         if (cursor.moveToFirst()) {
-            sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE))
+            val nameCol = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameCol >= 0) {
+                cursor.getString(nameCol)?.let { filename = it }
+            }
+            val sizeCol = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (sizeCol >= 0) {
+                sizeBytes = cursor.getLong(sizeCol)
+            }
         }
     }
     mimeType = contentResolver.getType(uri) ?: mimeType
