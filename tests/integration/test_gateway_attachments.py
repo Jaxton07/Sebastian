@@ -86,7 +86,7 @@ def test_upload_text_file_returns_metadata(client) -> None:
     body = response.json()
     assert body["kind"] == "text_file"
     assert body["status"] == "uploaded"
-    assert "id" in body
+    assert "attachment_id" in body
     assert "sha256" in body
     assert body["filename"] == "notes.md"
 
@@ -102,7 +102,7 @@ def test_download_attachment_returns_original_bytes(client) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert upload_resp.status_code == 201, upload_resp.text
-    att_id = upload_resp.json()["id"]
+    att_id = upload_resp.json()["attachment_id"]
 
     # Download
     get_resp = http_client.get(
@@ -192,7 +192,7 @@ def _upload_text_file(http_client, token: str, content: bytes = b"# hello") -> s
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()["id"]
+    return resp.json()["attachment_id"]
 
 
 def test_send_turn_empty_content_no_attachments_is_rejected(client) -> None:
@@ -334,7 +334,7 @@ def test_concurrent_turns_cannot_double_attach_same_attachment(client) -> None:
         headers=headers,
     )
     assert resp.status_code == 201, resp.text
-    att_id = resp.json()["id"]
+    att_id = resp.json()["attachment_id"]
 
     with patch("sebastian.gateway.state.sebastian.run_streaming", new_callable=AsyncMock):
 
@@ -401,7 +401,7 @@ def test_create_agent_session_with_attachment_no_duplicate_user_message(client) 
         headers=headers,
     )
     assert upload_resp.status_code == 201
-    att_id = upload_resp.json()["id"]
+    att_id = upload_resp.json()["attachment_id"]
 
     # Capture and discard the background agent task (suppress actual LLM call).
     # Only suppress coroutines dispatched from the sessions route file; let all
@@ -500,7 +500,7 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
         headers=headers,
     )
     assert upload.status_code == 201, upload.text
-    att_id = upload.json()["id"]
+    att_id = upload.json()["attachment_id"]
 
     # Step 3: Send a follow-up turn to the existing session with the attachment
     with patch(

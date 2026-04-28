@@ -47,13 +47,15 @@ async def validate_and_write_attachment_turn(
     attachment_store = state.attachment_store
 
     # Step 3: validate attachable
-    from sebastian.store.attachments import AttachmentValidationError
+    from sebastian.store.attachments import AttachmentConflictError, AttachmentNotFoundError
 
     try:
         attachment_records: list[AttachmentRecord] = await attachment_store.validate_attachable(
             attachment_ids
         )
-    except AttachmentValidationError as exc:
+    except AttachmentNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except AttachmentConflictError as exc:
         raise HTTPException(409, str(exc)) from exc
 
     # Step 4: image support check

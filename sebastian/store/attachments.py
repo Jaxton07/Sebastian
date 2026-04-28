@@ -49,6 +49,14 @@ class AttachmentValidationError(ValueError):
     pass
 
 
+class AttachmentNotFoundError(AttachmentValidationError):
+    pass
+
+
+class AttachmentConflictError(AttachmentValidationError):
+    pass
+
+
 class AttachmentStore:
     def __init__(self, root_dir: Path, db_factory: async_sessionmaker[AsyncSession]) -> None:
         self._root_dir = root_dir
@@ -149,14 +157,14 @@ class AttachmentStore:
         found_ids = {r.id for r in records}
         missing = set(attachment_ids) - found_ids
         if missing:
-            raise AttachmentValidationError(f"Attachment(s) not found: {missing}")
+            raise AttachmentNotFoundError(f"Attachment(s) not found: {missing}")
         for r in records:
             if r.status != "uploaded":
-                raise AttachmentValidationError(
+                raise AttachmentConflictError(
                     f"Attachment {r.id!r} is not in 'uploaded' state (status={r.status!r})"
                 )
             if r.session_id is not None:
-                raise AttachmentValidationError(
+                raise AttachmentConflictError(
                     f"Attachment {r.id!r} is already bound to a session"
                 )
         return records

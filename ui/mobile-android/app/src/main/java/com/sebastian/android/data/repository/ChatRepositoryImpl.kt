@@ -111,6 +111,6 @@ class ChatRepositoryImpl @Inject constructor(
         }
         val kindBody = kindValue.toRequestBody("text/plain".toMediaTypeOrNull())
         val response = apiService.uploadAttachment(kind = kindBody, file = filePart)
-        pending.copy(uploadState = AttachmentUploadState.Uploaded(attachmentId = response.id))
+        pending.copy(uploadState = AttachmentUploadState.Uploaded(attachmentId = response.attachmentId))
     }
 }

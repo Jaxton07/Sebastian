@@ -5,7 +5,7 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class AttachmentUploadResponseDto(
-    @param:Json(name = "id") val id: String,
+    @param:Json(name = "attachment_id") val attachmentId: String,
     @param:Json(name = "kind") val kind: String,
     @param:Json(name = "filename") val filename: String,
     @param:Json(name = "mime_type") val mimeType: String,

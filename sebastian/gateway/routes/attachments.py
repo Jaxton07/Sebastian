@@ -35,7 +35,7 @@ async def upload_attachment(
     except AttachmentValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {
-        "id": uploaded.id,
+        "attachment_id": uploaded.id,
         "kind": uploaded.kind,
         "filename": uploaded.filename,
         "mime_type": uploaded.mime_type,
