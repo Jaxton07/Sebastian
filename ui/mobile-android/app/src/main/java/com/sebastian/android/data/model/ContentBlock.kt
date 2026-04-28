@@ -47,18 +47,21 @@ sealed class ContentBlock {
 
     data class ImageBlock(
         override val blockId: String,
+        val attachmentId: String,
+        val filename: String,
+        val mimeType: String,
+        val sizeBytes: Long,
         val downloadUrl: String,
         val thumbnailUrl: String? = null,
-        val mimeType: String,
-        val filename: String,
     ) : ContentBlock()
 
     data class FileBlock(
         override val blockId: String,
-        val downloadUrl: String,
-        val mimeType: String,
+        val attachmentId: String,
         val filename: String,
+        val mimeType: String,
         val sizeBytes: Long,
+        val downloadUrl: String,
         val textExcerpt: String? = null,
     ) : ContentBlock()
 }

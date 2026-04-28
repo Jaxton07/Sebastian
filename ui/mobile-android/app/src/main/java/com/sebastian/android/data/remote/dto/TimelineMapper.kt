@@ -105,18 +105,21 @@ private fun TimelineItemDto.toUserMessage(
         val block: ContentBlock = if (kind == "image") {
             ContentBlock.ImageBlock(
                 blockId = "timeline-${att.sessionId}-att-$attId",
+                attachmentId = attId,
+                filename = att.content ?: "",
+                mimeType = att.payloadString("mime_type") ?: "",
+                sizeBytes = att.payloadLong("size_bytes") ?: 0L,
                 downloadUrl = "$baseUrl/api/v1/attachments/$attId",
                 thumbnailUrl = "$baseUrl/api/v1/attachments/$attId/thumbnail",
-                mimeType = att.payloadString("mime_type") ?: "",
-                filename = att.content ?: "",
             )
         } else {
             ContentBlock.FileBlock(
                 blockId = "timeline-${att.sessionId}-att-$attId",
-                downloadUrl = "$baseUrl/api/v1/attachments/$attId",
-                mimeType = att.payloadString("mime_type") ?: "",
+                attachmentId = attId,
                 filename = att.content ?: "",
+                mimeType = att.payloadString("mime_type") ?: "",
                 sizeBytes = att.payloadLong("size_bytes") ?: 0L,
+                downloadUrl = "$baseUrl/api/v1/attachments/$attId",
                 textExcerpt = att.payloadString("text_excerpt"),
             )
         }
