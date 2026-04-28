@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.sebastian.android.data.model.PendingAttachment
 import com.sebastian.android.ui.common.glass.GlassState
 import com.sebastian.android.ui.common.glass.GlassSurface
 import com.sebastian.android.viewmodel.ComposerState
@@ -31,7 +32,6 @@ import com.sebastian.android.viewmodel.ComposerState
  *
  * 自身无状态：ComposerState 由 ChatViewModel 持有并通过 prop 传入。
  * 玻璃效果由外部传入的 [glassState] 驱动，内容层采样标记由 ChatScreen 负责。
- * Phase 2 预留插槽（voiceSlot, attachmentSlot）默认 null，接入时不修改此文件。
  */
 @Composable
 fun Composer(
@@ -39,7 +39,8 @@ fun Composer(
     glassState: GlassState,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
-    // Phase 2 插槽预留
+    pendingAttachments: List<PendingAttachment> = emptyList(),
+    // Phase 2 插槽
     voiceSlot: @Composable (() -> Unit)? = null,
     attachmentSlot: @Composable (() -> Unit)? = null,
     attachmentPreviewSlot: @Composable (() -> Unit)? = null,
@@ -49,7 +50,7 @@ fun Composer(
 
     val effectiveState = when {
         state == ComposerState.STREAMING || state == ComposerState.PENDING || state == ComposerState.CANCELLING -> state
-        text.isNotBlank() -> ComposerState.IDLE_READY
+        text.isNotBlank() || pendingAttachments.isNotEmpty() -> ComposerState.IDLE_READY
         else -> ComposerState.IDLE_EMPTY
     }
 
@@ -59,7 +60,7 @@ fun Composer(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column {
-            // 附件预览区（Phase 2 填充）
+            // 附件预览区
             AnimatedVisibility(visible = attachmentPreviewSlot != null) {
                 attachmentPreviewSlot?.invoke()
             }
@@ -108,7 +109,7 @@ fun Composer(
                     state = effectiveState,
                     onSend = {
                         val msg = text.trim()
-                        if (msg.isNotEmpty()) {
+                        if (msg.isNotEmpty() || pendingAttachments.isNotEmpty()) {
                             text = ""
                             onSend(msg)
                         }

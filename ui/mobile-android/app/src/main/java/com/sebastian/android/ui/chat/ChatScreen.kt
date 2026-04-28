@@ -1,6 +1,10 @@
 // com/sebastian/android/ui/chat/ChatScreen.kt
 package com.sebastian.android.ui.chat
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,8 +56,11 @@ import com.sebastian.android.ui.common.ToastCenter
 import com.sebastian.android.ui.common.glass.GlassSurface
 import com.sebastian.android.ui.common.glass.pressScale
 import com.sebastian.android.ui.common.glass.rememberGlassState
+import com.sebastian.android.ui.composer.AttachmentPreviewBar
+import com.sebastian.android.ui.composer.AttachmentSlot
 import com.sebastian.android.ui.composer.Composer
 import com.sebastian.android.ui.navigation.Route
+import com.sebastian.android.viewmodel.ChatUiEffect
 import com.sebastian.android.viewmodel.ChatViewModel
 import com.sebastian.android.viewmodel.SessionViewModel
 
@@ -117,6 +124,42 @@ fun ChatScreen(
     LaunchedEffect(chatViewModel) {
         chatViewModel.toastEvents.collect { message ->
             ToastCenter.show(toastContext, message, key = "pending_timeout", throttleMs = 10_000L)
+        }
+    }
+
+    // ── Attachment pickers ────────────────────────────────────────────────────
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val cr = toastContext.contentResolver
+            val mimeType = cr.getType(uri) ?: "image/*"
+            val filename = uri.lastPathSegment ?: "image"
+            chatViewModel.onAttachmentImagePicked(uri, filename, mimeType, 0L)
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val cr = toastContext.contentResolver
+            val mimeType = cr.getType(uri) ?: "application/octet-stream"
+            val filename = uri.lastPathSegment ?: "file"
+            chatViewModel.onAttachmentFilePicked(uri, filename, mimeType, 0L)
+        }
+    }
+
+    // Observe effects for RequestImagePicker and toasts from ViewModel
+    LaunchedEffect(chatViewModel) {
+        chatViewModel.uiEffects.collect { effect ->
+            when (effect) {
+                is ChatUiEffect.RequestImagePicker ->
+                    imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                is ChatUiEffect.ShowToast ->
+                    ToastCenter.show(toastContext, effect.message)
+                is ChatUiEffect.RestoreComposerText -> { /* handled elsewhere */ }
+            }
         }
     }
 
@@ -320,6 +363,26 @@ fun ChatScreen(
                         }
                     },
                     onStop = chatViewModel::cancelTurn,
+                    pendingAttachments = chatState.pendingAttachments,
+                    attachmentSlot = {
+                        AttachmentSlot(
+                            onImageClick = chatViewModel::onAttachmentMenuImageSelected,
+                            onFileClick = {
+                                filePickerLauncher.launch(
+                                    arrayOf("text/plain", "text/markdown", "text/csv", "application/json", "text/x-log")
+                                )
+                            },
+                        )
+                    },
+                    attachmentPreviewSlot = if (chatState.pendingAttachments.isNotEmpty()) {
+                        {
+                            AttachmentPreviewBar(
+                                attachments = chatState.pendingAttachments,
+                                onRemove = chatViewModel::onRemoveAttachment,
+                                onRetry = chatViewModel::onRetryAttachment,
+                            )
+                        }
+                    } else null,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp, vertical = 4.dp),

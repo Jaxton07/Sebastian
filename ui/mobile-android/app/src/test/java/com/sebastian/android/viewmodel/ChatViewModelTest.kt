@@ -1,5 +1,7 @@
 package com.sebastian.android.viewmodel
 
+import android.content.ContentResolver
+import android.content.Context
 import app.cash.turbine.test
 import com.sebastian.android.data.local.NetworkMonitor
 import com.sebastian.android.data.model.ApprovalSnapshot
@@ -52,6 +54,7 @@ class ChatViewModelTest {
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var networkMonitor: NetworkMonitor
     private lateinit var viewModel: ChatViewModel
+    private lateinit var appContext: Context
     private val dispatcher = StandardTestDispatcher()
     private val sseFlow = MutableSharedFlow<SseEnvelope>(extraBufferCapacity = 64)
     private val serverUrlFlow = MutableStateFlow("http://test.local:8823")
@@ -64,6 +67,9 @@ class ChatViewModelTest {
         sessionRepository = mock()
         settingsRepository = mock()
         networkMonitor = mock()
+        appContext = mock()
+        val contentResolver: ContentResolver = mock()
+        whenever(appContext.contentResolver).thenReturn(contentResolver)
         whenever(networkMonitor.isOnline).thenReturn(onlineFlow)
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
         whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
@@ -76,7 +82,7 @@ class ChatViewModelTest {
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
             whenever(chatRepository.getTodos(any())).thenReturn(Result.success(emptyList()))
         }
-        viewModel = ChatViewModel(chatRepository, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
     }
@@ -281,7 +287,7 @@ class ChatViewModelTest {
             override suspend fun uploadAttachment(pending: com.sebastian.android.data.model.PendingAttachment, contentResolver: android.content.ContentResolver): Result<com.sebastian.android.data.model.PendingAttachment> =
                 Result.failure(UnsupportedOperationException())
         }
-        viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel = ChatViewModel(appContext, failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
 
@@ -1159,7 +1165,7 @@ class ChatViewModelTest {
                 Result.failure(UnsupportedOperationException())
         }
 
-        viewModel = ChatViewModel(failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel = ChatViewModel(appContext, failingRepo, sessionRepository, settingsRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
 

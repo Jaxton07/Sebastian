@@ -1,11 +1,18 @@
 package com.sebastian.android.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.sebastian.android.data.local.NetworkMonitor
+import com.sebastian.android.data.model.AttachmentKind
+import com.sebastian.android.data.model.AttachmentUploadState
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
+import com.sebastian.android.data.model.ModelInputCapabilities
+import com.sebastian.android.data.model.PendingAttachment
 import com.sebastian.android.data.model.StreamEvent
 import com.sebastian.android.data.model.TodoItem
 import com.sebastian.android.data.model.ToolStatus
@@ -38,6 +45,7 @@ enum class AgentAnimState { IDLE, PENDING, THINKING, STREAMING, WORKING }
 sealed interface ChatUiEffect {
     data class RestoreComposerText(val text: String) : ChatUiEffect
     data class ShowToast(val message: String) : ChatUiEffect
+    object RequestImagePicker : ChatUiEffect
 }
 
 data class ChatUiState(
@@ -51,10 +59,13 @@ data class ChatUiState(
     val connectionFailed: Boolean = false,
     val flushTick: Long = 0L,
     val todos: List<TodoItem> = emptyList(),
+    val pendingAttachments: List<PendingAttachment> = emptyList(),
+    val inputCapabilities: ModelInputCapabilities = ModelInputCapabilities(),
 )
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val chatRepository: ChatRepository,
     private val sessionRepository: SessionRepository,
     private val settingsRepository: SettingsRepository,
@@ -91,6 +102,15 @@ class ChatViewModel @Inject constructor(
 
     // Overrideable in tests to use virtual time.
     internal var clock: () -> Long = { System.currentTimeMillis() }
+
+    // ── Test helpers (not for production use) ────────────────────────────────
+    internal fun setInputCapabilities(caps: ModelInputCapabilities) {
+        _uiState.update { it.copy(inputCapabilities = caps) }
+    }
+
+    internal fun setTestPendingAttachments(attachments: List<PendingAttachment>) {
+        _uiState.update { it.copy(pendingAttachments = attachments) }
+    }
 
     companion object {
         private const val PENDING_TIMEOUT_MS = 15_000L
@@ -335,8 +355,10 @@ class ChatViewModel @Inject constructor(
     // ── Public mutation surface ──────────────────────────────────────────────
 
     fun sendMessage(text: String) {
-        if (text.isBlank()) return
+        val attachments = _uiState.value.pendingAttachments
+        if (text.isBlank() && attachments.isEmpty()) return
         val currentSessionId = _uiState.value.activeSessionId
+        val contentResolver = appContext.contentResolver
 
         if (currentSessionId == null) {
             val clientSessionId = sessionIdProvider()
@@ -346,6 +368,23 @@ class ChatViewModel @Inject constructor(
                 sessionId = clientSessionId,
                 role = MessageRole.USER,
                 text = text,
+                blocks = attachments.map { att ->
+                    when (att.kind) {
+                        AttachmentKind.IMAGE -> ContentBlock.ImageBlock(
+                            blockId = att.localId,
+                            downloadUrl = att.uri.toString(),
+                            mimeType = att.mimeType,
+                            filename = att.filename,
+                        )
+                        AttachmentKind.TEXT_FILE -> ContentBlock.FileBlock(
+                            blockId = att.localId,
+                            filename = att.filename,
+                            downloadUrl = att.uri.toString(),
+                            mimeType = att.mimeType,
+                            sizeBytes = att.sizeBytes,
+                        )
+                    }
+                },
             )
             isProvisionalSession = true
             _uiState.update { state ->
@@ -359,10 +398,14 @@ class ChatViewModel @Inject constructor(
             startPendingTimeout()
             startSseCollection(sessionId = clientSessionId, lastEventId = "0")
             sendTurnJob = viewModelScope.launch(dispatcher) {
-                chatRepository.sendTurn(clientSessionId, text)
+                val uploadedAttachments = uploadPendingAttachments(attachments, contentResolver)
+                if (uploadedAttachments == null) return@launch  // upload failed, already handled
+                val attachmentIds = uploadedAttachments.mapNotNull { it.attachmentId }
+                chatRepository.sendTurn(clientSessionId, text, attachmentIds)
                     .onSuccess { _ ->
                         sendTurnJob = null
                         isProvisionalSession = false
+                        _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         sessionRepository.loadSessions()
                     }
                     .onFailure { e ->
@@ -392,6 +435,23 @@ class ChatViewModel @Inject constructor(
                 sessionId = currentSessionId,
                 role = MessageRole.USER,
                 text = text,
+                blocks = attachments.map { att ->
+                    when (att.kind) {
+                        AttachmentKind.IMAGE -> ContentBlock.ImageBlock(
+                            blockId = att.localId,
+                            downloadUrl = att.uri.toString(),
+                            mimeType = att.mimeType,
+                            filename = att.filename,
+                        )
+                        AttachmentKind.TEXT_FILE -> ContentBlock.FileBlock(
+                            blockId = att.localId,
+                            filename = att.filename,
+                            downloadUrl = att.uri.toString(),
+                            mimeType = att.mimeType,
+                            sizeBytes = att.sizeBytes,
+                        )
+                    }
+                },
             )
             _uiState.update { state ->
                 state.copy(
@@ -402,9 +462,13 @@ class ChatViewModel @Inject constructor(
             }
             startPendingTimeout()
             sendTurnJob = viewModelScope.launch(dispatcher) {
-                chatRepository.sendTurn(currentSessionId, text)
+                val uploadedAttachments = uploadPendingAttachments(attachments, contentResolver)
+                if (uploadedAttachments == null) return@launch  // upload failed, already handled
+                val attachmentIds = uploadedAttachments.mapNotNull { it.attachmentId }
+                chatRepository.sendTurn(currentSessionId, text, attachmentIds)
                     .onSuccess { returnedSessionId ->
                         sendTurnJob = null
+                        _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         if (currentSessionId != returnedSessionId) {
                             _uiState.update { it.copy(activeSessionId = returnedSessionId) }
                             startSseCollection(lastEventId = "0")
@@ -434,8 +498,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendAgentMessage(agentId: String, text: String) {
-        if (text.isBlank()) return
+        val attachments = _uiState.value.pendingAttachments
+        if (text.isBlank() && attachments.isEmpty()) return
         val currentSessionId = _uiState.value.activeSessionId
+        val contentResolver = appContext.contentResolver
 
         if (currentSessionId == null) {
             val clientSessionId = sessionIdProvider()
@@ -458,10 +524,13 @@ class ChatViewModel @Inject constructor(
             startPendingTimeout()
             startSseCollection(sessionId = clientSessionId, lastEventId = "0")
             sendTurnJob = viewModelScope.launch(dispatcher) {
+                val uploadedAttachments = uploadPendingAttachments(attachments, contentResolver)
+                if (uploadedAttachments == null) return@launch
                 sessionRepository.createAgentSession(agentId, text, sessionId = clientSessionId)
                     .onSuccess { _ ->
                         sendTurnJob = null
                         isProvisionalSession = false
+                        _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         sessionRepository.loadAgentSessions(agentId)
                     }
                     .onFailure { e ->
@@ -501,9 +570,13 @@ class ChatViewModel @Inject constructor(
             }
             startPendingTimeout()
             sendTurnJob = viewModelScope.launch(dispatcher) {
-                chatRepository.sendSessionTurn(currentSessionId, text)
+                val uploadedAttachments = uploadPendingAttachments(attachments, contentResolver)
+                if (uploadedAttachments == null) return@launch
+                val attachmentIds = uploadedAttachments.mapNotNull { it.attachmentId }
+                chatRepository.sendSessionTurn(currentSessionId, text, attachmentIds)
                     .onSuccess {
                         sendTurnJob = null
+                        _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         if (sseJob?.isActive != true) {
                             startSseCollection(
                                 lastEventId = lastDeliveredSseEventIds[currentSessionId],
@@ -526,6 +599,116 @@ class ChatViewModel @Inject constructor(
                     }
             }
         }
+    }
+
+    // ── Attachment methods ──────────────────────────────────────────────────
+
+    fun onAttachmentMenuImageSelected() {
+        if (!_uiState.value.inputCapabilities.supportsImageInput) {
+            viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("当前模型不支持图片输入")) }
+            return
+        }
+        viewModelScope.launch { _uiEffects.emit(ChatUiEffect.RequestImagePicker) }
+    }
+
+    fun onAttachmentImagePicked(uri: Uri, filename: String, mimeType: String, sizeBytes: Long) {
+        val current = _uiState.value.pendingAttachments
+        if (current.size >= 5) {
+            viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("最多添加 5 个附件")) }
+            return
+        }
+        val att = PendingAttachment(
+            localId = UUID.randomUUID().toString(),
+            kind = AttachmentKind.IMAGE,
+            uri = uri,
+            filename = filename,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+        )
+        _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + att) }
+    }
+
+    fun onAttachmentFilePicked(uri: Uri, filename: String, mimeType: String, sizeBytes: Long) {
+        val supportedExtensions = setOf(".txt", ".md", ".csv", ".json", ".log")
+        val ext = filename.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" }.lowercase()
+        if (ext !in supportedExtensions) {
+            viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("不支持的文件格式")) }
+            return
+        }
+        val current = _uiState.value.pendingAttachments
+        if (current.size >= 5) {
+            viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("最多添加 5 个附件")) }
+            return
+        }
+        if (!_uiState.value.inputCapabilities.supportsTextFileInput) {
+            viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("当前模型不支持文本文件输入")) }
+            return
+        }
+        val att = PendingAttachment(
+            localId = UUID.randomUUID().toString(),
+            kind = AttachmentKind.TEXT_FILE,
+            uri = uri,
+            filename = filename,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+        )
+        _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + att) }
+    }
+
+    fun onRemoveAttachment(localId: String) {
+        _uiState.update { it.copy(pendingAttachments = it.pendingAttachments.filter { a -> a.localId != localId }) }
+    }
+
+    fun onRetryAttachment(localId: String) {
+        _uiState.update {
+            it.copy(
+                pendingAttachments = it.pendingAttachments.map { a ->
+                    if (a.localId == localId) a.copy(uploadState = AttachmentUploadState.Pending) else a
+                },
+            )
+        }
+    }
+
+    /**
+     * Uploads all attachments that are not yet in [AttachmentUploadState.Uploaded] state.
+     * Updates state after each upload.
+     * Returns the final list of attachments (all Uploaded) on success, or null if any upload failed.
+     * On failure, emits a toast and restores composerState to IDLE_READY.
+     */
+    private suspend fun uploadPendingAttachments(
+        attachments: List<PendingAttachment>,
+        contentResolver: android.content.ContentResolver,
+    ): List<PendingAttachment>? {
+        var current = attachments
+        for (att in current) {
+            if (att.uploadState is AttachmentUploadState.Uploaded) continue
+            val result = chatRepository.uploadAttachment(att, contentResolver)
+            result.onSuccess { uploaded ->
+                current = current.map { if (it.localId == att.localId) uploaded else it }
+                _uiState.update { state ->
+                    state.copy(
+                        pendingAttachments = state.pendingAttachments.map { a ->
+                            if (a.localId == att.localId) uploaded else a
+                        },
+                    )
+                }
+            }
+            result.onFailure { _ ->
+                val failed = att.copy(uploadState = AttachmentUploadState.Failed("上传失败"))
+                _uiState.update { state ->
+                    state.copy(
+                        pendingAttachments = state.pendingAttachments.map { a ->
+                            if (a.localId == att.localId) failed else a
+                        },
+                        composerState = ComposerState.IDLE_READY,
+                        agentAnimState = AgentAnimState.IDLE,
+                    )
+                }
+                viewModelScope.launch { _uiEffects.emit(ChatUiEffect.ShowToast("附件上传失败，请重试")) }
+                return null
+            }
+        }
+        return current
     }
 
     fun sendSessionMessage(sessionId: String, text: String) {
@@ -629,6 +812,7 @@ class ChatViewModel @Inject constructor(
                 activeSessionId = null,
                 messages = emptyList(),
                 todos = emptyList(),
+                pendingAttachments = emptyList(),
                 composerState = ComposerState.IDLE_EMPTY,
                 agentAnimState = AgentAnimState.IDLE,
                 connectionFailed = false,
