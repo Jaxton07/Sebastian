@@ -227,6 +227,35 @@ class ChatViewModelAttachmentTest {
         job.cancel()
     }
 
+    // ── Test 5b ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `sendAgentMessage new session passes uploaded attachment ids to createAgentSession`() = vmTest {
+        val uploadedAtt = PendingAttachment(
+            localId = UUID.randomUUID().toString(),
+            kind = AttachmentKind.IMAGE,
+            uri = makeUri(),
+            filename = "photo.jpg",
+            mimeType = "image/jpeg",
+            sizeBytes = 1024L,
+            uploadState = AttachmentUploadState.Uploaded("att_1"),
+        )
+        viewModel.setTestPendingAttachments(listOf(uploadedAtt))
+        whenever(sessionRepository.createAgentSession(any(), any(), any(), any())).thenReturn(
+            Result.success(com.sebastian.android.data.model.Session(id = "s1", title = "", agentType = "forge")),
+        )
+
+        viewModel.sendAgentMessage("forge", "")
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        verify(sessionRepository).createAgentSession(
+            org.mockito.kotlin.eq("forge"),
+            org.mockito.kotlin.eq(""),
+            any(),
+            org.mockito.kotlin.eq(listOf("att_1")),
+        )
+    }
+
     // ── Test 6 ─────────────────────────────────────────────────────────────────
 
     @Test

@@ -507,7 +507,8 @@ class ChatViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                sessionRepository.createAgentSession(agentId, text, sessionId = clientSessionId)
+                val attachmentIds = uploadedAttachments.mapNotNull { it.attachmentId }
+                sessionRepository.createAgentSession(agentId, text, sessionId = clientSessionId, attachmentIds = attachmentIds)
                     .onSuccess { _ ->
                         sendTurnJob = null
                         isProvisionalSession = false

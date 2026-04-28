@@ -960,7 +960,7 @@ class ChatViewModelTest {
             capturedStreamIds.add(inv.getArgument(1))
             sseFlow
         }
-        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull(), any())).thenReturn(
             Result.success(com.sebastian.android.data.model.Session(id = "agent-s1", title = "Test", agentType = "research"))
         )
 
@@ -973,12 +973,12 @@ class ChatViewModelTest {
         assertFalse("SSE session id must not be null", sseId == null)
 
         // createAgentSession received the same id
-        runBlocking { verify(sessionRepository).createAgentSession(eq("research"), anyOrNull(), anyOrNull()) }
+        runBlocking { verify(sessionRepository).createAgentSession(eq("research"), anyOrNull(), anyOrNull(), any()) }
     }
 
     @Test
     fun `new agent session failure removes user bubble and clears active session`() = vmTest {
-        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull(), any())).thenReturn(
             Result.failure(RuntimeException("server error"))
         )
 
@@ -1003,7 +1003,7 @@ class ChatViewModelTest {
 
     @Test
     fun `new agent session failure emits uiEffects for rollback`() = vmTest {
-        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull())).thenReturn(
+        whenever(sessionRepository.createAgentSession(any(), anyOrNull(), anyOrNull(), any())).thenReturn(
             Result.failure(RuntimeException("server error"))
         )
 
