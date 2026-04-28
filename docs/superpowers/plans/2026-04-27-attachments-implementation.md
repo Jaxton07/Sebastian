@@ -544,6 +544,7 @@ git commit -m "feat(gateway): turn 请求支持附件 timeline 写入"
 - Modify: `sebastian/llm/registry.py`
 - Modify: `sebastian/store/session_context.py`
 - Modify: `sebastian/store/session_store.py`
+- Modify: `sebastian/context/compaction.py`
 - Modify: `sebastian/core/base_agent.py`
 - Modify: `sebastian/gateway/app.py`
 - Modify: `sebastian/llm/anthropic.py`
@@ -573,15 +574,21 @@ hello
 
 当前 resolved provider `supports_image_input=False` 且 attachment kind=image 时，turn helper 返回 HTTP 400 或 context builder 抛明确异常。
 
-- [ ] **Step 5: 写失败测试：attachment item 缺少 AttachmentStore 时明确报错**
+- [ ] **Step 5: 写失败测试：attachment item 缺少 AttachmentStore 时的两种行为**
 
-构造包含 `kind="attachment"` 的 timeline items，调用：
+构造包含 `kind="attachment"` 的 timeline items，分别测试：
 
+1. `require_attachments=True`（默认，agent 路径）：
 ```python
-await build_context_messages(items, provider="anthropic", attachment_store=None)
+await build_context_messages(items, provider_format="anthropic", attachment_store=None)
 ```
+期望抛明确异常，例如 `ValueError("attachment_store is required for attachment timeline items")`。
 
-期望抛明确异常，例如 `ValueError("attachment_store is required for attachment timeline items")`。不能静默忽略 attachment，也不能只投影 filename。
+2. `require_attachments=False`（compaction 路径）：
+```python
+await build_context_messages(items, provider_format="anthropic", attachment_store=None, require_attachments=False)
+```
+期望 attachment item 被静默跳过，不抛异常，不出现在输出 messages 中。
 
 - [ ] **Step 6: 写失败测试：SessionStore.get_context_messages 透传 attachment_store**
 
@@ -625,11 +632,16 @@ messages = await session_store.get_context_messages(
 - `build_context_messages()` 改为 `async def`。
 - 新增参数 `attachment_store: AttachmentStore | None = None`。
 - 遇到 `kind="attachment"` 时，必须通过 `attachment_store.get(id)` + `read_text_content(record)` 或 `blob_absolute_path(record)` 读取真实 blob。
-- 如果 timeline 中存在 attachment item 但 `attachment_store is None`，抛明确异常，不静默忽略。
+- 如果 timeline 中存在 attachment item 但 `attachment_store is None`，行为取决于调用方：
+  - Agent 路径（`BaseAgent.run_streaming`）：抛明确异常，不静默忽略。
+  - Compaction 路径（`SessionContextCompactionWorker`）：静默跳过 attachment item，不抛异常。为此 `build_context_messages` 新增参数 `require_attachments: bool = True`；compaction 路径传 `require_attachments=False`，遇到 attachment 且 store 为 None 时跳过该 item。
 - `SessionStore.get_context_messages()` 已经是 async，改为 `return await build_context_messages(...)`。
 - `BaseAgent.__init__()` 增加 `attachment_store: AttachmentStore | None = None`，保存为 `self._attachment_store`。
 - `BaseAgent.run_streaming()` 调 `get_context_messages(..., attachment_store=self._attachment_store)`。
-- `gateway/app.py` 初始化 agent instances 时把 `state.attachment_store` 注入 Sebastian 和 sub-agent。
+- `gateway/app.py` 需要在两处注入 `attachment_store`：
+  1. `Sebastian(...)` 直接构造处：新增 `attachment_store=state.attachment_store`。
+  2. `_initialize_agent_instances(...)` 函数：新增 `attachment_store` 参数，并在内部 `cfg.agent_class(...)` 调用处透传。
+  两处都必须改，只改一处会导致 Sebastian 或 sub-agent 其中一方拿不到 store。
 
 在 `session_context.py` 中实现：
 
@@ -651,7 +663,7 @@ Expected: PASS。
 - [ ] **Step 13: Commit**
 
 ```bash
-git add sebastian/llm/catalog/builtin_providers.json sebastian/llm/catalog/loader.py sebastian/llm/registry.py sebastian/store/session_context.py sebastian/store/session_store.py sebastian/core/base_agent.py sebastian/gateway/app.py sebastian/llm/anthropic.py tests/unit/store/test_session_context.py tests/unit/store/test_session_context_attachments.py
+git add sebastian/llm/catalog/builtin_providers.json sebastian/llm/catalog/loader.py sebastian/llm/registry.py sebastian/store/session_context.py sebastian/store/session_store.py sebastian/context/compaction.py sebastian/core/base_agent.py sebastian/gateway/app.py sebastian/llm/anthropic.py tests/unit/store/test_session_context.py tests/unit/store/test_session_context_attachments.py
 git commit -m "feat(llm): 支持附件 provider 能力与上下文投影"
 ```
 
