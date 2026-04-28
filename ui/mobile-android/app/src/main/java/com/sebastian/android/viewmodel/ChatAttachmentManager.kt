@@ -164,15 +164,15 @@ internal class ChatAttachmentManager(
     }
 }
 
-internal fun PendingAttachment.toContentBlock(): ContentBlock = when (kind) {
+internal fun PendingAttachment.toContentBlock(baseUrl: String): ContentBlock = when (kind) {
     AttachmentKind.IMAGE -> ContentBlock.ImageBlock(
         blockId = localId,
         attachmentId = attachmentId ?: localId,
         filename = filename,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
-        downloadUrl = attachmentId?.let { "/api/v1/attachments/$it" } ?: uri.toString(),
-        thumbnailUrl = attachmentId?.let { "/api/v1/attachments/$it/thumbnail" },
+        downloadUrl = attachmentId?.let { "$baseUrl/api/v1/attachments/$it" } ?: uri.toString(),
+        thumbnailUrl = attachmentId?.let { "$baseUrl/api/v1/attachments/$it/thumbnail" },
     )
     AttachmentKind.TEXT_FILE -> ContentBlock.FileBlock(
         blockId = localId,
@@ -180,6 +180,6 @@ internal fun PendingAttachment.toContentBlock(): ContentBlock = when (kind) {
         filename = filename,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
-        downloadUrl = attachmentId?.let { "/api/v1/attachments/$it" } ?: uri.toString(),
+        downloadUrl = attachmentId?.let { "$baseUrl/api/v1/attachments/$it" } ?: uri.toString(),
     )
 }

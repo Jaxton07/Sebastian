@@ -24,10 +24,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,6 +53,9 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    private val serverUrl: StateFlow<String> = settingsRepository.serverUrl
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     private val _toastEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val toastEvents: SharedFlow<String> = _toastEvents.asSharedFlow()
@@ -373,7 +378,7 @@ class ChatViewModel @Inject constructor(
                 sessionId = clientSessionId,
                 role = MessageRole.USER,
                 text = text,
-                blocks = attachments.map { it.toContentBlock() },
+                blocks = attachments.map { it.toContentBlock(serverUrl.value.trimEnd('/')) },
             )
             isProvisionalSession = true
             _uiState.update { state ->
@@ -428,7 +433,7 @@ class ChatViewModel @Inject constructor(
                 sessionId = currentSessionId,
                 role = MessageRole.USER,
                 text = text,
-                blocks = attachments.map { it.toContentBlock() },
+                blocks = attachments.map { it.toContentBlock(serverUrl.value.trimEnd('/')) },
             )
             _uiState.update { state ->
                 state.copy(
@@ -478,7 +483,7 @@ class ChatViewModel @Inject constructor(
                 sessionId = clientSessionId,
                 role = MessageRole.USER,
                 text = text,
-                blocks = attachments.map { it.toContentBlock() },
+                blocks = attachments.map { it.toContentBlock(serverUrl.value.trimEnd('/')) },
             )
             isProvisionalSession = true
             _uiState.update { state ->
@@ -531,7 +536,7 @@ class ChatViewModel @Inject constructor(
                 sessionId = currentSessionId,
                 role = MessageRole.USER,
                 text = text,
-                blocks = attachments.map { it.toContentBlock() },
+                blocks = attachments.map { it.toContentBlock(serverUrl.value.trimEnd('/')) },
             )
             _uiState.update { state ->
                 state.copy(
