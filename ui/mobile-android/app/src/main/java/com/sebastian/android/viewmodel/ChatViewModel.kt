@@ -392,25 +392,7 @@ class ChatViewModel @Inject constructor(
                         _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         sessionRepository.loadSessions()
                     }
-                    .onFailure { e ->
-                        sendTurnJob = null
-                        isProvisionalSession = false
-                        sseJob?.cancel()
-                        sseJob = null
-                        _uiState.update { state ->
-                            state.copy(
-                                messages = state.messages.filter { it.id != userMsgId },
-                                activeSessionId = null,
-                                composerState = ComposerState.IDLE_EMPTY,
-                                agentAnimState = AgentAnimState.IDLE,
-                                error = e.message,
-                            )
-                        }
-                        viewModelScope.launch {
-                            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
-                            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
-                        }
-                    }
+                    .onFailure { e -> handleNewSessionSendFailure(userMsgId, text, e) }
             }
         } else {
             val userMsgId = UUID.randomUUID().toString()
@@ -447,20 +429,7 @@ class ChatViewModel @Inject constructor(
                             )
                         }
                     }
-                    .onFailure { e ->
-                        sendTurnJob = null
-                        _uiState.update { state ->
-                            state.copy(
-                                messages = state.messages.filter { it.id != userMsgId },
-                                composerState = ComposerState.IDLE_READY,
-                                error = e.message,
-                            )
-                        }
-                        viewModelScope.launch {
-                            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
-                            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
-                        }
-                    }
+                    .onFailure { e -> handleExistingSessionSendFailure(userMsgId, text, e) }
             }
         }
     }
@@ -502,25 +471,7 @@ class ChatViewModel @Inject constructor(
                         _uiState.update { it.copy(pendingAttachments = emptyList()) }
                         sessionRepository.loadAgentSessions(agentId)
                     }
-                    .onFailure { e ->
-                        sendTurnJob = null
-                        isProvisionalSession = false
-                        sseJob?.cancel()
-                        sseJob = null
-                        _uiState.update { state ->
-                            state.copy(
-                                messages = state.messages.filter { it.id != userMsgId },
-                                activeSessionId = null,
-                                composerState = ComposerState.IDLE_EMPTY,
-                                agentAnimState = AgentAnimState.IDLE,
-                                error = e.message,
-                            )
-                        }
-                        viewModelScope.launch {
-                            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
-                            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
-                        }
-                    }
+                    .onFailure { e -> handleNewSessionSendFailure(userMsgId, text, e) }
             }
         } else {
             val userMsgId = UUID.randomUUID().toString()
@@ -553,20 +504,7 @@ class ChatViewModel @Inject constructor(
                             )
                         }
                     }
-                    .onFailure { e ->
-                        sendTurnJob = null
-                        _uiState.update { state ->
-                            state.copy(
-                                messages = state.messages.filter { it.id != userMsgId },
-                                composerState = ComposerState.IDLE_READY,
-                                error = e.message,
-                            )
-                        }
-                        viewModelScope.launch {
-                            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
-                            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
-                        }
-                    }
+                    .onFailure { e -> handleExistingSessionSendFailure(userMsgId, text, e) }
             }
         }
     }
@@ -916,6 +854,41 @@ class ChatViewModel @Inject constructor(
         pendingTimeoutJob?.cancel()
         pendingTimeoutJob = null
         pendingTimeoutElapsedMs = 0L
+    }
+
+    private fun handleNewSessionSendFailure(userMsgId: String, text: String, e: Throwable) {
+        sendTurnJob = null
+        isProvisionalSession = false
+        sseJob?.cancel()
+        sseJob = null
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages.filter { it.id != userMsgId },
+                activeSessionId = null,
+                composerState = ComposerState.IDLE_EMPTY,
+                agentAnimState = AgentAnimState.IDLE,
+                error = e.message,
+            )
+        }
+        viewModelScope.launch {
+            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
+            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
+        }
+    }
+
+    private fun handleExistingSessionSendFailure(userMsgId: String, text: String, e: Throwable) {
+        sendTurnJob = null
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages.filter { it.id != userMsgId },
+                composerState = ComposerState.IDLE_READY,
+                error = e.message,
+            )
+        }
+        viewModelScope.launch {
+            _uiEffects.emit(ChatUiEffect.RestoreComposerText(text))
+            _uiEffects.emit(ChatUiEffect.ShowToast("发送失败，请重试"))
+        }
     }
 
     // ── Extension helpers ────────────────────────────────────────────────────

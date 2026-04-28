@@ -226,6 +226,17 @@ class AttachmentStore:
                 await session.delete(r)
                 count += 1
             await session.commit()
+        tmp_dir = self._root_dir / "tmp"
+        if tmp_dir.exists():
+            for tmp_file in tmp_dir.iterdir():
+                if tmp_file.is_file():
+                    try:
+                        mtime = datetime.fromtimestamp(tmp_file.stat().st_mtime, UTC)
+                        if mtime < cutoff:
+                            tmp_file.unlink(missing_ok=True)
+                            count += 1
+                    except OSError:
+                        pass
         return count
 
     # --- 校验私有方法 ---

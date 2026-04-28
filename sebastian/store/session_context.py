@@ -12,7 +12,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -406,6 +409,11 @@ def _build_openai(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         if kind == "attachment":
             # OpenAI projection does not support attachments (P0: Anthropic only)
+            payload = first.get("payload") or {}
+            _logger.warning(
+                "Attachment %s skipped in OpenAI context projection (not yet supported)",
+                payload.get("attachment_id", "unknown"),
+            )
             continue
 
         if all(item["kind"] == "user_message" for item in group):
