@@ -358,6 +358,7 @@ class SessionStore:
         provider_format: str,
         include_thinking: bool = False,
         attachment_store: Any | None = None,
+        require_attachments: bool = True,
     ) -> list[dict[str, Any]]:
         """Project timeline items into provider-specific message dicts.
 
@@ -367,6 +368,8 @@ class SessionStore:
             provider_format: "anthropic" or "openai".
             include_thinking: Include thinking blocks (Anthropic only).
             attachment_store: AttachmentStore for resolving attachment content.
+            require_attachments: If False, messages with missing attachments are
+                included with a placeholder rather than raising an error.
 
         Requires db_factory.
         """
@@ -383,6 +386,7 @@ class SessionStore:
             provider_format,
             include_thinking=include_thinking,
             attachment_store=attachment_store,
+            require_attachments=require_attachments,
         )
 
     async def append_user_turn_with_attachments(
