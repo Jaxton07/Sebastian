@@ -225,7 +225,8 @@ async def test_multiple_attachments_same_exchange() -> None:
 
 @pytest.mark.asyncio
 async def test_orphan_attachment_raises_when_require_attachments_true() -> None:
-    """Orphan attachment (no matching pending user exchange) must raise when require_attachments=True and store=None."""
+    """Orphan attachment (no matching pending user exchange) must raise when
+    require_attachments=True and store=None."""
     items = [
         {
             "kind": "attachment",

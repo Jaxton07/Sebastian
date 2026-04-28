@@ -429,9 +429,7 @@ class SessionStore:
                     )
                     row = result.first()
                     if row is None:
-                        raise ValueError(
-                            f"Session {session_id!r} (agent={agent_type!r}) not found"
-                        )
+                        raise ValueError(f"Session {session_id!r} (agent={agent_type!r}) not found")
                     exchange_index: int = row[0]
                     exchange_id = str(ULID())
 
@@ -447,9 +445,7 @@ class SessionStore:
                     )
                     row2 = result2.first()
                     if row2 is None:
-                        raise ValueError(
-                            f"Session {session_id!r} (agent={agent_type!r}) not found"
-                        )
+                        raise ValueError(f"Session {session_id!r} (agent={agent_type!r}) not found")
                     start_seq: int = row2[0]
 
                     now = datetime.now(UTC)
@@ -518,9 +514,10 @@ class SessionStore:
                                 attached_at=now,
                             )
                         )
-                        if result.rowcount != len(attachment_ids):
+                        if int(result.rowcount) != len(attachment_ids):  # type: ignore[attr-defined]
                             raise ValueError(
-                                "One or more attachments are no longer available (concurrent request)"
+                                "One or more attachments are no longer available"
+                                " (concurrent request)"
                             )
 
         return exchange_id, exchange_index

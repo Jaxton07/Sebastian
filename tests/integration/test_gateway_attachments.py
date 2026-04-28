@@ -140,10 +140,7 @@ def test_upload_image_returns_metadata(client) -> None:
     http_client, token = client
 
     # Minimal valid JPEG header bytes
-    jpeg_bytes = (
-        b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
-        b"\xff\xd9"
-    )
+    jpeg_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 
     response = http_client.post(
         "/api/v1/attachments",
@@ -271,7 +268,8 @@ def test_send_turn_already_attached_attachment_rejected(client) -> None:
 
 
 def test_send_turn_with_attachment_writes_timeline(client) -> None:
-    """Turn with attachment must write user_message + attachment timeline items sharing exchange_id."""
+    """Turn with attachment must write user_message + attachment timeline items
+    sharing exchange_id."""
     http_client, token = client
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -356,7 +354,8 @@ def test_concurrent_turns_cannot_double_attach_same_attachment(client) -> None:
 
 
 def test_attachment_validation_failure_does_not_leave_dangling_session(client) -> None:
-    """When attachment validation fails for a new session, the provisional session must be deleted."""
+    """When attachment validation fails for a new session, the provisional session
+    must be deleted."""
     http_client, token = client
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -407,7 +406,6 @@ def test_create_agent_session_with_attachment_no_duplicate_user_message(client) 
     # Capture and discard the background agent task (suppress actual LLM call).
     # Only suppress coroutines dispatched from the sessions route file; let all
     # other asyncio.create_task calls (e.g. SQLAlchemy internals) pass through.
-    from unittest.mock import MagicMock
 
     _real_create_task = _asyncio.create_task
     _SESSIONS_ROUTE = "gateway/routes/sessions.py"
@@ -524,7 +522,8 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
     assert detail.status_code == 200
     timeline = detail.json()["timeline_items"]
     attachment_items = [
-        item for item in timeline
+        item
+        for item in timeline
         if item["kind"] == "attachment" and item["payload"]["attachment_id"] == att_id
     ]
     assert len(attachment_items) == 1, (
@@ -534,7 +533,8 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
     # Also verify a co-located user_message item sharing the same exchange_id was written
     attachment_exchange_id = attachment_items[0]["exchange_id"]
     user_message_items = [
-        item for item in timeline
+        item
+        for item in timeline
         if item["kind"] == "user_message" and item["exchange_id"] == attachment_exchange_id
     ]
     assert len(user_message_items) == 1, (
@@ -544,7 +544,8 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
 
 
 def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
-    """After a session is deleted (orphaning its attachment), reusing the attachment must return 409."""
+    """After a session is deleted (orphaning its attachment), reusing the attachment
+    must return 409."""
     http_client, token = client
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -561,7 +562,7 @@ def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
     assert turn_resp.status_code == 200, turn_resp.text
     session_id = turn_resp.json()["session_id"]
 
-    # Step 3: delete the session — backend calls mark_session_orphaned → attachment.status="orphaned"
+    # Step 3: delete the session — backend calls mark_session_orphaned → status="orphaned"
     del_resp = http_client.delete(
         f"/api/v1/sessions/{session_id}",
         headers=headers,

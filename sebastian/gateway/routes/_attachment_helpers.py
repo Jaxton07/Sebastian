@@ -1,4 +1,5 @@
 """Shared attachment validation helpers for turn and session creation endpoints."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,12 +41,17 @@ async def validate_and_write_attachment_turn(
     if len(attachment_ids) > 5:
         raise HTTPException(400, "max 5 attachments per turn")
 
+    if state.attachment_store is None:
+        raise HTTPException(503, "attachment service unavailable")
+
+    attachment_store = state.attachment_store
+
     # Step 3: validate attachable
     from sebastian.store.attachments import AttachmentValidationError
 
     try:
-        attachment_records: list[AttachmentRecord] = (
-            await state.attachment_store.validate_attachable(attachment_ids)
+        attachment_records: list[AttachmentRecord] = await attachment_store.validate_attachable(
+            attachment_ids
         )
     except AttachmentValidationError as exc:
         raise HTTPException(409, str(exc)) from exc
@@ -68,7 +74,7 @@ async def validate_and_write_attachment_turn(
         estimator = TokenEstimator()
         total_tokens = 0
         for r in text_records:
-            text = await asyncio.to_thread(state.attachment_store.read_text_content, r)
+            text = await asyncio.to_thread(attachment_store.read_text_content, r)
             total_tokens += estimator.estimate_text(text)
         if total_tokens > 100_000:
             raise HTTPException(400, "text attachments exceed token budget")

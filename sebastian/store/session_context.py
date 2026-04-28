@@ -180,13 +180,8 @@ async def _build_anthropic(
                 elif att_kind == "text_file":
                     record = await attachment_store.get(att_id)
                     if record is not None:
-                        text = await asyncio.to_thread(
-                            attachment_store.read_text_content, record
-                        )
-                        fenced = (
-                            f"用户上传了文本文件：{filename}\n"
-                            f"```{filename}\n{text}\n```"
-                        )
+                        text = await asyncio.to_thread(attachment_store.read_text_content, record)
+                        fenced = f"用户上传了文本文件：{filename}\n```{filename}\n{text}\n```"
                         _pending_user_content_list.append({"type": "text", "text": fenced})
                 elif att_kind == "image":
                     record = await attachment_store.get(att_id)
@@ -207,9 +202,7 @@ async def _build_anthropic(
             else:
                 # Attachment with no matching pending user context: guard then flush then skip.
                 if attachment_store is None and require_attachments:
-                    raise ValueError(
-                        "attachment_store is required for attachment timeline items"
-                    )
+                    raise ValueError("attachment_store is required for attachment timeline items")
                 await _flush_pending_user()
             continue
 
@@ -447,10 +440,7 @@ async def _build_openai(
 
         if kind == "attachment":
             exchange_id = first.get("exchange_id")
-            if (
-                exchange_id
-                and exchange_id == _pending_user_exchange
-            ):
+            if exchange_id and exchange_id == _pending_user_exchange:
                 # Merge into buffered user message
                 payload = first.get("payload") or {}
                 att_id = payload.get("attachment_id")
@@ -466,13 +456,8 @@ async def _build_openai(
                 elif att_kind == "text_file":
                     record = await attachment_store.get(att_id)
                     if record is not None:
-                        text = await asyncio.to_thread(
-                            attachment_store.read_text_content, record
-                        )
-                        fenced = (
-                            f"用户上传了文本文件：{filename}\n"
-                            f"```{filename}\n{text}\n```"
-                        )
+                        text = await asyncio.to_thread(attachment_store.read_text_content, record)
+                        fenced = f"用户上传了文本文件：{filename}\n```{filename}\n{text}\n```"
                         if _pending_user_blocks is not None:
                             _pending_user_blocks.append({"type": "text", "text": fenced})
                         else:
@@ -498,17 +483,13 @@ async def _build_openai(
                         _pending_user_blocks.append(
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{record.mime_type};base64,{encoded}"
-                                },
+                                "image_url": {"url": f"data:{record.mime_type};base64,{encoded}"},
                             }
                         )
             else:
                 # Attachment with no matching pending user context: guard then flush then skip.
                 if attachment_store is None and require_attachments:
-                    raise ValueError(
-                        "attachment_store is required for attachment timeline items"
-                    )
+                    raise ValueError("attachment_store is required for attachment timeline items")
                 _flush_pending_user()
             continue
 

@@ -119,10 +119,30 @@ async def test_text_file_rejects_unsupported_mime_even_with_supported_extension(
 # Step 4：图片 MIME 白名单
 async def test_image_upload_jpeg_success(attachment_store):
     # 最小有效 JPEG header
-    jpeg_bytes = bytes([
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-    ])
+    jpeg_bytes = bytes(
+        [
+            0xFF,
+            0xD8,
+            0xFF,
+            0xE0,
+            0x00,
+            0x10,
+            0x4A,
+            0x46,
+            0x49,
+            0x46,
+            0x00,
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            0x01,
+            0x00,
+            0x00,
+        ]
+    )
     result = await attachment_store.upload_bytes(
         filename="photo.jpg",
         content_type="image/jpeg",
@@ -273,9 +293,7 @@ async def test_cleanup_deletes_expired_uploaded_and_orphaned_but_not_attached(
 
 
 # Step 7：mark_session_orphaned 只流转指定 session 的 attached 记录
-async def test_mark_session_orphaned_transitions_attached_only(
-    sqlite_session_factory, tmp_path
-):
+async def test_mark_session_orphaned_transitions_attached_only(sqlite_session_factory, tmp_path):
     root = tmp_path / "attachments"
     for sub in ("blobs", "thumbs", "tmp"):
         (root / sub).mkdir(parents=True, exist_ok=True)
@@ -292,35 +310,39 @@ async def test_mark_session_orphaned_transitions_attached_only(
     async with sqlite_session_factory() as session:
         for i, att_id in enumerate(["att-s1-1", "att-s1-2"]):
             sha = str(i) * 64
-            session.add(AttachmentRecord(
-                id=att_id,
+            session.add(
+                AttachmentRecord(
+                    id=att_id,
+                    kind="text_file",
+                    original_filename=f"{i}.txt",
+                    mime_type="text/plain",
+                    size_bytes=1,
+                    sha256=sha,
+                    blob_path=_make_blob(sha),
+                    status="attached",
+                    created_at=now,
+                    attached_at=now,
+                    agent_type="chat",
+                    session_id="s1",
+                )
+            )
+        sha_s2 = "9" * 64
+        session.add(
+            AttachmentRecord(
+                id="att-s2-1",
                 kind="text_file",
-                original_filename=f"{i}.txt",
+                original_filename="s2.txt",
                 mime_type="text/plain",
                 size_bytes=1,
-                sha256=sha,
-                blob_path=_make_blob(sha),
+                sha256=sha_s2,
+                blob_path=_make_blob(sha_s2),
                 status="attached",
                 created_at=now,
                 attached_at=now,
                 agent_type="chat",
-                session_id="s1",
-            ))
-        sha_s2 = "9" * 64
-        session.add(AttachmentRecord(
-            id="att-s2-1",
-            kind="text_file",
-            original_filename="s2.txt",
-            mime_type="text/plain",
-            size_bytes=1,
-            sha256=sha_s2,
-            blob_path=_make_blob(sha_s2),
-            status="attached",
-            created_at=now,
-            attached_at=now,
-            agent_type="chat",
-            session_id="s2",
-        ))
+                session_id="s2",
+            )
+        )
         await session.commit()
 
     count = await store.mark_session_orphaned(agent_type="chat", session_id="s1")

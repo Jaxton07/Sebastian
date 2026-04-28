@@ -415,7 +415,9 @@ class BaseAgent(ABC):
 
         if self._db_factory is not None:
             messages = await self._session_store.get_context_messages(
-                session_id, agent_context, provider_format,
+                session_id,
+                agent_context,
+                provider_format,
                 attachment_store=self._attachment_store,
                 require_attachments=self._attachment_store is not None,
             )

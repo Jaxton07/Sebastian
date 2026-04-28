@@ -8,27 +8,29 @@ from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.store.models import AttachmentRecord
 
 ALLOWED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
 ALLOWED_TEXT_EXTENSIONS = frozenset({".txt", ".md", ".csv", ".json", ".log"})
-ALLOWED_TEXT_MIME_TYPES = frozenset({
-    "text/plain",
-    "text/markdown",
-    "text/csv",
-    "application/json",
-    "application/x-ndjson",
-    "text/x-log",
-    "application/octet-stream",
-})
+ALLOWED_TEXT_MIME_TYPES = frozenset(
+    {
+        "text/plain",
+        "text/markdown",
+        "text/csv",
+        "application/json",
+        "application/x-ndjson",
+        "text/x-log",
+        "application/octet-stream",
+    }
+)
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 TEXT_EXCERPT_CHARS = 2000
-_UPLOADED_TTL = timedelta(hours=24)   # status="uploaded" blobs expire after 24 h if never referenced
-_ORPHAN_TTL = timedelta(hours=24)     # orphaned blobs expire (can differ from uploaded in future)
+_UPLOADED_TTL = timedelta(hours=24)  # status="uploaded" blobs expire after 24 h if never referenced
+_ORPHAN_TTL = timedelta(hours=24)  # orphaned blobs expire (can differ from uploaded in future)
 
 
 @dataclass(slots=True)
@@ -48,7 +50,7 @@ class AttachmentValidationError(ValueError):
 
 
 class AttachmentStore:
-    def __init__(self, root_dir: Path, db_factory: async_sessionmaker) -> None:
+    def __init__(self, root_dir: Path, db_factory: async_sessionmaker[AsyncSession]) -> None:
         self._root_dir = root_dir
         self._db_factory = db_factory
 
@@ -160,7 +162,8 @@ class AttachmentStore:
         return records
 
     # Internal only: opens its own DB session and is NOT atomic with timeline writes.
-    # The canonical status transition is done inline in SessionStore.append_user_turn_with_attachments.
+    # The canonical status transition is done inline in
+    # SessionStore.append_user_turn_with_attachments.
     async def _mark_attached(
         self,
         attachment_ids: list[str],
@@ -203,7 +206,7 @@ class AttachmentStore:
                 .values(status="orphaned", orphaned_at=now)
             )
             await session.commit()
-            return result.rowcount
+            return int(result.rowcount)  # type: ignore[attr-defined]
 
     async def cleanup(self, now: datetime | None = None) -> int:
         _now = now or datetime.now(UTC)
