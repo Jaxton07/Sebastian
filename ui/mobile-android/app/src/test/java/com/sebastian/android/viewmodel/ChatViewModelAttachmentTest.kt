@@ -405,6 +405,7 @@ class ChatViewModelAttachmentTest {
         )
 
         viewModel.refreshInputCapabilities(agentId = "forge")
+        // runCurrent(): avoids infinite advanceUntilIdle loop from startDeltaFlusher
         dispatcher.scheduler.runCurrent()
 
         assertFalse(
