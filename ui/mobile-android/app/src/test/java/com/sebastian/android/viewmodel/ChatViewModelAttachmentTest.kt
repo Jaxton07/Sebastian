@@ -77,6 +77,11 @@ class ChatViewModelAttachmentTest {
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
             whenever(chatRepository.getTodos(any())).thenReturn(Result.success(emptyList()))
+            // onAttachmentFilePicked / onAttachmentImagePicked now trigger immediate upload;
+            // default to failure so tests that don't care about upload outcome stay hermetic.
+            whenever(chatRepository.uploadAttachment(any(), any())).thenReturn(
+                Result.failure(RuntimeException("uploadAttachment not stubbed"))
+            )
         }
         viewModel = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, agentRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }

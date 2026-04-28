@@ -109,7 +109,7 @@ private fun UserMessageBubble(
             when (block) {
                 is ContentBlock.ImageBlock -> ImageAttachmentBlock(
                     block = block,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                 )
                 is ContentBlock.FileBlock -> FileAttachmentBlock(
                     block = block,

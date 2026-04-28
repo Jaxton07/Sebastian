@@ -47,8 +47,10 @@ internal class ChatAttachmentManager(
             filename = filename,
             mimeType = mimeType,
             sizeBytes = sizeBytes,
+            uploadState = AttachmentUploadState.Uploading(),
         )
         uiState.update { it.copy(pendingAttachments = it.pendingAttachments + att) }
+        scope.launch(dispatcher) { uploadSingleAttachment(att) }
     }
 
     fun onAttachmentFilePicked(uri: Uri, filename: String, mimeType: String, sizeBytes: Long) {
@@ -74,8 +76,10 @@ internal class ChatAttachmentManager(
             filename = filename,
             mimeType = mimeType,
             sizeBytes = sizeBytes,
+            uploadState = AttachmentUploadState.Uploading(),
         )
         uiState.update { it.copy(pendingAttachments = it.pendingAttachments + att) }
+        scope.launch(dispatcher) { uploadSingleAttachment(att) }
     }
 
     fun onRemoveAttachment(localId: String) {
@@ -83,20 +87,45 @@ internal class ChatAttachmentManager(
     }
 
     fun onRetryAttachment(localId: String) {
+        val att = uiState.value.pendingAttachments.find { it.localId == localId } ?: return
+        val uploading = att.copy(uploadState = AttachmentUploadState.Uploading())
         uiState.update {
             it.copy(
                 pendingAttachments = it.pendingAttachments.map { a ->
-                    if (a.localId == localId) a.copy(uploadState = AttachmentUploadState.Local) else a
+                    if (a.localId == localId) uploading else a
                 },
             )
+        }
+        scope.launch(dispatcher) { uploadSingleAttachment(uploading) }
+    }
+
+    private suspend fun uploadSingleAttachment(att: PendingAttachment) {
+        val result = chatRepository.uploadAttachment(att, context.contentResolver)
+        result.onSuccess { uploaded ->
+            uiState.update { state ->
+                state.copy(
+                    pendingAttachments = state.pendingAttachments.map { a ->
+                        if (a.localId == att.localId) uploaded else a
+                    },
+                )
+            }
+        }
+        result.onFailure {
+            val failed = att.copy(uploadState = AttachmentUploadState.Failed("上传失败"))
+            uiState.update { state ->
+                state.copy(
+                    pendingAttachments = state.pendingAttachments.map { a ->
+                        if (a.localId == att.localId) failed else a
+                    },
+                )
+            }
+            scope.launch { uiEffects.emit(ChatUiEffect.ShowToast("附件上传失败，请重试")) }
         }
     }
 
     /**
-     * Uploads all attachments that are not yet in [AttachmentUploadState.Uploaded] state.
-     * Updates state after each upload.
-     * Returns the final list of attachments (all Uploaded) on success, or null if any upload failed.
-     * On failure, emits a toast and restores composerState to IDLE_READY.
+     * Uploads all attachments not yet in [AttachmentUploadState.Uploaded] state.
+     * Returns the final list (all Uploaded) on success, or null if any upload failed.
      */
     internal suspend fun uploadPendingAttachments(
         attachments: List<PendingAttachment>,
