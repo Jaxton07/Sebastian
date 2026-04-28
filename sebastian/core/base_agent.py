@@ -352,6 +352,9 @@ class BaseAgent(ABC):
         session_id: str,
         task_id: str | None = None,
         agent_name: str | None = None,
+        *,
+        persist_user_message: bool = True,
+        preallocated_exchange: tuple[str, int] | None = None,
     ) -> str:
         self._completed_cancel_intents.pop(session_id, None)
         self._current_task_goals[session_id] = user_message
@@ -416,23 +419,27 @@ class BaseAgent(ABC):
             raw = await self._session_store.get_messages(session_id, agent_context, limit=50)
             messages = [{"role": m["role"], "content": m["content"]} for m in raw]
 
-        messages.append({"role": "user", "content": user_message})
+        if persist_user_message:
+            messages.append({"role": "user", "content": user_message})
 
         exchange_id: str | None = None
         exchange_index: int | None = None
-        if self._db_factory is not None:
+        if preallocated_exchange is not None:
+            exchange_id, exchange_index = preallocated_exchange
+        elif self._db_factory is not None:
             exchange_id, exchange_index = await allocate_exchange_for_turn(
                 self._session_store, session_id, agent_context
             )
 
-        await self._session_store.append_message(
-            session_id,
-            "user",
-            user_message,
-            agent_type=agent_context,
-            exchange_id=exchange_id,
-            exchange_index=exchange_index,
-        )
+        if persist_user_message:
+            await self._session_store.append_message(
+                session_id,
+                "user",
+                user_message,
+                agent_type=agent_context,
+                exchange_id=exchange_id,
+                exchange_index=exchange_index,
+            )
 
         current_stream = asyncio.create_task(
             self._stream_inner(

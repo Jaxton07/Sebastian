@@ -179,3 +179,138 @@ def test_download_thumbnail_requires_auth(client) -> None:
     http_client, _ = client
     resp = http_client.get("/api/v1/attachments/nonexistent-id/thumbnail")
     assert resp.status_code == 401
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Turn API + attachment timeline tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _upload_text_file(http_client, token: str, content: bytes = b"# hello") -> str:
+    """Upload a text_file attachment and return its ID."""
+    resp = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("notes.md", content, "text/markdown")},
+        data={"kind": "text_file"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_send_turn_empty_content_no_attachments_is_rejected(client) -> None:
+    """Empty content with no attachment_ids must return 400."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = http_client.post(
+        "/api/v1/turns",
+        json={"content": "", "attachment_ids": []},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "content or attachment_ids required" in resp.text
+
+
+def test_send_turn_too_many_attachments_is_rejected(client) -> None:
+    """Sending > 5 attachments in a single turn must return 400."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    attachment_ids = [_upload_text_file(http_client, token, f"file {i}".encode()) for i in range(6)]
+
+    resp = http_client.post(
+        "/api/v1/turns",
+        json={"content": "hello", "attachment_ids": attachment_ids},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "max 5 attachments" in resp.text
+
+
+def test_send_turn_empty_content_with_attachment_is_allowed(client) -> None:
+    """content="" with attachment_ids present must be accepted (returns 200)."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    att_id = _upload_text_file(http_client, token)
+
+    with patch("sebastian.gateway.state.sebastian.run_streaming", new_callable=AsyncMock):
+        resp = http_client.post(
+            "/api/v1/turns",
+            json={"content": "", "attachment_ids": [att_id]},
+            headers=headers,
+        )
+    assert resp.status_code == 200, resp.text
+    assert "session_id" in resp.json()
+
+
+def test_send_turn_already_attached_attachment_rejected(client) -> None:
+    """Submitting an already-attached attachment_id must return 409."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    att_id = _upload_text_file(http_client, token)
+
+    # First turn: attaches the file
+    with patch("sebastian.gateway.state.sebastian.run_streaming", new_callable=AsyncMock):
+        first_resp = http_client.post(
+            "/api/v1/turns",
+            json={"content": "first", "attachment_ids": [att_id]},
+            headers=headers,
+        )
+    assert first_resp.status_code == 200, first_resp.text
+
+    # Second turn with the same attachment_id must fail (status != 'uploaded')
+    resp = http_client.post(
+        "/api/v1/turns",
+        json={"content": "second", "attachment_ids": [att_id]},
+        headers=headers,
+    )
+    assert resp.status_code == 409
+
+
+def test_send_turn_with_attachment_writes_timeline(client) -> None:
+    """Turn with attachment must write user_message + attachment timeline items sharing exchange_id."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    att_id = _upload_text_file(http_client, token)
+
+    with patch("sebastian.gateway.state.sebastian.run_streaming", new_callable=AsyncMock):
+        turn_resp = http_client.post(
+            "/api/v1/turns",
+            json={"content": "check this file", "attachment_ids": [att_id]},
+            headers=headers,
+        )
+    assert turn_resp.status_code == 200, turn_resp.text
+    session_id = turn_resp.json()["session_id"]
+
+    # Retrieve session timeline
+    session_resp = http_client.get(
+        f"/api/v1/sessions/{session_id}",
+        headers=headers,
+    )
+    assert session_resp.status_code == 200, session_resp.text
+    timeline = session_resp.json()["timeline_items"]
+
+    user_items = [t for t in timeline if t.get("kind") == "user_message"]
+    att_items = [t for t in timeline if t.get("kind") == "attachment"]
+
+    assert len(user_items) == 1, f"Expected 1 user_message, got {len(user_items)}"
+    assert len(att_items) == 1, f"Expected 1 attachment item, got {len(att_items)}"
+
+    # Both must share the same exchange_id
+    assert user_items[0]["exchange_id"] is not None
+    assert user_items[0]["exchange_id"] == att_items[0]["exchange_id"]
+
+    # Attachment item payload must contain attachment_id
+    assert att_items[0]["payload"]["attachment_id"] == att_id
+
+    # Attachment status must now be 'attached'
+    get_att_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}",
+        headers=headers,
+    )
+    # After attachment the blob is readable (200 OK)
+    assert get_att_resp.status_code == 200

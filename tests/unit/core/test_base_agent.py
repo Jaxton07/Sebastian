@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -644,3 +644,80 @@ async def test_base_agent_progress_cb_calls_publish(tmp_path: Path) -> None:
     progress_calls = [c for c in tool_running_calls if "elapsed_seconds" in c[2]]
     assert len(progress_calls) == 1
     assert progress_calls[0][2]["elapsed_seconds"] == 5
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# persist_user_message / preallocated_exchange tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_persist_false_skips_user_message_write(tmp_path: Path) -> None:
+    """persist_user_message=False must skip appending the user message to the store."""
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.stream_events import TurnDone
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+
+    store = SessionStore(tmp_path / "sessions")
+    await store.create_session(
+        Session(id="no-persist-session", agent_type="sebastian", title="t")
+    )
+
+    agent = TestAgent(MagicMock(), store)
+
+    async def fake_stream(*args, **kwargs):
+        yield TurnDone(full_text="response")
+
+    agent._loop.stream = fake_stream  # type: ignore[attr-defined]
+
+    await agent.run_streaming(
+        "Hello", "no-persist-session", persist_user_message=False
+    )
+
+    messages = await store.get_messages("no-persist-session", "sebastian")
+    # Only the assistant message should be written; no user message.
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    assert len(user_messages) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_persist_false_uses_preallocated_exchange(tmp_path: Path) -> None:
+    """persist_user_message=False with preallocated_exchange must NOT call allocate_exchange_for_turn."""
+    from unittest.mock import patch
+
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.stream_events import TurnDone
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+
+    store = SessionStore(tmp_path / "sessions")
+    await store.create_session(
+        Session(id="prealloc-session", agent_type="sebastian", title="t")
+    )
+
+    agent = TestAgent(MagicMock(), store)
+
+    async def fake_stream(*args, **kwargs):
+        yield TurnDone(full_text="done")
+
+    agent._loop.stream = fake_stream  # type: ignore[attr-defined]
+
+    mock_allocate = AsyncMock(return_value=("should-not-be-called", 99))
+
+    with patch("sebastian.core.base_agent.allocate_exchange_for_turn", mock_allocate):
+        await agent.run_streaming(
+            "Hello",
+            "prealloc-session",
+            persist_user_message=False,
+            preallocated_exchange=("preallocated-id", 7),
+        )
+
+    # allocate_exchange_for_turn must NOT have been called
+    mock_allocate.assert_not_called()

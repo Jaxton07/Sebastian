@@ -24,8 +24,9 @@ JSONDict = dict[str, Any]
 
 
 class CreateAgentSessionBody(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = ""
     session_id: str | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
 
 
 @router.get("/sessions")
@@ -76,8 +77,8 @@ async def create_agent_session(
         raise HTTPException(404, f"Agent type not found: {agent_type}")
 
     content = body.content.strip()
-    if not content:
-        raise HTTPException(400, "content is required")
+    if not content and not body.attachment_ids:
+        raise HTTPException(400, "content or attachment_ids required")
 
     if body.session_id is not None:
         entries = await state.session_store.list_sessions()
@@ -95,10 +96,11 @@ async def create_agent_session(
                 "ts": existing.created_at.isoformat(),
             }
 
+    session_goal = content or "(attachment)"
     session_kwargs: dict[str, Any] = {
         "agent_type": agent_type,
-        "title": content[:40],
-        "goal": content,
+        "title": session_goal[:40],
+        "goal": session_goal,
         "depth": 2,
     }
     if body.session_id is not None:
@@ -108,13 +110,28 @@ async def create_agent_session(
 
     agent = state.agent_instances[agent_type]
 
+    if body.attachment_ids:
+        from sebastian.gateway.routes._attachment_helpers import (
+            validate_and_write_attachment_turn,
+        )
+
+        _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
+            content=content,
+            attachment_ids=body.attachment_ids,
+            session_id=session.id,
+            agent_type=agent_type,
+        )
+        run_goal = content
+    else:
+        run_goal = content
+
     from sebastian.core.session_runner import run_agent_session
 
     _task = asyncio.create_task(
         run_agent_session(
             agent=agent,
             session=session,
-            goal=content,
+            goal=run_goal,
             session_store=state.session_store,
             event_bus=state.event_bus,
         )
