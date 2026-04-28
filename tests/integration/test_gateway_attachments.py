@@ -450,3 +450,83 @@ def test_create_agent_session_with_attachment_no_duplicate_user_message(client) 
     assert len(user_items) == 1, f"expected 1 user_message, got {len(user_items)}"
     assert len(att_items) == 1, f"expected 1 attachment, got {len(att_items)}"
     assert user_items[0]["exchange_id"] == att_items[0]["exchange_id"]
+
+
+def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> None:
+    """Sending a turn with attachment to an existing sub-agent session writes timeline items."""
+    import asyncio as _asyncio
+    import inspect as _inspect
+    import sys as _sys
+    from unittest.mock import MagicMock
+
+    import sebastian.gateway.state as state
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Use the first registered sub-agent type
+    agent_type = next(iter(state.agent_instances.keys()))
+
+    # ── helper to suppress background LLM tasks from sessions route ──────────
+    _real_create_task = _asyncio.create_task
+    _SESSIONS_ROUTE = "gateway/routes/sessions.py"
+
+    def _suppress_route_task(coroutine, **kwargs):
+        frame = _sys._getframe(1)
+        filename = frame.f_code.co_filename or ""
+        if _SESSIONS_ROUTE in filename and _inspect.iscoroutine(coroutine):
+            coroutine.close()
+            mock_task = MagicMock()
+            mock_task.done.return_value = True
+            return mock_task
+        return _real_create_task(coroutine, **kwargs)
+
+    # Step 1: Create a session (initial turn, no attachment)
+    with patch(
+        "sebastian.gateway.routes.sessions.asyncio.create_task",
+        side_effect=_suppress_route_task,
+    ):
+        create = http_client.post(
+            f"/api/v1/agents/{agent_type}/sessions",
+            json={"content": "initial"},
+            headers=headers,
+        )
+    assert create.status_code == 200, create.text
+    session_id = create.json()["session_id"]
+
+    # Step 2: Upload an attachment
+    upload = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("notes.md", b"# hello", "text/markdown")},
+        data={"kind": "text_file"},
+        headers=headers,
+    )
+    assert upload.status_code == 201, upload.text
+    att_id = upload.json()["id"]
+
+    # Step 3: Send a follow-up turn to the existing session with the attachment
+    with patch(
+        "sebastian.gateway.routes.sessions.asyncio.create_task",
+        side_effect=_suppress_route_task,
+    ):
+        turn = http_client.post(
+            f"/api/v1/sessions/{session_id}/turns",
+            json={"content": "", "attachment_ids": [att_id]},
+            headers=headers,
+        )
+    assert turn.status_code == 200, turn.text
+
+    # Step 4: Verify the attachment timeline item was written
+    detail = http_client.get(
+        f"/api/v1/sessions/{session_id}?include_archived=true",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    timeline = detail.json()["timeline_items"]
+    attachment_items = [
+        item for item in timeline
+        if item["kind"] == "attachment" and item["payload"]["attachment_id"] == att_id
+    ]
+    assert len(attachment_items) == 1, (
+        f"Expected 1 attachment timeline item, got {len(attachment_items)}"
+    )

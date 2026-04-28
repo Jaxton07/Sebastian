@@ -183,7 +183,8 @@ async def get_session(
 
 
 class SendTurnBody(BaseModel):
-    content: str
+    content: str = ""
+    attachment_ids: list[str] = Field(default_factory=list)
 
 
 def _log_background_turn_failure(task: asyncio.Task[object]) -> None:
@@ -285,17 +286,34 @@ async def _resolve_session_task(
 async def _schedule_session_turn(
     session: Session,
     content: str,
+    *,
+    persist_user_message: bool = True,
+    preallocated_exchange: tuple[str, int] | None = None,
 ) -> None:
     """Route a turn to the correct agent instance."""
     import sebastian.gateway.state as state
 
     if session.agent_type == "sebastian":
-        task = asyncio.create_task(state.sebastian.run_streaming(content, session.id))
+        task = asyncio.create_task(
+            state.sebastian.run_streaming(
+                content,
+                session.id,
+                persist_user_message=persist_user_message,
+                preallocated_exchange=preallocated_exchange,
+            )
+        )
     else:
         agent = state.agent_instances.get(session.agent_type)
         if agent is None:
             raise ValueError(f"No agent instance for type: {session.agent_type}")
-        task = asyncio.create_task(agent.run_streaming(content, session.id))
+        task = asyncio.create_task(
+            agent.run_streaming(
+                content,
+                session.id,
+                persist_user_message=persist_user_message,
+                preallocated_exchange=preallocated_exchange,
+            )
+        )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     task.add_done_callback(_log_background_turn_failure)
@@ -329,8 +347,35 @@ async def send_turn_to_session(
 
     session = await _resolve_session(state, session_id)
     await _ensure_llm_ready(session.agent_type)
+
+    content = body.content.strip()
+
+    persist_user_message = True
+    preallocated_exchange: tuple[str, int] | None = None
+
+    if body.attachment_ids:
+        from sebastian.gateway.routes._attachment_helpers import (
+            validate_and_write_attachment_turn,
+        )
+
+        _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
+            content=content,
+            attachment_ids=body.attachment_ids,
+            session_id=session.id,
+            agent_type=session.agent_type,
+        )
+        persist_user_message = False
+        preallocated_exchange = (exchange_id, exchange_index)
+    elif not content:
+        raise HTTPException(400, "content or attachment_ids required")
+
     now = await _touch_session(state, session)
-    await _schedule_session_turn(session, body.content)
+    await _schedule_session_turn(
+        session,
+        content,
+        persist_user_message=persist_user_message,
+        preallocated_exchange=preallocated_exchange,
+    )
 
     return {
         "session_id": session_id,
