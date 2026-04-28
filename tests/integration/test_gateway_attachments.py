@@ -530,3 +530,14 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
     assert len(attachment_items) == 1, (
         f"Expected 1 attachment timeline item, got {len(attachment_items)}"
     )
+
+    # Also verify a co-located user_message item sharing the same exchange_id was written
+    attachment_exchange_id = attachment_items[0]["exchange_id"]
+    user_message_items = [
+        item for item in timeline
+        if item["kind"] == "user_message" and item["exchange_id"] == attachment_exchange_id
+    ]
+    assert len(user_message_items) == 1, (
+        f"Expected 1 user_message with exchange_id={attachment_exchange_id!r}, "
+        f"got {len(user_message_items)}"
+    )

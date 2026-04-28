@@ -354,6 +354,8 @@ async def send_turn_to_session(
     preallocated_exchange: tuple[str, int] | None = None
 
     if body.attachment_ids:
+        if state.attachment_store is None:
+            raise HTTPException(503, "attachment store not configured")
         from sebastian.gateway.routes._attachment_helpers import (
             validate_and_write_attachment_turn,
         )

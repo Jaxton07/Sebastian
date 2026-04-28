@@ -290,26 +290,34 @@ async def test_openai_attachment_skipped() -> None:
     assert messages[0]["content"] == "hi"
 
 
+class _FakeAttachmentStore:
+    """Minimal fake AttachmentStore for OpenAI projection tests."""
+
+    def __init__(self, tmp_path: Path, record: Any) -> None:
+        self._tmp_path = tmp_path
+        self._record = record
+
+    async def get(self, attachment_id: str) -> Any:
+        return self._record
+
+    def read_text_content(self, rec: Any) -> str:
+        if rec.kind == "text_file":
+            return "# Notes"
+        return ""
+
+    def blob_absolute_path(self, rec: Any) -> Path:
+        p = self._tmp_path / rec.id
+        if not p.exists():
+            p.write_bytes(b"png-bytes")
+        return p
+
+
 @pytest.mark.asyncio
 async def test_openai_projection_merges_text_attachment_into_user_message(tmp_path: Path) -> None:
-    from pathlib import Path as _Path
     from types import SimpleNamespace
 
     record = SimpleNamespace(id="att-1", kind="text_file", mime_type="text/markdown")
-
-    class FakeAttachmentStore:
-        async def get(self, attachment_id: str):
-            return record
-
-        def read_text_content(self, rec) -> str:
-            return "# Notes"
-
-        def blob_absolute_path(self, rec):
-            p = tmp_path / rec.id
-            p.write_bytes(b"")
-            return p
-
-    store = FakeAttachmentStore()
+    store = _FakeAttachmentStore(tmp_path, record)
     items = [
         {
             "kind": "user_message",
@@ -348,24 +356,10 @@ async def test_openai_projection_merges_text_attachment_into_user_message(tmp_pa
 
 @pytest.mark.asyncio
 async def test_openai_projection_merges_image_attachment_as_image_url(tmp_path: Path) -> None:
-    from pathlib import Path as _Path
     from types import SimpleNamespace
 
     record = SimpleNamespace(id="att-img", kind="image", mime_type="image/png")
-
-    class FakeAttachmentStore:
-        async def get(self, attachment_id: str):
-            return record
-
-        def read_text_content(self, rec) -> str:
-            return ""
-
-        def blob_absolute_path(self, rec):
-            p = tmp_path / rec.id
-            p.write_bytes(b"png-bytes")
-            return p
-
-    store = FakeAttachmentStore()
+    store = _FakeAttachmentStore(tmp_path, record)
     items = [
         {
             "kind": "user_message",
@@ -398,3 +392,16 @@ async def test_openai_projection_merges_image_attachment_as_image_url(tmp_path: 
     assert messages[0]["content"][0] == {"type": "text", "text": "what is this?"}
     assert messages[0]["content"][1]["type"] == "image_url"
     assert messages[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_openai_require_attachments_true_raises_when_store_none(
+    user_message_item: dict[str, Any],
+    text_attachment_item: dict[str, Any],
+) -> None:
+    """OpenAI path: require_attachments=True raises ValueError when attachment_store is None."""
+    items = [user_message_item, text_attachment_item]
+    with pytest.raises(ValueError, match="attachment_store is required"):
+        await build_context_messages(
+            items, "openai", attachment_store=None, require_attachments=True
+        )
