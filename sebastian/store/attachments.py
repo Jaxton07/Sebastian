@@ -27,7 +27,8 @@ ALLOWED_TEXT_MIME_TYPES = frozenset({
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 TEXT_EXCERPT_CHARS = 2000
-_ORPHAN_TTL = timedelta(hours=24)
+_UPLOADED_TTL = timedelta(hours=24)   # unattached uploads expire after 24 h
+_ORPHAN_TTL = timedelta(hours=24)     # orphaned blobs expire (can differ from uploaded in future)
 
 
 @dataclass(slots=True)
@@ -205,17 +206,19 @@ class AttachmentStore:
             return result.rowcount
 
     async def cleanup(self, now: datetime | None = None) -> int:
-        cutoff = (now or datetime.now(UTC)) - _ORPHAN_TTL
+        _now = now or datetime.now(UTC)
+        uploaded_cutoff = _now - _UPLOADED_TTL
+        orphan_cutoff = _now - _ORPHAN_TTL
         async with self._db_factory() as session:
             result = await session.execute(
                 select(AttachmentRecord).where(
                     (
                         (AttachmentRecord.status == "uploaded")
-                        & (AttachmentRecord.created_at < cutoff)
+                        & (AttachmentRecord.created_at < uploaded_cutoff)
                     )
                     | (
                         (AttachmentRecord.status == "orphaned")
-                        & (AttachmentRecord.orphaned_at < cutoff)
+                        & (AttachmentRecord.orphaned_at < orphan_cutoff)
                     )
                 )
             )
@@ -234,8 +237,8 @@ class AttachmentStore:
             for tmp_file in tmp_dir.iterdir():
                 if tmp_file.is_file():
                     try:
-                        mtime = datetime.fromtimestamp(tmp_file.stat().st_mtime, UTC)
-                        if mtime < cutoff:
+                        ctime = datetime.fromtimestamp(tmp_file.stat().st_ctime, UTC)
+                        if ctime < uploaded_cutoff:
                             tmp_file.unlink(missing_ok=True)
                             count += 1
                     except OSError:
