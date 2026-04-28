@@ -164,9 +164,7 @@ class AttachmentStore:
                     f"Attachment {r.id!r} is not in 'uploaded' state (status={r.status!r})"
                 )
             if r.session_id is not None:
-                raise AttachmentConflictError(
-                    f"Attachment {r.id!r} is already bound to a session"
-                )
+                raise AttachmentConflictError(f"Attachment {r.id!r} is already bound to a session")
         return records
 
     # Internal only: opens its own DB session and is NOT atomic with timeline writes.
