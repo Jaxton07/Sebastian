@@ -369,7 +369,7 @@ class SessionStore:
             include_thinking: Include thinking blocks (Anthropic only).
             attachment_store: AttachmentStore for resolving attachment content.
             require_attachments: If False, messages with missing attachments are
-                included with a placeholder rather than raising an error.
+                silently skipped rather than raising an error.
 
         Requires db_factory.
         """
