@@ -61,7 +61,7 @@ class AttachmentStore:
         data: bytes,
     ) -> UploadedAttachment:
         if kind == "image":
-            self._validate_image(filename, content_type, data)
+            self._validate_image(content_type, data)
         elif kind == "text_file":
             self._validate_text_file(filename, content_type, data)
         else:
@@ -72,8 +72,12 @@ class AttachmentStore:
         blob_abs = self._root_dir / blob_rel
         blob_abs.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self._root_dir / "tmp" / str(uuid4())
-        tmp_path.write_bytes(data)
-        os.replace(tmp_path, blob_abs)
+        try:
+            tmp_path.write_bytes(data)
+            os.replace(tmp_path, blob_abs)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         text_excerpt: str | None = None
         if kind == "text_file":
@@ -93,9 +97,13 @@ class AttachmentStore:
             status="uploaded",
             created_at=datetime.now(UTC),
         )
-        async with self._db_factory() as session:
-            session.add(record)
-            await session.commit()
+        try:
+            async with self._db_factory() as session:
+                session.add(record)
+                await session.commit()
+        except Exception:
+            blob_abs.unlink(missing_ok=True)
+            raise
 
         return UploadedAttachment(
             id=att_id,
@@ -164,7 +172,12 @@ class AttachmentStore:
             result = await session.execute(
                 select(AttachmentRecord).where(AttachmentRecord.id.in_(attachment_ids))
             )
-            return list(result.scalars().all())
+            records = list(result.scalars().all())
+        returned_ids = {r.id for r in records}
+        missing = set(attachment_ids) - returned_ids
+        if missing:
+            raise AttachmentValidationError(f"Attachment(s) lost after mark_attached: {missing}")
+        return records
 
     async def mark_session_orphaned(self, agent_type: str, session_id: str) -> int:
         now = datetime.now(UTC)
@@ -210,7 +223,7 @@ class AttachmentStore:
 
     # --- 校验私有方法 ---
 
-    def _validate_image(self, filename: str, content_type: str, data: bytes) -> None:
+    def _validate_image(self, content_type: str, data: bytes) -> None:
         if content_type not in ALLOWED_IMAGE_MIME_TYPES:
             raise AttachmentValidationError(f"Unsupported image MIME: {content_type!r}")
         if len(data) > MAX_IMAGE_BYTES:

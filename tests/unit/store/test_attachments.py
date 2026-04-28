@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.config import Settings
-from sebastian.store.attachments import AttachmentStore
+from sebastian.store.attachments import AttachmentStore, AttachmentValidationError
 
 
 def test_attachments_dir_lives_under_user_data_dir(tmp_path: Path) -> None:
@@ -63,7 +63,7 @@ async def test_text_file_upload_success(attachment_store, tmp_path):
 
 # Step 2：非法后缀、非 UTF-8、超大小
 async def test_text_file_rejects_unsupported_extension(attachment_store):
-    with pytest.raises(Exception):
+    with pytest.raises(AttachmentValidationError):
         await attachment_store.upload_bytes(
             filename="report.pdf",
             content_type="text/plain",
@@ -73,7 +73,7 @@ async def test_text_file_rejects_unsupported_extension(attachment_store):
 
 
 async def test_text_file_rejects_non_utf8(attachment_store):
-    with pytest.raises(Exception):
+    with pytest.raises(AttachmentValidationError):
         await attachment_store.upload_bytes(
             filename="data.txt",
             content_type="text/plain",
@@ -84,7 +84,7 @@ async def test_text_file_rejects_non_utf8(attachment_store):
 
 async def test_text_file_rejects_over_size(attachment_store):
     big = b"x" * (2 * 1024 * 1024 + 1)
-    with pytest.raises(Exception):
+    with pytest.raises(AttachmentValidationError):
         await attachment_store.upload_bytes(
             filename="big.txt",
             content_type="text/plain",
@@ -105,7 +105,7 @@ async def test_text_file_accepts_supported_mime_and_extension(attachment_store):
 
 
 async def test_text_file_rejects_unsupported_mime_even_with_supported_extension(attachment_store):
-    with pytest.raises(Exception):
+    with pytest.raises(AttachmentValidationError):
         await attachment_store.upload_bytes(
             filename="notes.md",
             content_type="application/pdf",
@@ -131,7 +131,7 @@ async def test_image_upload_jpeg_success(attachment_store):
 
 
 async def test_image_rejects_svg(attachment_store):
-    with pytest.raises(Exception):
+    with pytest.raises(AttachmentValidationError):
         await attachment_store.upload_bytes(
             filename="icon.svg",
             content_type="image/svg+xml",
