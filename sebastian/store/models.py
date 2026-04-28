@@ -374,3 +374,29 @@ class SessionTodoRecord(Base):
             ondelete="CASCADE",
         ),
     )
+
+
+class AttachmentRecord(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    owner_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    agent_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    blob_path: Mapped[str] = mapped_column(String, nullable=False)
+    text_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    attached_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    orphaned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_attachments_status_created", "status", "created_at"),
+        Index("ix_attachments_session", "agent_type", "session_id"),
+        Index("ix_attachments_sha256", "sha256"),
+    )
