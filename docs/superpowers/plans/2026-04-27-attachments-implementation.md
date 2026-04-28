@@ -23,7 +23,7 @@
 | `sebastian/store/attachments.py` | Create | AttachmentStore：上传校验、blob 原子写入、metadata CRUD、状态流转、清理 |
 | `sebastian/store/session_timeline.py` | Modify | 支持 `kind="attachment"` 写入与 context 读取 |
 | `sebastian/store/session_context.py` | Modify | `attachment` timeline 投影为 provider messages |
-| `sebastian/store/session_store.py` | Modify | turn 写入时可批量追加 attachment items，必要时提供 facade helper |
+| `sebastian/store/session_store.py` | Modify | 提供跨 timeline + attachment 状态更新的事务入口 |
 | `sebastian/gateway/routes/attachments.py` | Create | `POST/GET /attachments` 与 thumbnail 下载 |
 | `sebastian/gateway/routes/turns.py` | Modify | `SendTurnRequest.attachment_ids`，主对话 turn 附件校验和写入 |
 | `sebastian/gateway/routes/sessions.py` | Modify | session turn / sub-agent initial turn 支持附件 |
@@ -347,6 +347,7 @@ git commit -m "feat(gateway): 新增附件上传与下载 API"
 **Files:**
 - Modify: `sebastian/gateway/routes/turns.py`
 - Modify: `sebastian/gateway/routes/sessions.py`
+- Modify: `sebastian/store/session_store.py`
 - Modify: `sebastian/store/session_timeline.py`
 - Modify: `sebastian/store/attachments.py`
 - Modify: `tests/integration/test_gateway_attachments.py`
@@ -401,7 +402,16 @@ class SendTurnRequest(BaseModel):
     attachment_ids: list[str] = Field(default_factory=list)
 ```
 
-`sessions.py` 复用同样字段。
+`sessions.py` 复用同样字段。同步修改 `CreateAgentSessionBody`，不能保留 `Field(min_length=1)`：
+
+```python
+class CreateAgentSessionBody(BaseModel):
+    content: str = ""
+    session_id: str | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+```
+
+Sub-Agent 首条消息也支持「空文本 + 附件」，统一由共享 helper 做 `content.strip() or attachment_ids` 联合非空校验。
 
 - [ ] **Step 8: 抽出共享 helper**
 
@@ -423,13 +433,17 @@ async def _persist_user_turn_with_attachments(
 - 校验 attachment 数量 <= 5。
 - 调 `AttachmentStore.validate_attachable(attachment_ids)`，确认全部存在、`status=uploaded`、未绑定 session。
 - 校验当前 resolved provider/model 对图片附件的支持；不支持时立即 400。
+- 对文本附件调用 `AttachmentStore.read_text_content(record)` 读取完整内容，使用 `TokenEstimator.estimate_text()` 做 P0 token 预算检查；超预算时立即 400。此检查必须在写 timeline 前完成，不能推迟到 context projection。
 - 以上任何校验失败时，不能分配 exchange，不能写 timeline，不能更新 attachment 状态。
-- 校验通过后，进入单一 DB transaction 或等价的原子 helper：分配 exchange、写 `user_message`、写每个 `attachment` item、将 attachment 状态更新为 `attached`。
+- 校验通过后，进入单一 DB transaction：分配 exchange、写 `user_message`、写每个 `attachment` item、将 attachment 状态更新为 `attached`。
 
-原子性要求：timeline 写入和 attachment status transition 必须同成同败。不要先写 timeline 再调用可能失败的 `mark_attached()`。推荐新增 store helper：
+原子性要求：timeline 写入和 attachment status transition 必须同成同败。不要先写 timeline 再调用可能失败的 `mark_attached()`。
+
+事务入口应放在 `SessionStore`，而不是 `AttachmentStore`。原因：timeline 写入属于 `SessionTimelineStore` / `SessionStore` 职责，`AttachmentStore` 不应反向依赖 timeline。推荐新增 facade 方法：
 
 ```python
-async def attach_to_turn_atomically(
+async def append_user_turn_with_attachments(
+    self,
     *,
     session_id: str,
     agent_type: str,
@@ -439,7 +453,7 @@ async def attach_to_turn_atomically(
     ...
 ```
 
-该 helper 在一个事务内完成 exchange 分配、timeline insert 和 attachment update。
+该方法在一个 SQLAlchemy transaction 内直接操作 `sessions.next_exchange_index`、`sessions.next_item_seq`、`SessionItemRecord` 和 `AttachmentRecord`。`AttachmentStore` 只负责预校验、blob 读取和非 timeline 的 attachment CRUD。
 
 - [ ] **Step 9: 调整 BaseAgent 入口避免重复写 user_message**
 
@@ -455,6 +469,14 @@ await agent.run_streaming(
     persist_user_message=False,
 )
 ```
+
+`persist_user_message=False` 必须同时跳过三件事：
+
+1. 不执行 `messages.append({"role": "user", "content": user_message})`，因为 `get_context_messages()` 已经从 DB 读到了预写的 user turn。
+2. 不执行 `allocate_exchange_for_turn()`，必须沿用 `preallocated_exchange`。
+3. 不执行 `self._session_store.append_message(...)`，否则 timeline 会多一条 user_message。
+
+`_stream_inner(...)` 仍必须接收并使用传入的 `exchange_id/exchange_index`，确保 assistant/tool 输出与预写 user turn 属于同一个 exchange。
 
 若改动过大，替代方案是在 BaseAgent 增加 `run_streaming_from_persisted_user_turn(...)`。不要用事后删除重复消息的补丁方案。
 
@@ -498,7 +520,7 @@ hello
 
 - [ ] **Step 3: 写失败测试：文本文件超过 token 预算时拒绝**
 
-构造超出 P0 token 预算的文本附件，调用 turn helper 或 context projection，期望 400/明确异常，且不写 timeline。实现可复用 `TokenEstimator`；不要自动摘要。
+构造超出 P0 token 预算的文本附件，调用 turn helper，期望 400/明确异常，且不写 timeline。实现应在 Task 4 的共享 turn helper 中 import `sebastian.context.estimator.TokenEstimator` 并调用 `estimate_text()`；不要把此检查放到 context projection 才执行，也不要自动摘要。
 
 - [ ] **Step 4: 写失败测试：图片不支持时拒绝**
 
@@ -563,6 +585,12 @@ git commit -m "feat(llm): 支持附件 provider 能力与上下文投影"
 - [ ] **Step 1: 写失败测试：TimelineMapper 合并 user_message + attachment**
 
 构造同一 `exchange_id` 下的 `TimelineItemDto(kind="user_message")` 和 `TimelineItemDto(kind="attachment")`，断言输出一条 `Message(role=USER)` 且 `blocks` 包含 `ImageBlock` 或 `FileBlock`。
+
+当前 `TimelineMapper.kt` 是单 pass 遍历，遇到 `user_message` 会立即输出一条 message。实现附件合并时不能只在现有 `when` 中追加 `attachment` 分支；需要先按 `exchangeId` 分组或做两 pass。推荐：
+
+1. `sortedBy(seq)` 后按 `exchangeId ?: "seq-$seq"` 分组。
+2. 对每个 group：若包含 `user_message`，合并该 group 内的 `attachment` items 为同一条 user message blocks。
+3. assistant/tool/thinking 仍沿用现有按 `(assistantTurnId, providerCallIndex)` 分组逻辑。
 
 - [ ] **Step 2: 实现 ContentBlock 新类型**
 
