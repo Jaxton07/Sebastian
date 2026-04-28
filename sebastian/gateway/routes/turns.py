@@ -88,14 +88,20 @@ async def send_turn(
         # Attachment path: validate first, then create/get session, then write atomically
         # Use first attachment filename as session goal hint if content is empty
         session_goal = content or "(attachment)"
+        is_new_session = body.session_id is None
         session = await state.sebastian.get_or_create_session(body.session_id, session_goal)
 
-        _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
-            content=content,
-            attachment_ids=body.attachment_ids,
-            session_id=session.id,
-            agent_type="sebastian",
-        )
+        try:
+            _att_records, exchange_id, exchange_index = await validate_and_write_attachment_turn(
+                content=content,
+                attachment_ids=body.attachment_ids,
+                session_id=session.id,
+                agent_type="sebastian",
+            )
+        except HTTPException:
+            if is_new_session:
+                await state.session_store.delete_session(session)
+            raise
 
         task = _create_task(
             state.sebastian.run_streaming(
