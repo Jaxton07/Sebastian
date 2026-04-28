@@ -501,11 +501,16 @@ class SessionStore:
                         db.add(att_item)
 
                     # Step 4: UPDATE attachments status → 'attached'
+                    # WHERE guards prevent TOCTOU: only update if still uploaded and unbound.
                     if attachment_records:
                         attachment_ids = [r.id for r in attachment_records]
-                        await db.execute(
+                        result = await db.execute(
                             update(AttachmentRecord)
-                            .where(AttachmentRecord.id.in_(attachment_ids))
+                            .where(
+                                AttachmentRecord.id.in_(attachment_ids),
+                                AttachmentRecord.status == "uploaded",
+                                AttachmentRecord.session_id.is_(None),
+                            )
                             .values(
                                 status="attached",
                                 agent_type=agent_type,
@@ -513,6 +518,10 @@ class SessionStore:
                                 attached_at=now,
                             )
                         )
+                        if result.rowcount != len(attachment_ids):
+                            raise ValueError(
+                                "One or more attachments are no longer available (concurrent request)"
+                            )
 
         return exchange_id, exchange_index
 

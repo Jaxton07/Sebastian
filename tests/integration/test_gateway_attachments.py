@@ -321,6 +321,64 @@ def test_send_turn_with_attachment_writes_timeline(client) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def test_concurrent_turns_cannot_double_attach_same_attachment(client) -> None:
+    """Two concurrent turns referencing the same attachment must result in exactly one success."""
+    import concurrent.futures
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Upload a single attachment
+    resp = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("notes.md", b"# hello", "text/markdown")},
+        data={"kind": "text_file"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    att_id = resp.json()["id"]
+
+    with patch("sebastian.gateway.state.sebastian.run_streaming", new_callable=AsyncMock):
+
+        def send_turn():
+            return http_client.post(
+                "/api/v1/turns",
+                json={"content": "test", "attachment_ids": [att_id]},
+                headers=headers,
+            ).status_code
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            f1, f2 = executor.submit(send_turn), executor.submit(send_turn)
+            statuses = [f1.result(), f2.result()]
+
+    assert statuses.count(200) == 1, f"Expected exactly 1 success, got statuses={statuses}"
+    assert any(s == 409 for s in statuses), f"Expected a 409, got statuses={statuses}"
+
+
+def test_attachment_validation_failure_does_not_leave_dangling_session(client) -> None:
+    """When attachment validation fails for a new session, the provisional session must be deleted."""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Before: count sessions
+    sessions_before = http_client.get("/api/v1/sessions", headers=headers)
+    count_before = len(sessions_before.json())
+
+    # Send turn with 6 attachments (no session_id → new session, exceeds limit)
+    att_ids = [_upload_text_file(http_client, token, f"content {i}".encode()) for i in range(6)]
+    resp = http_client.post(
+        "/api/v1/turns",
+        json={"content": "test", "attachment_ids": att_ids},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+    # After: session count must be unchanged
+    sessions_after = http_client.get("/api/v1/sessions", headers=headers)
+    count_after = len(sessions_after.json())
+    assert count_after == count_before, "A dangling session was created despite validation failure"
+
+
 def test_create_agent_session_with_attachment_no_duplicate_user_message(client) -> None:
     """Sub-agent session creation with attachments should write user_message exactly once."""
     import asyncio as _asyncio

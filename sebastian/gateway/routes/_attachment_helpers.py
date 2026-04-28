@@ -74,11 +74,14 @@ async def validate_and_write_attachment_turn(
             raise HTTPException(400, "text attachments exceed token budget")
 
     # Step 6: write atomically
-    exchange_id, exchange_index = await state.session_store.append_user_turn_with_attachments(
-        session_id=session_id,
-        agent_type=agent_type,
-        content=content,
-        attachment_records=attachment_records,
-    )
+    try:
+        exchange_id, exchange_index = await state.session_store.append_user_turn_with_attachments(
+            session_id=session_id,
+            agent_type=agent_type,
+            content=content,
+            attachment_records=attachment_records,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
     return attachment_records, exchange_id, exchange_index
