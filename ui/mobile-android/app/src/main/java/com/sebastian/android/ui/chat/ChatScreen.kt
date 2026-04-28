@@ -125,8 +125,9 @@ fun ChatScreen(
     )
     var deleteTarget by remember { mutableStateOf<Session?>(null) }
 
-    // Load appropriate sessions based on mode
+    // Load appropriate sessions based on mode, and refresh model input capabilities
     LaunchedEffect(agentId) {
+        chatViewModel.refreshInputCapabilities(agentId)
         if (agentId != null) {
             sessionViewModel.loadAgentSessions(agentId)
         } else {

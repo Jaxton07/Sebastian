@@ -4,11 +4,14 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import com.sebastian.android.data.local.NetworkMonitor
+import com.sebastian.android.data.model.AgentBinding
 import com.sebastian.android.data.model.AttachmentKind
 import com.sebastian.android.data.model.AttachmentUploadState
 import com.sebastian.android.data.model.ModelInputCapabilities
 import com.sebastian.android.data.model.PendingAttachment
+import com.sebastian.android.data.model.ResolvedBinding
 import com.sebastian.android.data.remote.SseEnvelope
+import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SessionRepository
 import com.sebastian.android.data.repository.SettingsRepository
@@ -45,6 +48,7 @@ class ChatViewModelAttachmentTest {
     private lateinit var chatRepository: ChatRepository
     private lateinit var sessionRepository: SessionRepository
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var agentRepository: AgentRepository
     private lateinit var networkMonitor: NetworkMonitor
     private lateinit var viewModel: ChatViewModel
     private lateinit var appContext: Context
@@ -59,6 +63,7 @@ class ChatViewModelAttachmentTest {
         chatRepository = mock()
         sessionRepository = mock()
         settingsRepository = mock()
+        agentRepository = mock()
         networkMonitor = mock()
         appContext = mock()
         val contentResolver: ContentResolver = mock()
@@ -73,7 +78,7 @@ class ChatViewModelAttachmentTest {
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))
             whenever(chatRepository.getTodos(any())).thenReturn(Result.success(emptyList()))
         }
-        viewModel = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, networkMonitor, dispatcher)
+        viewModel = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, agentRepository, networkMonitor, dispatcher)
         viewModel.clock = { dispatcher.scheduler.currentTime }
         dispatcher.scheduler.advanceTimeBy(200)
     }
@@ -220,5 +225,67 @@ class ChatViewModelAttachmentTest {
         )
 
         job.cancel()
+    }
+
+    // ── Test 6 ─────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `refreshInputCapabilities loads default resolved capabilities for main chat`() = vmTest {
+        whenever(settingsRepository.getDefaultBinding()).thenReturn(
+            Result.success(
+                AgentBinding(
+                    agentType = "__default__",
+                    accountId = "acc-1",
+                    modelId = "claude-opus",
+                    thinkingEffort = null,
+                    resolved = ResolvedBinding(
+                        accountName = "Anthropic",
+                        providerDisplayName = "Anthropic",
+                        modelDisplayName = "Claude",
+                        contextWindowTokens = 200000,
+                        thinkingCapability = null,
+                        supportsImageInput = true,
+                        supportsTextFileInput = true,
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.refreshInputCapabilities(agentId = null)
+        dispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.uiState.value.inputCapabilities.supportsImageInput)
+        assertTrue(viewModel.uiState.value.inputCapabilities.supportsTextFileInput)
+    }
+
+    // ── Test 7 ─────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `refreshInputCapabilities loads agent resolved capabilities for sub agent`() = vmTest {
+        whenever(agentRepository.getAgentBinding("forge")).thenReturn(
+            Result.success(
+                AgentBinding(
+                    agentType = "forge",
+                    accountId = "acc-1",
+                    modelId = "vision-model",
+                    thinkingEffort = null,
+                    resolved = ResolvedBinding(
+                        accountName = "Provider",
+                        providerDisplayName = "Provider",
+                        modelDisplayName = "Vision",
+                        contextWindowTokens = 128000,
+                        thinkingCapability = null,
+                        supportsImageInput = true,
+                        supportsTextFileInput = false,
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.refreshInputCapabilities(agentId = "forge")
+        dispatcher.scheduler.runCurrent()
+
+        assertTrue(viewModel.uiState.value.inputCapabilities.supportsImageInput)
+        assertFalse(viewModel.uiState.value.inputCapabilities.supportsTextFileInput)
     }
 }

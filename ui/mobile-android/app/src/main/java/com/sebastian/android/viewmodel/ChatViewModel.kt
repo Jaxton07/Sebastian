@@ -13,6 +13,7 @@ import com.sebastian.android.data.model.ModelInputCapabilities
 import com.sebastian.android.data.model.PendingAttachment
 import com.sebastian.android.data.model.StreamEvent
 import com.sebastian.android.data.model.ToolStatus
+import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SessionRepository
 import com.sebastian.android.data.repository.SettingsRepository
@@ -43,6 +44,7 @@ class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val sessionRepository: SessionRepository,
     private val settingsRepository: SettingsRepository,
+    private val agentRepository: AgentRepository,
     private val networkMonitor: NetworkMonitor,
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -336,6 +338,24 @@ class ChatViewModel @Inject constructor(
     }
 
     // ── Public mutation surface ──────────────────────────────────────────────
+
+    fun refreshInputCapabilities(agentId: String?) {
+        viewModelScope.launch(dispatcher) {
+            val caps = if (agentId == null) {
+                settingsRepository.getDefaultBinding()
+                    .getOrNull()
+                    ?.resolved
+                    ?.toInputCapabilities()
+            } else {
+                agentRepository.getAgentBinding(agentId)
+                    .getOrNull()
+                    ?.resolved
+                    ?.toInputCapabilities()
+            } ?: ModelInputCapabilities()
+
+            _uiState.update { it.copy(inputCapabilities = caps) }
+        }
+    }
 
     fun sendMessage(text: String) {
         val attachments = _uiState.value.pendingAttachments
