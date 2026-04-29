@@ -227,18 +227,28 @@ class AttachmentStore:
         except Exception:
             # 二次查询：并发 upload 可能已用同 SHA 成功入库；只有当 DB 中
             # 完全没有该 SHA 的 record 时才能删本次新写入的文件。
+            # 若二次查询本身也失败（DB 不可用），保守跳过 unlink 并记录 warning；
+            # 孤儿文件留给下次 cleanup，不掩盖原始异常。
             if created_blob or created_thumb:
-                async with self._db_factory() as session2:
-                    cnt = await session2.scalar(
-                        select(func.count())
-                        .select_from(AttachmentRecord)
-                        .where(AttachmentRecord.sha256 == sha)
+                try:
+                    async with self._db_factory() as session2:
+                        cnt = await session2.scalar(
+                            select(func.count())
+                            .select_from(AttachmentRecord)
+                            .where(AttachmentRecord.sha256 == sha)
+                        )
+                except Exception as requery_exc:
+                    logger.warning(
+                        "upload rollback: re-query failed for sha=%s, skipping unlink: %s",
+                        sha[:8],
+                        requery_exc,
                     )
-                if (cnt or 0) == 0:
-                    if created_blob:
-                        blob_abs.unlink(missing_ok=True)
-                    if created_thumb and thumb_abs is not None:
-                        thumb_abs.unlink(missing_ok=True)
+                else:
+                    if (cnt or 0) == 0:
+                        if created_blob:
+                            blob_abs.unlink(missing_ok=True)
+                        if created_thumb and thumb_abs is not None:
+                            thumb_abs.unlink(missing_ok=True)
             raise
 
         return UploadedAttachment(

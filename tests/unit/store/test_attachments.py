@@ -789,6 +789,56 @@ async def test_upload_bytes_db_failure_keeps_blob_when_concurrent_record_exists(
     assert blob_abs.exists()
 
 
+async def test_upload_bytes_rollback_requery_failure_preserves_original_exception(
+    attachment_store: AttachmentStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB commit 失败且二次查询也失败时，原始 commit 异常必须透传，不被 re-query 异常掩盖。
+
+    回归测试：旧代码中 session2.__aenter__ 若抛异常，会替换外层 except 捕获的
+    原始 commit 异常向上传播，掩盖根因。
+    修复后：re-query 异常被 try/except 捕获并记 warning，raise 继续抛原始异常。
+    """
+    data = b"unique content for exception masking test"
+    real_factory = attachment_store._db_factory
+    call_count = {"n": 0}
+
+    def _factory():
+        call_count["n"] += 1
+        n = call_count["n"]
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                if n >= 2:
+                    # 第二次打开 session（re-query）时直接抛，模拟 DB 完全不可用
+                    raise ConnectionError("db unavailable during requery")
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("original commit error")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                if hasattr(self, "_inner"):
+                    return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _factory)
+
+    # 必须抛出原始 commit 异常，而不是 re-query 的 ConnectionError
+    with pytest.raises(RuntimeError, match="original commit error"):
+        await attachment_store.upload_bytes(
+            filename="test.md",
+            content_type="text/markdown",
+            kind="text_file",
+            data=data,
+        )
+
+
 async def test_cleanup_keeps_blob_when_other_record_uses_same_sha(
     attachment_store: AttachmentStore, sqlite_session_factory
 ) -> None:
