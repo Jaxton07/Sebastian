@@ -973,7 +973,8 @@ async def test_cleanup_deletes_thumbnail_via_glob(
         rec.created_at = datetime.now(UTC) - timedelta(hours=48)
         await session.commit()
 
-    await attachment_store.cleanup()
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 1
     assert not thumb_abs.exists()
 
 
