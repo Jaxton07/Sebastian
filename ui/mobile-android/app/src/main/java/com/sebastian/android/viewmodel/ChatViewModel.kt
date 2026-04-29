@@ -280,7 +280,7 @@ class ChatViewModel @Inject constructor(
             }
 
             is StreamEvent.ToolExecuted -> {
-                if (event.name == "send_file" && event.artifact != null) {
+                if (event.artifact != null) {
                     val sessionId = _uiState.value.activeSessionId
                     if (sessionId == event.sessionId && currentAssistantMessageId != null) {
                         replaceOrAppendArtifactBlock(

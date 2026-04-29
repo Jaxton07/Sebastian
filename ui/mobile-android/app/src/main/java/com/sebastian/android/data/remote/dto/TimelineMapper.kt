@@ -5,7 +5,6 @@ import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
 import com.sebastian.android.data.model.ToolStatus
 
-private const val TOOL_SEND_FILE = "send_file"
 
 fun List<TimelineItemDto>.toMessagesFromTimeline(baseUrl: String = ""): List<Message> {
     val sorted = sortedBy { it.seq }
@@ -224,8 +223,8 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String, baseUr
 
                 val toolName = item.payloadString("tool_name") ?: item.payloadString("name") ?: ""
 
-                // send_file with successful artifact → inline attachment block, no ToolBlock
-                if (toolName == TOOL_SEND_FILE && result?.payloadBoolean("ok") == true) {
+                // tool result with successful artifact → inline attachment block, no ToolBlock
+                if (result?.payloadBoolean("ok") == true) {
                     @Suppress("UNCHECKED_CAST")
                     val artifactMap = result.payload?.get("artifact") as? Map<String, Any?>
                     if (artifactMap != null) {
