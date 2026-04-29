@@ -1173,7 +1173,7 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `send_file tool executed with same artifact twice appends block only once`() = vmTest {
+    fun `duplicate send_file artifact event is idempotent`() = vmTest {
         activateSession()
         emitEvent(StreamEvent.TurnReceived("s1"))
         val artifact = AttachmentArtifact(
@@ -1203,6 +1203,35 @@ class ChatViewModelTest {
         val blocks = viewModel.uiState.value.messages.last().blocks
         val tool = blocks.filterIsInstance<ContentBlock.ToolBlock>().single()
         assertEquals(ToolStatus.DONE, tool.status)
+    }
+
+    @Test
+    fun `send_file tool executed with text_file artifact replaces tool block with file block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_2", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_2",
+            name = "send_file",
+            resultSummary = "已向用户发送文件 notes.md",
+            artifact = AttachmentArtifact(
+                kind = "text_file",
+                attachmentId = "att-2",
+                filename = "notes.md",
+                mimeType = "text/markdown",
+                sizeBytes = 500L,
+                downloadUrl = "/api/v1/attachments/att-2",
+                textExcerpt = "# Hello",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
+        val file = blocks.filterIsInstance<ContentBlock.FileBlock>().single()
+        assertEquals("att-2", file.attachmentId)
+        assertEquals("# Hello", file.textExcerpt)
     }
 
     @Test
