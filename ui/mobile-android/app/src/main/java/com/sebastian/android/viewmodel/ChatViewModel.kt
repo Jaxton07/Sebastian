@@ -991,7 +991,7 @@ class ChatViewModel @Inject constructor(
                 downloadUrl = absolute(artifact.downloadUrl),
                 thumbnailUrl = artifact.thumbnailUrl?.let(::absolute),
             )
-            else -> ContentBlock.FileBlock(
+            "text_file" -> ContentBlock.FileBlock(
                 blockId = "stream-$sessionId-artifact-${artifact.attachmentId}",
                 attachmentId = artifact.attachmentId,
                 filename = artifact.filename,
@@ -1000,6 +1000,19 @@ class ChatViewModel @Inject constructor(
                 downloadUrl = absolute(artifact.downloadUrl),
                 textExcerpt = artifact.textExcerpt,
             )
+            else -> {
+                // Unknown kind: log and fall back to FileBlock to avoid leaving ToolBlock in PENDING
+                android.util.Log.w("ChatViewModel", "Unknown artifact kind '${artifact.kind}', rendering as file block")
+                ContentBlock.FileBlock(
+                    blockId = "stream-$sessionId-artifact-${artifact.attachmentId}",
+                    attachmentId = artifact.attachmentId,
+                    filename = artifact.filename,
+                    mimeType = artifact.mimeType,
+                    sizeBytes = artifact.sizeBytes,
+                    downloadUrl = absolute(artifact.downloadUrl),
+                    textExcerpt = artifact.textExcerpt,
+                )
+            }
         }
     }
 
@@ -1012,39 +1025,36 @@ class ChatViewModel @Inject constructor(
     private fun replaceOrAppendArtifactBlock(toolId: String, artifactBlock: ContentBlock) {
         val artifactAttId = artifactBlock.attachmentIdOrNull() ?: return
         val msgId = currentAssistantMessageId ?: return
-        val sessionId = pendingTurnSessionId
-        pendingTurnSessionId = null
         _uiState.update { state ->
-            // De-dupe: if this attachment is already present in any existing message, skip
-            if (state.messages.any { msg ->
-                    msg.blocks.any { it.attachmentIdOrNull() == artifactAttId }
-                }) return@update state
+            val existingMsg = state.messages.find { it.id == msgId } ?: return@update state
 
-            val existingMsg = state.messages.find { it.id == msgId }
-            val messages = if (existingMsg == null && sessionId != null) {
-                // Message not yet created — create it with the artifact block
-                val newMsg = Message(
-                    id = msgId,
-                    sessionId = sessionId,
-                    role = MessageRole.ASSISTANT,
-                    blocks = listOf(artifactBlock),
-                )
-                state.messages + newMsg
-            } else {
-                state.messages.map { message ->
-                    if (message.id != msgId) return@map message
-
-                    var replaced = false
-                    val newBlocks = message.blocks.map { block ->
-                        if (block is ContentBlock.ToolBlock && block.toolId == toolId) {
-                            replaced = true
-                            artifactBlock
-                        } else block
-                    }
-                    message.copy(blocks = if (replaced) newBlocks else newBlocks + artifactBlock)
-                }
+            var replaced = false
+            val newBlocks = existingMsg.blocks.map { block ->
+                if (block is ContentBlock.ToolBlock && block.toolId == toolId) {
+                    replaced = true
+                    artifactBlock
+                } else block
             }
-            state.copy(messages = messages)
+
+            if (replaced) {
+                // ToolBlock was replaced — no dedup needed
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.id == msgId) msg.copy(blocks = newBlocks) else msg
+                    },
+                )
+            } else {
+                // No ToolBlock to replace — append with dedup across all messages
+                val alreadyPresent = state.messages.any { msg ->
+                    msg.blocks.any { it.attachmentIdOrNull() == artifactAttId }
+                }
+                if (alreadyPresent) return@update state
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.id == msgId) msg.copy(blocks = msg.blocks + artifactBlock) else msg
+                    },
+                )
+            }
         }
     }
 }

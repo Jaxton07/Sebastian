@@ -27,11 +27,22 @@ def _resolve_display_name(display_name: str | None, source_path: Path) -> str:
     return display_name + source_path.suffix
 
 
+_IMAGE_SUFFIX_MIME: dict[str, str] = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
 def _detect_kind(path: Path) -> tuple[str, str] | None:
     suffix = path.suffix.lower()
     mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
-    if suffix in ALLOWED_IMAGE_EXTENSIONS and mime in ALLOWED_IMAGE_MIME_TYPES:
+    if suffix in ALLOWED_IMAGE_EXTENSIONS:
+        if mime not in ALLOWED_IMAGE_MIME_TYPES:
+            mime = _IMAGE_SUFFIX_MIME.get(suffix, f"image/{suffix[1:]}")
         return "image", mime
     if suffix in ALLOWED_TEXT_EXTENSIONS:
         if mime not in ALLOWED_TEXT_MIME_TYPES:
@@ -119,21 +130,9 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
             data=data,
         )
     except AttachmentValidationError as exc:
-        msg = str(exc)
-        if "exceeds" in msg or "limit" in msg:
-            return ToolResult(
-                ok=False,
-                error=(
-                    f"File {filename!r} is too large to send: {exc}. "
-                    "Do not retry automatically; ask the user to choose a smaller file."
-                ),
-            )
         return ToolResult(
             ok=False,
-            error=(
-                "Attachment service is unavailable. Do not retry automatically; "
-                "tell the user sending files is currently unavailable."
-            ),
+            error=f"{exc}. Do not retry automatically; tell the user the file could not be sent.",
         )
 
     record = await attachment_store.mark_agent_sent(

@@ -1176,6 +1176,7 @@ class ChatViewModelTest {
     fun `duplicate send_file artifact event is idempotent`() = vmTest {
         activateSession()
         emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
         val artifact = AttachmentArtifact(
             kind = "image",
             attachmentId = "att-1",
@@ -1184,12 +1185,87 @@ class ChatViewModelTest {
             sizeBytes = 123L,
             downloadUrl = "/api/v1/attachments/att-1",
         )
+        // First event replaces ToolBlock; second (SSE replay) is deduped
         emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
         emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
         dispatcher.scheduler.advanceTimeBy(200)
 
         val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
         assertEquals(1, blocks.filterIsInstance<ContentBlock.ImageBlock>().size)
+    }
+
+    @Test
+    fun `send_file artifact dropped when assistant message not yet materialized`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        // No ToolBlockStart → assistant message never added to state
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_1",
+            name = "send_file",
+            resultSummary = "sent",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-99",
+                filename = "img.png",
+                mimeType = "image/png",
+                sizeBytes = 100L,
+                downloadUrl = "/api/v1/attachments/att-99",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        // Spec: do not create a temporary message — history hydration handles the final state
+        assertTrue(viewModel.uiState.value.messages.isEmpty())
+    }
+
+    @Test
+    fun `send_file artifact appended when message exists but no matching tool block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        // Another tool creates the assistant message
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-other", "toolu_other", "list_files"))
+        // send_file executed without a corresponding ToolBlockStart
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_sf",
+            name = "send_file",
+            resultSummary = "sent",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-5",
+                filename = "img.png",
+                mimeType = "image/png",
+                sizeBytes = 100L,
+                downloadUrl = "/api/v1/attachments/att-5",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.any { it is ContentBlock.ToolBlock }) // list_files block still present
+        val image = blocks.filterIsInstance<ContentBlock.ImageBlock>().single()
+        assertEquals("att-5", image.attachmentId)
+    }
+
+    @Test
+    fun `ToolFailed for send_file renders tool block as FAILED`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_sf", "send_file"))
+        emitEvent(StreamEvent.ToolFailed(
+            sessionId = "s1",
+            toolId = "toolu_sf",
+            name = "send_file",
+            error = "File not found: /tmp/missing.png. Do not retry automatically.",
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        val tool = blocks.filterIsInstance<ContentBlock.ToolBlock>().single()
+        assertEquals(ToolStatus.FAILED, tool.status)
+        assertTrue(tool.error?.contains("not found") == true)
     }
 
     @Test
