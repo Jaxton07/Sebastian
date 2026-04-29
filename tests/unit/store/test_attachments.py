@@ -964,3 +964,44 @@ async def test_cleanup_unlinks_when_confirm_returns_empty(
 
     await attachment_store.cleanup()
     assert not blob_abs.exists()
+
+
+async def test_cleanup_does_not_double_unlink_shared_blob(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """两条 record 同 SHA 都过期时，blob 路径只能被 unlink 一次（不重复 syscall）。"""
+    data = b"shared cleanup duplicate guard content"
+    sha = _hashlib.sha256(data).hexdigest()
+
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    r2 = await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    async with sqlite_session_factory() as session:
+        for rid in (r1.id, r2.id):
+            rec = await session.get(AttachmentRecord, rid)
+            rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    # 统计每个具体路径的 unlink 调用次数
+    real_unlink = Path.unlink
+    unlink_log: list[Path] = []
+
+    def _counting_unlink(self, *args, **kwargs):
+        unlink_log.append(self)
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _counting_unlink)
+
+    await attachment_store.cleanup()
+
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    blob_unlinks = [p for p in unlink_log if p == blob_abs]
+    assert len(blob_unlinks) == 1, (
+        f"blob {blob_abs} 被 unlink 了 {len(blob_unlinks)} 次，期望 1 次"
+    )

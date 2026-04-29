@@ -412,8 +412,10 @@ class AttachmentStore:
             remaining_count = {row[0]: row[1] for row in remaining_rows.all()}
 
             pending_unlink: list[tuple[str, Path]] = []
+            seen_shas: set[str] = set()
             for r in records:
-                if remaining_count.get(r.sha256, 0) == 0:
+                if remaining_count.get(r.sha256, 0) == 0 and r.sha256 not in seen_shas:
+                    seen_shas.add(r.sha256)
                     pending_unlink.append((r.sha256, self._root_dir / r.blob_path))
                     thumb_dir = self._root_dir / "thumbs" / r.sha256[:2]
                     if thumb_dir.exists():
