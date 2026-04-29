@@ -577,6 +577,30 @@ def test_thumbnail_generic_exception_fallback(
     assert any("thumbnail generation skipped" in m for m in caplog.messages)
 
 
+async def test_upload_bytes_dedup_skips_blob_write(
+    attachment_store: AttachmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = b"hello dedup world"
+    await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    # 第二次上传：mock os.replace 验证未被调用
+    call_count = {"n": 0}
+    real_replace = os.replace
+
+    def _counting_replace(*args, **kwargs):
+        call_count["n"] += 1
+        return real_replace(*args, **kwargs)
+
+    monkeypatch.setattr("sebastian.store.attachments.os.replace", _counting_replace)
+
+    await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    assert call_count["n"] == 0  # blob 未被重新写入
+
+
 def test_thumbnail_dedup_skips_save_when_exists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

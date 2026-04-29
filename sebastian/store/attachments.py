@@ -177,15 +177,19 @@ class AttachmentStore:
         sha = hashlib.sha256(data).hexdigest()
         blob_rel = f"blobs/{sha[:2]}/{sha}"
         blob_abs = self._root_dir / blob_rel
-        blob_abs.parent.mkdir(parents=True, exist_ok=True)
-        (self._root_dir / "tmp").mkdir(parents=True, exist_ok=True)
-        tmp_path = self._root_dir / "tmp" / str(uuid4())
-        try:
-            tmp_path.write_bytes(data)
-            os.replace(tmp_path, blob_abs)
-        except Exception:
-            tmp_path.unlink(missing_ok=True)
-            raise
+
+        created_blob = False  # noqa: F841 — consumed by Task 8 rollback logic
+        if not blob_abs.exists():
+            blob_abs.parent.mkdir(parents=True, exist_ok=True)
+            (self._root_dir / "tmp").mkdir(parents=True, exist_ok=True)
+            tmp_path = self._root_dir / "tmp" / str(uuid4())
+            try:
+                tmp_path.write_bytes(data)
+                os.replace(tmp_path, blob_abs)
+                created_blob = True  # noqa: F841
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
 
         text_excerpt: str | None = None
         if kind == "text_file":
