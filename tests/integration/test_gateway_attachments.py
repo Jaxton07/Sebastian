@@ -702,6 +702,28 @@ def test_thumbnail_falls_back_to_blob_when_thumb_missing(client) -> None:
     assert out.size == (200, 200)
 
 
+def test_thumbnail_returns_400_for_text_file(client) -> None:
+    """text_file 类型 attachment 调 /thumbnail 应返回 400。"""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("notes.md", b"# hello", "text/markdown")},
+        data={"kind": "text_file"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    att_id = resp.json()["attachment_id"]
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 400
+    assert "image" in thumb_resp.json()["detail"].lower()
+
+
 def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
     """After a session is deleted (orphaning its attachment), reusing the attachment
     must return 409."""

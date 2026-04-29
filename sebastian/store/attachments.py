@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from PIL import (  # noqa: F401  # UnidentifiedImageError used by Task 5
@@ -59,6 +60,11 @@ _THUMB_EXT_BY_FORMAT: dict[str, str] = {
     "PNG": "png",
     "WEBP": "webp",
 }
+_THUMB_EXT_TO_MIME: dict[str, str] = {
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
 
 
 def _maybe_generate_thumbnail(
@@ -72,17 +78,19 @@ def _maybe_generate_thumbnail(
       - thumb_abs not None / created False：thumb 已存在，跳过写入（dedup）
     """
     try:
-        with Image.open(BytesIO(data)) as img:
-            img.load()
+        with Image.open(BytesIO(data)) as opened:
+            opened.load()
+            img: Image.Image = opened  # 重绑定到基类类型，convert/exif_transpose 返回 Image.Image
             src_format = img.format or ""
             if src_format == "GIF":
                 img.seek(0)
-                ext = "png"
+                ext: str = "png"
                 save_format = "PNG"
             else:
-                ext = _THUMB_EXT_BY_FORMAT.get(src_format)
-                if ext is None:
+                _ext = _THUMB_EXT_BY_FORMAT.get(src_format)
+                if _ext is None:
                     return None, False
+                ext = _ext
                 save_format = src_format
 
             thumb_rel = f"thumbs/{sha[:2]}/{sha}.{ext}"
@@ -114,7 +122,7 @@ def _maybe_generate_thumbnail(
             (root_dir / "tmp").mkdir(parents=True, exist_ok=True)
             tmp_path = root_dir / "tmp" / str(uuid4())
             try:
-                save_kwargs: dict = {"format": save_format, "optimize": True}
+                save_kwargs: dict[str, Any] = {"format": save_format, "optimize": True}
                 if save_format == "JPEG":
                     save_kwargs["quality"] = JPEG_QUALITY
                 img.save(tmp_path, **save_kwargs)
@@ -259,6 +267,28 @@ class AttachmentStore:
         if not resolved.is_relative_to(self._root_dir.resolve()):
             raise ValueError(f"Blob path escapes root: {record.blob_path!r}")
         return resolved
+
+    def thumb_candidate_paths(
+        self, record: AttachmentRecord
+    ) -> list[tuple[Path, str]]:
+        """返回该 record 可能存在的 thumbnail 候选路径与对应 MIME。
+
+        thumb 按 SHA 内容寻址，扩展名只可能是 jpg/png/webp 之一（取决于上传时
+        生成的格式）。返回所有候选供调用方按顺序探测，命中第一个即可。
+
+        每个返回项是 (absolute path, MIME type) 元组。所有路径均通过
+        is_relative_to 检查，保证不会逃出 root_dir。
+        """
+        thumb_dir = (self._root_dir / "thumbs" / record.sha256[:2]).resolve()
+        root_resolved = self._root_dir.resolve()
+        if not thumb_dir.is_relative_to(root_resolved):
+            raise ValueError(f"Thumb dir escapes root: {record.sha256!r}")
+
+        candidates: list[tuple[Path, str]] = []
+        for ext, mime in _THUMB_EXT_TO_MIME.items():
+            path = thumb_dir / f"{record.sha256}.{ext}"
+            candidates.append((path, mime))
+        return candidates
 
     def read_text_content(self, record: AttachmentRecord) -> str:
         return self.blob_absolute_path(record).read_text(encoding="utf-8")
