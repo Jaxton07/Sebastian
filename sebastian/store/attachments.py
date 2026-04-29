@@ -77,7 +77,7 @@ def _maybe_generate_thumbnail(root_dir: Path, sha: str, data: bytes) -> tuple[Pa
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(BytesIO(data)) as opened:
                 opened.load()
-                img: Image.Image = opened  # 重绑定到基类类型，convert/exif_transpose 返回 Image.Image
+                img: Image.Image = opened  # convert/exif_transpose 返回 Image.Image
                 src_format = img.format or ""
                 if src_format == "GIF":
                     img.seek(0)

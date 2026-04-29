@@ -105,14 +105,20 @@ await log.append(event)
 - `upload_bytes` 失败回滚同样按 SHA 二次查询：DB commit 失败时，仅在 SHA 引用计数为 0 时才删除本次新写入的 blob/thumb，避免误删并发 upload 已 commit 的共享文件。
 - 不变量：任何 DB-committed 的活跃 `AttachmentRecord` 都能通过 `blob_path` 找到磁盘文件；缩略图存在性不是不变量（解码失败 / 老数据时缺失，端点 fallback 处理）。
 
-### 缩略图生成的全局副作用
+### 缩略图生成与 DecompressionBomb 防护
 
-`attachments.py` 在 module import 时设置：
+`attachments.py` 在模块级设置 `Image.MAX_IMAGE_PIXELS = 100_000_000`，把 Pillow 的像素上限收紧到 1 亿（约 10000×10000）。
 
-- `Image.MAX_IMAGE_PIXELS = 100_000_000`：把 Pillow 默认的 ~89.5M 像素警告阈值提升到 100M，作为本系统的硬上限。
-- `warnings.simplefilter("error", Image.DecompressionBombWarning)`：把 Pillow 的 `DecompressionBombWarning` **进程级别**升级为 Error，让单层阈值即可触发硬阻断，而不是依赖 Pillow 的双重阈值机制。
+`DecompressionBombWarning → Error` 的升级在 `_maybe_generate_thumbnail` 内部用 `warnings.catch_warnings()` 作用域化处理：
 
-注意 `simplefilter` 是 **process-wide** 副作用：任何 import 了 `sebastian.store.attachments` 的代码（包括测试和未来新增模块）都会继承这个 warning filter。如果将来有其他模块也用 Pillow 处理大图但希望保留 warning 行为，需要在该模块单独 push warnings filter。
+```python
+with warnings.catch_warnings():
+    warnings.simplefilter("error", Image.DecompressionBombWarning)
+    with Image.open(...) as img:
+        img.load()  # 超限时抛 Error，外层 except 捕获降级
+```
+
+这样 warning filter 变更仅在本次调用栈内有效，退出后自动还原，**不产生进程级副作用**。其他使用 Pillow 的代码不受影响。
 
 ---
 
