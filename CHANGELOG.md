@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-04-29
+
 ### Added
 - 新增 `capture_screenshot_and_send` 工具：Sebastian 可截图当前屏幕并直接发送到对话（仅 Sebastian 主管家可用）
 
