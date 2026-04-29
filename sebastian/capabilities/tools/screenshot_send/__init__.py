@@ -107,7 +107,7 @@ async def _run_capture_command(
         return ToolResult(
             ok=False,
             error=(
-                f"Screenshot command did not create an output file: {exc}. "
+                f"Screenshot command output file could not be accessed: {exc}. "
                 "Do not retry automatically; "
                 "tell the user the screen could not be captured."
             ),

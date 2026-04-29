@@ -254,6 +254,11 @@ def test_display_name_without_suffix_becomes_png() -> None:
     assert _resolve_screenshot_filename("screen").endswith(".png")
     assert _resolve_screenshot_filename("screen.png") == "screen.png"
 
+    # Path traversal prevention
+    result = _resolve_screenshot_filename("../../etc/passwd")
+    assert "/" not in result
+    assert result == "passwd.png"
+
 
 def test_screenshot_tool_metadata_is_high_risk_and_precise() -> None:
     import sebastian.capabilities.tools.screenshot_send  # noqa: F401
@@ -271,6 +276,15 @@ def test_screenshot_tool_metadata_is_high_risk_and_precise() -> None:
 
 
 def test_screenshot_tool_is_allowed_only_for_sebastian() -> None:
+    from pathlib import Path
+
     from sebastian.orchestrator.sebas import Sebastian
 
     assert "capture_screenshot_and_send" in Sebastian.allowed_tools
+
+    # Verify no sub-agent manifest exposes this tool
+    manifest_matches = [
+        p for p in Path("sebastian/agents").glob("*/manifest.toml")
+        if "capture_screenshot_and_send" in p.read_text(encoding="utf-8")
+    ]
+    assert not manifest_matches, f"Tool found in sub-agent manifests: {manifest_matches}"
