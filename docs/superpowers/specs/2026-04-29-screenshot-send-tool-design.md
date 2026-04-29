@@ -64,7 +64,7 @@ The approval copy should make it clear that the screenshot is captured from the 
 Screenshots are intermediate runtime artifacts. Store them under the Sebastian data directory:
 
 ```text
-<SEBASTIAN_DATA_DIR>/tmp/screenshots/
+settings.user_data_dir / "tmp" / "screenshots"
 ```
 
 With the default layout this is:
@@ -72,6 +72,16 @@ With the default layout this is:
 ```text
 ~/.sebastian/data/tmp/screenshots/
 ```
+
+Do not construct this path by appending `tmp/screenshots` directly to `settings.data_dir` or the `SEBASTIAN_DATA_DIR` environment variable. In the layout-v2 model, `settings.data_dir` points at the install/data root such as `~/.sebastian`, while user-owned runtime data lives under `settings.user_data_dir`, which is `settings.data_dir / "data"`.
+
+`ensure_data_dir()` does not pre-create this screenshot temp directory. The screenshot tool must call:
+
+```python
+screenshot_tmp_dir.mkdir(parents=True, exist_ok=True)
+```
+
+before capturing.
 
 The tool must not write screenshots into:
 
@@ -122,6 +132,8 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
 return await send_file_path(str(screenshot_path), display_name=filename)
 ```
 
+`send_file_path` still depends on the active tool execution context through `get_tool_context()`, because it needs `session_id` and `agent_type` for `AttachmentStore.mark_agent_sent()`. It is an internal helper for other tools running inside a tool call, not a context-free file upload API.
+
 The returned result remains the existing image artifact shape:
 
 ```json
@@ -155,6 +167,7 @@ Behavior:
 - `-x` suppresses the camera sound.
 - The command writes PNG directly.
 - If macOS Screen Recording permission is missing, return a deterministic failure explaining that the user must grant Screen Recording permission to the process running Sebastian.
+- Treat the capture as failed unless the command returns success and the output file exists with `size_bytes > 0`. Some macOS versions or permission-denied paths can leave a missing or zero-byte output file, so checking only the command return code is insufficient.
 
 Do not attempt to bypass macOS privacy controls.
 
@@ -163,6 +176,8 @@ Do not attempt to bypass macOS privacy controls.
 Linux support must detect the graphical session and available backend explicitly.
 
 If neither `DISPLAY` nor `WAYLAND_DISPLAY` is present, fail with a clear headless-session error.
+
+If both `WAYLAND_DISPLAY` and `DISPLAY` are present, prefer the Wayland path. GNOME and other Wayland sessions may set `DISPLAY` for XWayland compatibility, but X11 screenshot tools can capture an incomplete desktop in that mode.
 
 For X11:
 
@@ -236,7 +251,7 @@ When implementing, update:
 
 - `sebastian/capabilities/tools/README.md`
 - `sebastian/capabilities/README.md`
-- `sebastian/orchestrator/sebas.py` so Sebastian can call `capture_screenshot_and_send`
+- `sebastian/orchestrator/sebas.py`, specifically `Sebastian.allowed_tools`, so the tool is included in Sebastian's LLM tool context
 
 Do not add `capture_screenshot_and_send` to sub-agent manifests such as `sebastian/agents/forge/manifest.toml` or `sebastian/agents/aide/manifest.toml`. P0 intentionally keeps screenshot capture at the top-level Sebastian boundary only.
 
