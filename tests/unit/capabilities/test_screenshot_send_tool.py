@@ -249,3 +249,24 @@ def test_display_name_without_suffix_becomes_png() -> None:
     assert re.fullmatch(r"screenshot-\d{8}-\d{6}\.png", default_name)
     assert _resolve_screenshot_filename("screen").endswith(".png")
     assert _resolve_screenshot_filename("screen.png") == "screen.png"
+
+
+def test_screenshot_tool_metadata_is_high_risk_and_precise() -> None:
+    import sebastian.capabilities.tools.screenshot_send  # noqa: F401
+    from sebastian.core.tool import get_tool
+    from sebastian.permissions.types import PermissionTier
+
+    registered = get_tool("capture_screenshot_and_send")
+    assert registered is not None
+    spec, _ = registered
+
+    assert spec.name == "capture_screenshot_and_send"
+    assert spec.permission_tier == PermissionTier.HIGH_RISK
+    assert "backend host" in spec.description
+    assert "not the Android device screen" in spec.description
+
+
+def test_screenshot_tool_is_allowed_only_for_sebastian() -> None:
+    from sebastian.orchestrator.sebas import Sebastian
+
+    assert "capture_screenshot_and_send" in Sebastian.allowed_tools

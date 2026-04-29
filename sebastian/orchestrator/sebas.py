@@ -101,6 +101,7 @@ class Sebastian(BaseAgent):
         "todo_write",
         "todo_read",
         "send_file",
+        "capture_screenshot_and_send",
         "memory_save",
         "memory_search",
         "Read",
