@@ -785,3 +785,128 @@ async def test_upload_bytes_db_failure_keeps_blob_when_concurrent_record_exists(
 
     # 关键断言：created_blob=True 但二次查询发现 B 的 record，blob 必须保留
     assert blob_abs.exists()
+
+
+async def test_cleanup_keeps_blob_when_other_record_uses_same_sha(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """两条 record 同 SHA：一条过期一条活跃 → 清理后 blob 保留。"""
+    data = b"shared content for cleanup"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    # 第一条：手动写成已过期的 uploaded
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    # 第二条：活跃 uploaded
+    await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    # 把 r1 created_at 改成 2 天前，触发 uploaded TTL
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r1.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 1
+    assert blob_abs.exists()  # 第二条仍持有引用
+
+
+async def test_cleanup_deletes_blob_when_last_record_removed(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """同 SHA 两条 record 都过期 → blob 被删（最后一条引用消失）。"""
+    data = b"dies together content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    r2 = await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    async with sqlite_session_factory() as session:
+        for rid in (r1.id, r2.id):
+            rec = await session.get(AttachmentRecord, rid)
+            rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 2
+    assert not blob_abs.exists()
+
+
+async def test_cleanup_deletes_thumbnail_via_glob(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """image record 过期且 SHA 无其他引用 → thumbs/<sha[:2]>/<sha>.* 被删。"""
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+    thumb_abs = attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+
+    r = await attachment_store.upload_bytes(
+        filename="x.jpg", content_type="image/jpeg", kind="image", data=data
+    )
+    assert thumb_abs.exists()
+
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    await attachment_store.cleanup()
+    assert not thumb_abs.exists()
+
+
+async def test_cleanup_db_failure_keeps_files(
+    attachment_store: AttachmentStore, sqlite_session_factory, monkeypatch
+) -> None:
+    """cleanup commit 失败时不能 unlink 物理文件（违反不变量）。"""
+    data = b"db failure content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    # mock：让 cleanup 内部的 commit 抛错
+    real_factory = attachment_store._db_factory
+    fail_first = {"done": False}
+
+    def _factory_with_failing_commit():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+                if not fail_first["done"]:
+                    fail_first["done"] = True
+
+                    async def _bad_commit():
+                        raise RuntimeError("simulated cleanup commit failure")
+
+                    self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _factory_with_failing_commit)
+
+    with pytest.raises(RuntimeError, match="simulated cleanup commit failure"):
+        await attachment_store.cleanup()
+
+    # blob 必须保留
+    assert blob_abs.exists()

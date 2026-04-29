@@ -360,6 +360,7 @@ class AttachmentStore:
         _now = now or datetime.now(UTC)
         uploaded_cutoff = _now - _UPLOADED_TTL
         orphan_cutoff = _now - _ORPHAN_TTL
+        count = 0
         async with self._db_factory() as session:
             result = await session.execute(
                 select(AttachmentRecord).where(
@@ -374,15 +375,50 @@ class AttachmentStore:
                 )
             )
             records = list(result.scalars().all())
-            count = 0
+
+            if not records:
+                # 仍需清理 tmp 目录
+                count += self._cleanup_tmp(uploaded_cutoff)
+                return count
+
+            batch_ids = {r.id for r in records}
+            shas_in_batch = {r.sha256 for r in records}
+
+            remaining_rows = await session.execute(
+                select(AttachmentRecord.sha256, func.count())
+                .where(
+                    AttachmentRecord.sha256.in_(shas_in_batch),
+                    AttachmentRecord.id.notin_(batch_ids),
+                )
+                .group_by(AttachmentRecord.sha256)
+            )
+            remaining_count = {row[0]: row[1] for row in remaining_rows.all()}
+
+            pending_unlink: list[tuple[str, Path]] = []
             for r in records:
-                blob = self.blob_absolute_path(r)
-                blob.unlink(missing_ok=True)
-                thumb = self._root_dir / "thumbs" / f"{r.id}.jpg"
-                thumb.unlink(missing_ok=True)
+                if remaining_count.get(r.sha256, 0) == 0:
+                    pending_unlink.append((r.sha256, self._root_dir / r.blob_path))
+                    thumb_dir = self._root_dir / "thumbs" / r.sha256[:2]
+                    if thumb_dir.exists():
+                        for thumb_path in thumb_dir.glob(f"{r.sha256}.*"):
+                            pending_unlink.append((r.sha256, thumb_path))
                 await session.delete(r)
                 count += 1
-            await session.commit()
+
+            await session.commit()  # ← DB 必须先成功提交
+
+        # commit 后到 unlink 之前，可能有新 upload 命中同 SHA（Task 10 处理二次确认）
+        for _sha, p in pending_unlink:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("cleanup unlink failed: %s: %s", p, exc)
+
+        count += self._cleanup_tmp(uploaded_cutoff)
+        return count
+
+    def _cleanup_tmp(self, uploaded_cutoff: datetime) -> int:
+        cleaned = 0
         tmp_dir = self._root_dir / "tmp"
         if tmp_dir.exists():
             for tmp_file in tmp_dir.iterdir():
@@ -391,10 +427,10 @@ class AttachmentStore:
                         mtime = datetime.fromtimestamp(tmp_file.stat().st_mtime, UTC)
                         if mtime < uploaded_cutoff:
                             tmp_file.unlink(missing_ok=True)
-                            count += 1
+                            cleaned += 1
                     except OSError:
                         pass
-        return count
+        return cleaned
 
     # --- 校验私有方法 ---
 
