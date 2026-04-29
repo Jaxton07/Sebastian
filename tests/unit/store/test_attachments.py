@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib as _hashlib
+import logging
+import os
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.config import Settings
-from sebastian.store.attachments import AttachmentStore, AttachmentValidationError
+from sebastian.store.attachments import (
+    AttachmentStore,
+    AttachmentValidationError,
+    _maybe_generate_thumbnail,
+)
 from sebastian.store.models import AttachmentRecord
 
 
@@ -356,3 +366,863 @@ async def test_mark_session_orphaned_transitions_attached_only(sqlite_session_fa
     assert r1 is not None and r1.status == "orphaned"
     assert r2 is not None and r2.status == "orphaned"
     assert r_s2 is not None and r_s2.status == "attached"
+
+
+# ── _maybe_generate_thumbnail tests ─────────────────────────────────────────
+
+
+def _make_image_bytes(format: str, size: tuple[int, int] = (800, 600), mode: str = "RGB") -> bytes:
+    if mode == "P":
+        color: int | tuple[int, ...] = 42
+    elif mode == "RGBA":
+        color = (120, 200, 50, 200)
+    else:
+        color = (120, 200, 50)
+    img = Image.new(mode, size, color=color)
+    buf = BytesIO()
+    save_kwargs: dict = {"format": format}
+    if format == "JPEG":
+        save_kwargs["quality"] = 85
+    img.save(buf, **save_kwargs)
+    return buf.getvalue()
+
+
+def test_thumbnail_jpeg_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs is not None
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.jpg"
+    assert thumb_abs.exists()
+    with Image.open(thumb_abs) as out:
+        assert out.format == "JPEG"
+        assert max(out.size) <= 256
+
+
+def test_thumbnail_png_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("PNG", mode="RGBA")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.png"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+        assert max(out.size) <= 256
+
+
+def test_thumbnail_webp_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("WEBP")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.webp"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "WEBP"
+
+
+def test_thumbnail_gif_first_frame_as_png(tmp_path: Path) -> None:
+    data = _make_image_bytes("GIF", mode="P")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    # GIF 强制走 PNG 输出
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.png"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+
+
+def test_thumbnail_unsupported_format_returns_none(tmp_path: Path) -> None:
+    # BMP 不在 _THUMB_EXT_BY_FORMAT 里
+    data = _make_image_bytes("BMP")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+
+
+def test_thumbnail_exif_orientation_corrected(tmp_path: Path) -> None:
+    """带 EXIF Orientation=6（顺时针 90°）的 JPEG，缩略图应已校正方向。"""
+    img = Image.new("RGB", (800, 400), color=(255, 0, 0))  # 800×400 横图
+    buf = BytesIO()
+    # 写入 EXIF Orientation=6（旋转 90 CW）
+    exif = img.getexif()
+    exif[0x0112] = 6
+    img.save(buf, format="JPEG", exif=exif.tobytes(), quality=85)
+    data = buf.getvalue()
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, _ = _maybe_generate_thumbnail(tmp_path, sha, data)
+    assert thumb_abs is not None
+
+    with Image.open(thumb_abs) as out:
+        # 校正后原本 800×400 横图应被旋转为竖图，宽 < 高
+        assert out.width < out.height
+
+
+def test_thumbnail_png_palette_with_transparency(tmp_path: Path) -> None:
+    """P 模式 + transparency 信息的 PNG：转 RGBA 后输出，alpha 保留。"""
+    img = Image.new("P", (200, 200))
+    img.putpalette([0, 0, 0] * 256)
+    buf = BytesIO()
+    img.save(buf, format="PNG", transparency=0)
+    data = buf.getvalue()
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs is not None
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+        # 应已转换为 RGBA（保留透明信息），不是 P
+        assert out.mode == "RGBA"
+
+
+def test_thumbnail_decompression_bomb_warning_upgraded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """超过 MAX_IMAGE_PIXELS 触发 DecompressionBombWarning。
+
+    应被 simplefilter 升级为 Error 并降级，thumbnail 不生成。
+    """
+
+    class _BombingImage:
+        format = "JPEG"
+        mode = "RGB"
+        size = (20000, 20000)
+
+        def load(self):
+            import warnings
+
+            warnings.warn("simulated bomb", Image.DecompressionBombWarning)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def _fake_open(_buf):
+        return _BombingImage()
+
+    monkeypatch.setattr("sebastian.store.attachments.Image.open", _fake_open)
+
+    data = b"\xff\xd8\xff\xe0fake"
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+    # 没有写入 thumb
+    assert not (tmp_path / "thumbs").exists() or not any((tmp_path / "thumbs").rglob("*"))
+
+
+def test_thumbnail_generic_exception_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """img.save 抛 MemoryError / RuntimeError 也走外层 except Exception 兜底。"""
+    real_open = Image.open
+
+    class _BadSaveImage:
+        def __init__(self, real):
+            self._real = real
+            self.format = real.format
+            self.mode = real.mode
+            self.size = real.size
+
+        def __enter__(self):
+            self._real.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._real.__exit__(*args)
+
+        def load(self):
+            self._real.load()
+
+        def thumbnail(self, *a, **kw):
+            self._real.thumbnail(*a, **kw)
+
+        def save(self, *_a, **_kw):
+            raise MemoryError("simulated OOM")
+
+    def _fake_open(buf):
+        real = real_open(buf)
+        return _BadSaveImage(real)
+
+    monkeypatch.setattr("sebastian.store.attachments.Image.open", _fake_open)
+    monkeypatch.setattr(
+        "sebastian.store.attachments.ImageOps.exif_transpose",
+        lambda im: im,
+    )
+
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    with caplog.at_level(logging.WARNING, logger="sebastian.store.attachments"):
+        thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+    assert any("thumbnail generation skipped" in m for m in caplog.messages)
+
+
+async def test_upload_bytes_dedup_skips_blob_write(
+    attachment_store: AttachmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = b"hello dedup world"
+    await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    # 第二次上传：mock os.replace 验证未被调用
+    call_count = {"n": 0}
+    real_replace = os.replace
+
+    def _counting_replace(*args, **kwargs):
+        call_count["n"] += 1
+        return real_replace(*args, **kwargs)
+
+    monkeypatch.setattr("sebastian.store.attachments.os.replace", _counting_replace)
+
+    await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    assert call_count["n"] == 0  # blob 未被重新写入
+
+
+def test_thumbnail_dedup_skips_save_when_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    # 第一次正常生成
+    thumb_abs1, created1 = _maybe_generate_thumbnail(tmp_path, sha, data)
+    assert created1 is True
+    assert thumb_abs1.exists()
+
+    # 第二次：mock os.replace 验证未被调用
+    real_replace = os.replace
+    call_count = {"n": 0}
+
+    def _counting_replace(*args, **kwargs):
+        call_count["n"] += 1
+        return real_replace(*args, **kwargs)
+
+    monkeypatch.setattr("sebastian.store.attachments.os.replace", _counting_replace)
+
+    thumb_abs2, created2 = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs2 == thumb_abs1
+    assert created2 is False
+    assert call_count["n"] == 0  # 未执行 os.replace
+
+
+async def test_upload_bytes_db_failure_keeps_dedup_blob(
+    attachment_store: AttachmentStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB commit 失败 + blob 是 dedup 命中（非本次新建）→ 不删 blob。"""
+    data = b"shared blob content"
+    await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    assert blob_abs.exists()
+
+    # 让 DB commit 抛异常
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError, match="simulated commit failure"):
+        await attachment_store.upload_bytes(
+            filename="b.md", content_type="text/markdown", kind="text_file", data=data
+        )
+
+    # blob 必须保留（已有 record 在用）
+    assert blob_abs.exists()
+
+
+async def test_upload_bytes_db_failure_deletes_new_blob_when_no_other_record(
+    attachment_store: AttachmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DB commit 失败 + blob 是本次新建 + 无其他 record → 删 blob。"""
+    data = b"unique brand new content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError):
+        await attachment_store.upload_bytes(
+            filename="x.md", content_type="text/markdown", kind="text_file", data=data
+        )
+
+    # blob 必须被删除（没有任何 record 引用它）
+    assert not blob_abs.exists()
+
+
+async def test_upload_bytes_db_failure_keeps_blob_when_concurrent_record_exists(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """并发安全：created_blob=True 但 DB 中已有同 SHA record，二次查询找到 → blob 保留。
+
+    模拟：upload A 新建 blob（created_blob=True），但在 A 的 DB commit 失败前，
+    并发 upload B 已用同 SHA 成功入库。回滚时二次查询应找到 B 的 record，
+    阻止 A 误删共享 blob。
+    """
+    from uuid import uuid4
+
+    data = b"concurrent shared content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    # 模拟"并发 upload B 已成功提交 record"
+    async with sqlite_session_factory() as session:
+        concurrent_rec = AttachmentRecord(
+            id=str(uuid4()),
+            kind="text_file",
+            original_filename="from_concurrent_upload.md",
+            mime_type="text/markdown",
+            size_bytes=len(data),
+            sha256=sha,
+            blob_path=f"blobs/{sha[:2]}/{sha}",
+            text_excerpt=None,
+            status="uploaded",
+            created_at=datetime.now(UTC),
+            owner_user_id=None,
+        )
+        session.add(concurrent_rec)
+        await session.commit()
+
+    # 强制让本次 upload 走"新建 blob"路径：删掉可能存在的 blob 文件
+    blob_abs.unlink(missing_ok=True)
+    assert not blob_abs.exists()
+
+    # 让本次 upload 的 DB commit 失败（触发回滚分支）
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError, match="simulated commit failure"):
+        await attachment_store.upload_bytes(
+            filename="a.md",
+            content_type="text/markdown",
+            kind="text_file",
+            data=data,
+        )
+
+    # 关键断言：created_blob=True 但二次查询发现 B 的 record，blob 必须保留
+    assert blob_abs.exists()
+
+
+async def test_upload_bytes_rollback_requery_failure_preserves_original_exception(
+    attachment_store: AttachmentStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB commit 失败且二次查询也失败时，原始 commit 异常必须透传，不被 re-query 异常掩盖。
+
+    回归测试：旧代码中 session2.__aenter__ 若抛异常，会替换外层 except 捕获的
+    原始 commit 异常向上传播，掩盖根因。
+    修复后：re-query 异常被 try/except 捕获并记 warning，raise 继续抛原始异常。
+    """
+    data = b"unique content for exception masking test"
+    real_factory = attachment_store._db_factory
+    call_count = {"n": 0}
+
+    def _factory():
+        call_count["n"] += 1
+        n = call_count["n"]
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                if n >= 2:
+                    # 第二次打开 session（re-query）时直接抛，模拟 DB 完全不可用
+                    raise ConnectionError("db unavailable during requery")
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("original commit error")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                if hasattr(self, "_inner"):
+                    return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _factory)
+
+    # 必须抛出原始 commit 异常，而不是 re-query 的 ConnectionError
+    with pytest.raises(RuntimeError, match="original commit error"):
+        await attachment_store.upload_bytes(
+            filename="test.md",
+            content_type="text/markdown",
+            kind="text_file",
+            data=data,
+        )
+
+
+async def test_upload_bytes_db_failure_keeps_thumb_when_blob_dedup_and_other_record(
+    attachment_store: AttachmentStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """created_blob=False + created_thumb=True + DB 失败 + 其他 record 存在 → thumb 保留。
+
+    场景：
+    - 第一次上传成功：建立 blob + thumb + record
+    - 手动删除 thumb，模拟 thumb 文件消失但 blob 和 record 仍在
+    - 第二次上传相同内容：created_blob=False（blob dedup），created_thumb=True（重新生成）
+    - DB commit 失败：二次查询发现已有第一次的 record（count > 0）→ thumb 必须保留
+    """
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    thumb_abs = attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+
+    # 第一次上传成功（建立 blob + thumb + record）
+    await attachment_store.upload_bytes(
+        filename="first.jpg", content_type="image/jpeg", kind="image", data=data
+    )
+    assert blob_abs.exists()
+    assert thumb_abs.exists()
+
+    # 删掉 thumb，使第二次上传走 created_thumb=True 分支
+    thumb_abs.unlink()
+    assert not thumb_abs.exists()
+
+    # 让第二次 upload 的 DB commit 失败
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError, match="simulated commit failure"):
+        await attachment_store.upload_bytes(
+            filename="second.jpg", content_type="image/jpeg", kind="image", data=data
+        )
+
+    # 关键断言：created_blob=False, created_thumb=True，但已有第一次的 record
+    # 二次查询 count > 0 → thumb 不能删
+    assert blob_abs.exists()
+    assert thumb_abs.exists()
+
+
+async def test_cleanup_keeps_blob_when_other_record_uses_same_sha(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """两条 record 同 SHA：一条过期一条活跃 → 清理后 blob 保留。"""
+    data = b"shared content for cleanup"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    # 第一条：手动写成已过期的 uploaded
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    # 第二条：活跃 uploaded
+    await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    # 把 r1 created_at 改成 2 天前，触发 uploaded TTL
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r1.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 1
+    assert blob_abs.exists()  # 第二条仍持有引用
+
+
+async def test_cleanup_deletes_blob_when_last_record_removed(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """同 SHA 两条 record 都过期 → blob 被删（最后一条引用消失）。"""
+    data = b"dies together content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    r2 = await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    async with sqlite_session_factory() as session:
+        for rid in (r1.id, r2.id):
+            rec = await session.get(AttachmentRecord, rid)
+            rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 2
+    assert not blob_abs.exists()
+
+
+async def test_cleanup_deletes_thumbnail_via_glob(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """image record 过期且 SHA 无其他引用 → thumbs/<sha[:2]>/<sha>.* 被删。"""
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+    thumb_abs = attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+
+    r = await attachment_store.upload_bytes(
+        filename="x.jpg", content_type="image/jpeg", kind="image", data=data
+    )
+    assert thumb_abs.exists()
+
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 1
+    assert not thumb_abs.exists()
+
+
+async def test_cleanup_db_failure_keeps_files(
+    attachment_store: AttachmentStore, sqlite_session_factory, monkeypatch
+) -> None:
+    """cleanup commit 失败时不能 unlink 物理文件（违反不变量）。"""
+    data = b"db failure content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    # mock：让 cleanup 内部的 commit 抛错
+    real_factory = attachment_store._db_factory
+    fail_first = {"done": False}
+
+    def _factory_with_failing_commit():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+                if not fail_first["done"]:
+                    fail_first["done"] = True
+
+                    async def _bad_commit():
+                        raise RuntimeError("simulated cleanup commit failure")
+
+                    self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _factory_with_failing_commit)
+
+    with pytest.raises(RuntimeError, match="simulated cleanup commit failure"):
+        await attachment_store.cleanup()
+
+    # blob 必须保留
+    assert blob_abs.exists()
+
+
+async def test_cleanup_skips_unlink_when_confirm_finds_references(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模拟 commit 与 unlink 之间出现新 upload：把 _check_still_referenced_shas
+    monkeypatch 成"全部仍有引用"，验证 unlink 被跳过、blob 保留。"""
+    data = b"two-step confirm content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r = await attachment_store.upload_bytes(
+        filename="x.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    async def _fake_check(_self, shas):
+        # 模拟二次确认时，所有 SHA 都仍有引用（被并发 upload 占用）
+        return set(shas)
+
+    monkeypatch.setattr(
+        AttachmentStore,
+        "_check_still_referenced_shas",
+        _fake_check,
+    )
+
+    await attachment_store.cleanup()
+    assert blob_abs.exists()
+
+
+async def test_cleanup_unlinks_when_confirm_returns_empty(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """二次确认返回空集合（确实无并发引用）→ blob 被 unlink。
+    顺带覆盖 _check_still_referenced_shas 默认实现的 happy path。"""
+    data = b"safe to delete content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r = await attachment_store.upload_bytes(
+        filename="x.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    await attachment_store.cleanup()
+    assert not blob_abs.exists()
+
+
+async def test_cleanup_does_not_double_unlink_shared_blob(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """两条 record 同 SHA 都过期时，blob 路径只能被 unlink 一次（不重复 syscall）。"""
+    data = b"shared cleanup duplicate guard content"
+    sha = _hashlib.sha256(data).hexdigest()
+
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    r2 = await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+
+    async with sqlite_session_factory() as session:
+        for rid in (r1.id, r2.id):
+            rec = await session.get(AttachmentRecord, rid)
+            rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    # 统计每个具体路径的 unlink 调用次数
+    real_unlink = Path.unlink
+    unlink_log: list[Path] = []
+
+    def _counting_unlink(self, *args, **kwargs):
+        unlink_log.append(self)
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _counting_unlink)
+
+    await attachment_store.cleanup()
+
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    blob_unlinks = [p for p in unlink_log if p == blob_abs]
+    assert len(blob_unlinks) == 1, f"blob {blob_abs} 被 unlink 了 {len(blob_unlinks)} 次，期望 1 次"
+
+
+async def test_cleanup_unlink_failure_logs_warning_keeps_db_state(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """物理 unlink 抛 OSError 时记 warning，不回滚 DB。"""
+    import logging
+
+    data = b"unlink failure content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    r = await attachment_store.upload_bytes(
+        filename="x.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    async with sqlite_session_factory() as session:
+        rec = await session.get(AttachmentRecord, r.id)
+        rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    # mock：让 blob_abs.unlink raise OSError
+    real_unlink = Path.unlink
+    target_path = blob_abs
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self == target_path:
+            raise OSError("simulated unlink failure")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    with caplog.at_level(logging.WARNING, logger="sebastian.store.attachments"):
+        await attachment_store.cleanup()
+
+    # DB 状态正确：record 已被 delete + commit
+    async with sqlite_session_factory() as session:
+        assert await session.get(AttachmentRecord, r.id) is None
+
+    # warning 被记录
+    assert any("cleanup unlink failed" in m for m in caplog.messages)
+
+
+def test_thumbnail_corrupt_content_returns_none(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """文件名/MIME 声称是 PNG，但内容是任意二进制：Image.open 抛
+    UnidentifiedImageError，外层 except Exception 兜底返回 (None, False)。"""
+    import logging
+
+    data = b"\x00not a real png\x01\x02\x03"  # 任意字节，PIL 无法识别格式
+    sha = _hashlib.sha256(data).hexdigest()
+
+    with caplog.at_level(logging.WARNING, logger="sebastian.store.attachments"):
+        thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+    assert any("thumbnail generation skipped" in m for m in caplog.messages)
+    # 没有 thumb 文件
+    thumb_dir = tmp_path / "thumbs"
+    assert not thumb_dir.exists() or not any(thumb_dir.rglob("*"))
+
+
+async def test_cleanup_three_records_same_sha_two_expired_one_active(
+    attachment_store: AttachmentStore, sqlite_session_factory
+) -> None:
+    """三条 record 同 SHA，两条过期一条活跃 → 清理删两条 record，blob 保留。"""
+    data = b"three records same sha content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    # 三条 record，全是同内容
+    r1 = await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    r2 = await attachment_store.upload_bytes(
+        filename="b.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    await attachment_store.upload_bytes(
+        filename="c.md", content_type="text/markdown", kind="text_file", data=data
+    )  # r3 保持活跃
+
+    # r1 r2 标记过期
+    async with sqlite_session_factory() as session:
+        for rid in (r1.id, r2.id):
+            rec = await session.get(AttachmentRecord, rid)
+            rec.created_at = datetime.now(UTC) - timedelta(hours=48)
+        await session.commit()
+
+    deleted = await attachment_store.cleanup()
+    assert deleted >= 2
+
+    # r1 r2 已被 delete，r3 仍在
+    async with sqlite_session_factory() as session:
+        assert await session.get(AttachmentRecord, r1.id) is None
+        assert await session.get(AttachmentRecord, r2.id) is None
+        # r3 假设还存在；用 query count 验证
+        result = await session.execute(
+            select(AttachmentRecord).where(AttachmentRecord.sha256 == sha)
+        )
+        remaining = list(result.scalars().all())
+        assert len(remaining) == 1
+
+    # blob 保留（r3 仍持有引用）
+    assert blob_abs.exists()

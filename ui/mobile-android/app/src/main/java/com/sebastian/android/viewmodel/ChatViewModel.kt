@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.sebastian.android.data.local.NetworkMonitor
+import com.sebastian.android.data.model.AttachmentArtifact
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
@@ -279,8 +280,18 @@ class ChatViewModel @Inject constructor(
             }
 
             is StreamEvent.ToolExecuted -> {
-                updateToolBlockByToolId(event.toolId) { existing ->
-                    existing.copy(status = ToolStatus.DONE, resultSummary = event.resultSummary)
+                if (event.artifact != null) {
+                    val sessionId = _uiState.value.activeSessionId
+                    if (sessionId == event.sessionId && currentAssistantMessageId != null) {
+                        replaceOrAppendArtifactBlock(
+                            event.toolId,
+                            artifactToContentBlock(event.sessionId, event.artifact),
+                        )
+                    }
+                } else {
+                    updateToolBlockByToolId(event.toolId) { existing ->
+                        existing.copy(status = ToolStatus.DONE, resultSummary = event.resultSummary)
+                    }
                 }
             }
 
@@ -962,6 +973,88 @@ class ChatViewModel @Inject constructor(
                     } else msg
                 },
             )
+        }
+    }
+
+    private fun artifactToContentBlock(sessionId: String, artifact: AttachmentArtifact): ContentBlock {
+        val base = serverUrl.value.trimEnd('/')
+        fun absolute(url: String): String =
+            if (url.startsWith("http://") || url.startsWith("https://")) url else "$base$url"
+
+        return when (artifact.kind) {
+            "image" -> ContentBlock.ImageBlock(
+                blockId = "stream-$sessionId-artifact-${artifact.attachmentId}",
+                attachmentId = artifact.attachmentId,
+                filename = artifact.filename,
+                mimeType = artifact.mimeType,
+                sizeBytes = artifact.sizeBytes,
+                downloadUrl = absolute(artifact.downloadUrl),
+                thumbnailUrl = artifact.thumbnailUrl?.let(::absolute),
+            )
+            "text_file" -> ContentBlock.FileBlock(
+                blockId = "stream-$sessionId-artifact-${artifact.attachmentId}",
+                attachmentId = artifact.attachmentId,
+                filename = artifact.filename,
+                mimeType = artifact.mimeType,
+                sizeBytes = artifact.sizeBytes,
+                downloadUrl = absolute(artifact.downloadUrl),
+                textExcerpt = artifact.textExcerpt,
+            )
+            else -> {
+                // Unknown kind: log and fall back to FileBlock to avoid leaving ToolBlock in PENDING
+                android.util.Log.w("ChatViewModel", "Unknown artifact kind '${artifact.kind}', rendering as file block")
+                ContentBlock.FileBlock(
+                    blockId = "stream-$sessionId-artifact-${artifact.attachmentId}",
+                    attachmentId = artifact.attachmentId,
+                    filename = artifact.filename,
+                    mimeType = artifact.mimeType,
+                    sizeBytes = artifact.sizeBytes,
+                    downloadUrl = absolute(artifact.downloadUrl),
+                    textExcerpt = artifact.textExcerpt,
+                )
+            }
+        }
+    }
+
+    private fun ContentBlock.attachmentIdOrNull(): String? = when (this) {
+        is ContentBlock.ImageBlock -> attachmentId
+        is ContentBlock.FileBlock -> attachmentId
+        else -> null
+    }
+
+    private fun replaceOrAppendArtifactBlock(toolId: String, artifactBlock: ContentBlock) {
+        val artifactAttId = artifactBlock.attachmentIdOrNull() ?: return
+        val msgId = currentAssistantMessageId ?: return
+        _uiState.update { state ->
+            val existingMsg = state.messages.find { it.id == msgId } ?: return@update state
+
+            var replaced = false
+            val newBlocks = existingMsg.blocks.map { block ->
+                if (block is ContentBlock.ToolBlock && block.toolId == toolId) {
+                    replaced = true
+                    artifactBlock
+                } else block
+            }
+
+            if (replaced) {
+                // ToolBlock was replaced — no dedup needed
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.id == msgId) msg.copy(blocks = newBlocks) else msg
+                    },
+                )
+            } else {
+                // No ToolBlock to replace — append with dedup across all messages
+                val alreadyPresent = state.messages.any { msg ->
+                    msg.blocks.any { it.attachmentIdOrNull() == artifactAttId }
+                }
+                if (alreadyPresent) return@update state
+                state.copy(
+                    messages = state.messages.map { msg ->
+                        if (msg.id == msgId) msg.copy(blocks = msg.blocks + artifactBlock) else msg
+                    },
+                )
+            }
         }
     }
 }

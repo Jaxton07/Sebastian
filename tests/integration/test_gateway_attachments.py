@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import os
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -314,6 +315,89 @@ def test_send_turn_with_attachment_writes_timeline(client) -> None:
     assert get_att_resp.status_code == 200
 
 
+def test_send_file_tool_result_artifact_hydrates_without_model_content_leak(client) -> None:
+    import sebastian.gateway.state as state
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    artifact = {
+        "kind": "text_file",
+        "attachment_id": "att-agent-1",
+        "filename": "notes.md",
+        "mime_type": "text/markdown",
+        "size_bytes": 20,
+        "download_url": "/api/v1/attachments/att-agent-1",
+    }
+    blocks = [
+        {
+            "type": "tool",
+            "tool_call_id": "toolu_send_file",
+            "tool_name": "send_file",
+            "input": {"file_path": "/tmp/notes.md"},
+            "status": "done",
+            "assistant_turn_id": "turn-agent-file",
+            "provider_call_index": 0,
+            "block_index": 0,
+        },
+        {
+            "type": "tool_result",
+            "tool_call_id": "toolu_send_file",
+            "tool_name": "send_file",
+            "model_content": "已向用户发送文件 notes.md",
+            "display": "已向用户发送文件 notes.md",
+            "ok": True,
+            "artifact": artifact,
+            "assistant_turn_id": "turn-agent-file",
+            "provider_call_index": 0,
+            "block_index": 1,
+        },
+    ]
+
+    async def fake_run_streaming(content: str, session_id: str, **_kwargs) -> str:
+        await state.session_store.append_message(
+            session_id,
+            "assistant",
+            "",
+            agent_type="sebastian",
+            blocks=blocks,
+        )
+        return ""
+
+    with patch("sebastian.gateway.state.sebastian.run_streaming", side_effect=fake_run_streaming):
+        turn_resp = http_client.post(
+            "/api/v1/turns",
+            json={"content": "send me the generated file"},
+            headers=headers,
+        )
+    assert turn_resp.status_code == 200, turn_resp.text
+    session_id = turn_resp.json()["session_id"]
+
+    timeline = []
+    for _ in range(20):
+        detail_resp = http_client.get(
+            f"/api/v1/sessions/{session_id}?include_archived=true",
+            headers=headers,
+        )
+        assert detail_resp.status_code == 200, detail_resp.text
+        timeline = detail_resp.json()["timeline_items"]
+        if any(item["kind"] == "tool_result" for item in timeline):
+            break
+        time.sleep(0.05)
+
+    result_items = [item for item in timeline if item["kind"] == "tool_result"]
+    assert len(result_items) == 1
+    result_item = result_items[0]
+    payload = result_item["payload"]
+    assert payload["artifact"]["attachment_id"] == "att-agent-1"
+    assert "text_excerpt" not in payload["artifact"]
+    assert result_item["content"] == "已向用户发送文件 notes.md"
+    assert "attachment_id" not in result_item["content"]
+    assert "text_excerpt" not in result_item["content"]
+    assert "text_excerpt" not in payload
+    assert "model_content" not in payload
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sub-agent session + attachment tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -543,6 +627,103 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
     )
 
 
+def test_thumbnail_returns_real_thumb_when_present(client) -> None:
+    """上传 image → /thumbnail 返回真正的缩略图（尺寸 ≤ 256）。"""
+    from io import BytesIO
+
+    from PIL import Image
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    img = Image.new("RGB", (1024, 768), color=(0, 100, 200))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    payload = buf.getvalue()
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        data={"kind": "image"},
+        files={"file": ("photo.jpg", payload, "image/jpeg")},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    att_id = resp.json()["attachment_id"]
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 200
+    assert thumb_resp.headers["content-type"].startswith("image/jpeg")
+
+    out = Image.open(BytesIO(thumb_resp.content))
+    assert max(out.size) <= 256
+
+
+def test_thumbnail_falls_back_to_blob_when_thumb_missing(client) -> None:
+    """thumb 不存在但 blob 存在 → fallback 返回原图。"""
+    from io import BytesIO
+
+    from PIL import Image
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    img = Image.new("RGB", (200, 200), color=(255, 0, 0))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    payload = buf.getvalue()
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        data={"kind": "image"},
+        files={"file": ("p.jpg", payload, "image/jpeg")},
+        headers=headers,
+    )
+    att_id = resp.json()["attachment_id"]
+    sha = resp.json()["sha256"]
+
+    # 手动删除 thumb 文件，模拟老数据 / 生成失败
+    import sebastian.gateway.state as state
+
+    thumb_abs = state.attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+    thumb_abs.unlink(missing_ok=True)
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 200
+    # fallback 用 record.mime_type，仍是 image/jpeg
+    assert thumb_resp.headers["content-type"].startswith("image/jpeg")
+    # 但 body 是原图（尺寸 200×200）
+    out = Image.open(BytesIO(thumb_resp.content))
+    assert out.size == (200, 200)
+
+
+def test_thumbnail_returns_400_for_text_file(client) -> None:
+    """text_file 类型 attachment 调 /thumbnail 应返回 400。"""
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("notes.md", b"# hello", "text/markdown")},
+        data={"kind": "text_file"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    att_id = resp.json()["attachment_id"]
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 400
+    assert "image" in thumb_resp.json()["detail"].lower()
+
+
 def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
     """After a session is deleted (orphaning its attachment), reusing the attachment
     must return 409."""
@@ -578,3 +759,40 @@ def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
     assert resp.status_code == 409, (
         f"Expected 409 for orphaned attachment, got {resp.status_code}: {resp.text}"
     )
+
+
+def test_thumbnail_returns_404_when_thumb_and_blob_both_missing(client) -> None:
+    """thumb 与原 blob 都被删除 → /thumbnail 返回 404。"""
+    from io import BytesIO
+
+    from PIL import Image
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    img = Image.new("RGB", (100, 100), color=(50, 50, 50))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    payload = buf.getvalue()
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        data={"kind": "image"},
+        files={"file": ("p.jpg", payload, "image/jpeg")},
+        headers=headers,
+    )
+    att_id = resp.json()["attachment_id"]
+    sha = resp.json()["sha256"]
+
+    # 手动删除 thumb 和 blob 文件
+    import sebastian.gateway.state as state
+
+    root = state.attachment_store._root_dir
+    (root / "thumbs" / sha[:2] / f"{sha}.jpg").unlink(missing_ok=True)
+    (root / "blobs" / sha[:2] / sha).unlink(missing_ok=True)
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 404

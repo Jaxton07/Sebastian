@@ -253,6 +253,32 @@ class TimelineMapperTest {
     }
 
     @Test
+    fun `text_file attachment without excerpt still produces FileBlock`() {
+        val items = listOf(
+            item(
+                seq = 1, kind = "user_message", content = "check this",
+                exchangeId = "exch-2b",
+            ),
+            item(
+                seq = 2, kind = "attachment", content = "notes.md",
+                exchangeId = "exch-2b",
+                payload = mapOf(
+                    "attachment_id" to "att-no-excerpt",
+                    "kind" to "text_file",
+                    "mime_type" to "text/markdown",
+                    "size_bytes" to 500.0,
+                ),
+            ),
+        )
+        val messages = items.toMessagesFromTimeline()
+        assertEquals(1, messages.size)
+        val fileBlocks = messages[0].blocks.filterIsInstance<ContentBlock.FileBlock>()
+        assertEquals(1, fileBlocks.size)
+        assertEquals("notes.md", fileBlocks[0].filename)
+        assertEquals(null, fileBlocks[0].textExcerpt)
+    }
+
+    @Test
     fun `user_message without attachment emits message with no blocks`() {
         val items = listOf(
             item(seq = 1, kind = "user_message", content = "hi"),
@@ -316,6 +342,131 @@ class TimelineMapperTest {
         val caps = dto.toDomain().toInputCapabilities()
         assertFalse(caps.supportsImageInput)
         assertTrue(caps.supportsTextFileInput)
+    }
+
+    // ---------------------------------------------------------------------------
+    // send_file artifact tests
+    // ---------------------------------------------------------------------------
+
+    @Test
+    fun `send_file image artifact produces assistant ImageBlock and hides tool card`() {
+        val items = listOf(
+            item(
+                seq = 1, kind = "tool_call", content = "{}",
+                assistantTurnId = "t1", blockIndex = 0,
+                payload = mapOf("tool_call_id" to "tc-sf-1", "tool_name" to "send_file"),
+            ),
+            item(
+                seq = 2, kind = "tool_result", content = null,
+                assistantTurnId = "t1",
+                payload = mapOf(
+                    "tool_call_id" to "tc-sf-1",
+                    "ok" to true,
+                    "artifact" to mapOf(
+                        "kind" to "image",
+                        "attachment_id" to "att-1",
+                        "filename" to "photo.png",
+                        "mime_type" to "image/png",
+                        "size_bytes" to 2048.0,
+                        "download_url" to "/api/v1/attachments/att-1",
+                        "thumbnail_url" to "/api/v1/attachments/att-1/thumbnail",
+                    ),
+                ),
+            ),
+        )
+        val msg = items.toMessagesFromTimeline(baseUrl = "http://server").single()
+        assertEquals(MessageRole.ASSISTANT, msg.role)
+        assertTrue(msg.blocks.none { it is ContentBlock.ToolBlock })
+        val image = msg.blocks.single() as ContentBlock.ImageBlock
+        assertEquals("att-1", image.attachmentId)
+        assertEquals("http://server/api/v1/attachments/att-1", image.downloadUrl)
+        assertEquals("http://server/api/v1/attachments/att-1/thumbnail", image.thumbnailUrl)
+        assertEquals("photo.png", image.filename)
+        assertEquals(2048L, image.sizeBytes)
+    }
+
+    @Test
+    fun `send_file text_file artifact produces assistant FileBlock and hides tool card`() {
+        val items = listOf(
+            item(
+                seq = 1, kind = "tool_call", content = "{}",
+                assistantTurnId = "t1", blockIndex = 0,
+                payload = mapOf("tool_call_id" to "tc-sf-2", "tool_name" to "send_file"),
+            ),
+            item(
+                seq = 2, kind = "tool_result", content = null,
+                assistantTurnId = "t1",
+                payload = mapOf(
+                    "tool_call_id" to "tc-sf-2",
+                    "ok" to true,
+                    "artifact" to mapOf(
+                        "kind" to "text_file",
+                        "attachment_id" to "att-2",
+                        "filename" to "notes.txt",
+                        "mime_type" to "text/plain",
+                        "size_bytes" to 512.0,
+                        "download_url" to "/api/v1/attachments/att-2",
+                    ),
+                ),
+            ),
+        )
+        val msg = items.toMessagesFromTimeline(baseUrl = "http://server").single()
+        assertEquals(MessageRole.ASSISTANT, msg.role)
+        assertTrue(msg.blocks.none { it is ContentBlock.ToolBlock })
+        val file = msg.blocks.single() as ContentBlock.FileBlock
+        assertEquals("att-2", file.attachmentId)
+        assertEquals("http://server/api/v1/attachments/att-2", file.downloadUrl)
+        assertEquals("notes.txt", file.filename)
+        assertEquals(512L, file.sizeBytes)
+        assertEquals(null, file.textExcerpt)
+    }
+
+    @Test
+    fun `failed send_file still produces ToolBlock with FAILED status`() {
+        val items = listOf(
+            item(
+                seq = 1, kind = "tool_call", content = "{}",
+                assistantTurnId = "t1", blockIndex = 0,
+                payload = mapOf("tool_call_id" to "tc-sf-3", "tool_name" to "send_file"),
+            ),
+            item(
+                seq = 2, kind = "tool_result", content = null,
+                assistantTurnId = "t1",
+                payload = mapOf(
+                    "tool_call_id" to "tc-sf-3",
+                    "ok" to false,
+                    "error" to "upload failed",
+                ),
+            ),
+        )
+        val msg = items.toMessagesFromTimeline(baseUrl = "http://server").single()
+        assertEquals(MessageRole.ASSISTANT, msg.role)
+        val block = msg.blocks.single() as ContentBlock.ToolBlock
+        assertEquals(ToolStatus.FAILED, block.status)
+        assertEquals("upload failed", block.error)
+    }
+
+    @Test
+    fun `other tools with no artifact produce normal ToolBlock`() {
+        val items = listOf(
+            item(
+                seq = 1, kind = "tool_call", content = "{}",
+                assistantTurnId = "t1", blockIndex = 0,
+                payload = mapOf("tool_call_id" to "tc-r-1", "tool_name" to "read_file"),
+            ),
+            item(
+                seq = 2, kind = "tool_result", content = "file contents",
+                assistantTurnId = "t1",
+                payload = mapOf("tool_call_id" to "tc-r-1", "ok" to true),
+            ),
+        )
+        val msg = items.toMessagesFromTimeline(baseUrl = "http://server").single()
+        val block = msg.blocks.single() as ContentBlock.ToolBlock
+        assertEquals("read_file", block.name)
+        assertEquals(ToolStatus.DONE, block.status)
+        assertEquals("file contents", block.resultSummary)
+        assertTrue(msg.blocks.none { it is ContentBlock.ImageBlock })
+        assertTrue(msg.blocks.none { it is ContentBlock.FileBlock })
     }
 
     // ---------------------------------------------------------------------------

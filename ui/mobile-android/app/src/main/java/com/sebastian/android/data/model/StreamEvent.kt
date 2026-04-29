@@ -1,5 +1,16 @@
 package com.sebastian.android.data.model
 
+data class AttachmentArtifact(
+    val kind: String,
+    val attachmentId: String,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val downloadUrl: String,
+    val thumbnailUrl: String? = null,
+    val textExcerpt: String? = null,
+)
+
 sealed class StreamEvent {
     // Turn 级别
     data class TurnReceived(val sessionId: String) : StreamEvent()
@@ -25,7 +36,13 @@ sealed class StreamEvent {
     data class ToolBlockStart(val sessionId: String, val blockId: String, val toolId: String, val name: String) : StreamEvent()
     data class ToolBlockStop(val sessionId: String, val blockId: String, val toolId: String, val name: String, val inputs: String) : StreamEvent()
     data class ToolRunning(val sessionId: String, val toolId: String, val name: String) : StreamEvent()
-    data class ToolExecuted(val sessionId: String, val toolId: String, val name: String, val resultSummary: String) : StreamEvent()
+    data class ToolExecuted(
+        val sessionId: String,
+        val toolId: String,
+        val name: String,
+        val resultSummary: String,
+        val artifact: AttachmentArtifact? = null,
+    ) : StreamEvent()
     data class ToolFailed(val sessionId: String, val toolId: String, val name: String, val error: String) : StreamEvent()
 
     // Task

@@ -17,10 +17,32 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+    types,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sebastian.store.database import Base  # noqa: F401
+
+
+class _UTCDateTime(types.TypeDecorator[datetime]):
+    """DateTime column that always returns timezone-aware UTC datetimes.
+
+    SQLite stores datetimes as naive strings; this decorator strips tzinfo on
+    write and re-attaches UTC on read, keeping all TZ logic in one place.
+    """
+
+    impl = types.DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=None) if value.tzinfo is not None else value
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class EventRecord(Base):
@@ -401,4 +423,20 @@ class AttachmentRecord(Base):
         Index("ix_attachments_status_created", "status", "created_at"),
         Index("ix_attachments_session", "agent_type", "session_id"),
         Index("ix_attachments_sha256", "sha256"),
+    )
+
+
+class ScheduledJobRunRecord(Base):
+    __tablename__ = "scheduled_job_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    started_at: Mapped[datetime] = mapped_column(_UTCDateTime, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(_UTCDateTime, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_scheduled_job_runs_job_status_started", "job_id", "status", "started_at"),
     )

@@ -47,6 +47,7 @@ store/
 | 数据库 schema 变更 | [models.py](models.py) 修改 ORM + [migrations/](migrations/) 新增 Alembic migration |
 | 新增列的幂等迁移（启动时 ALTER TABLE 补列） | [database.py](database.py) 的 `_apply_idempotent_migrations`（已存在列自动跳过） |
 | SQLAlchemy engine / session factory | [database.py](database.py) |
+| scheduler 运行历史读写 | [../trigger/job_runs.py](../trigger/job_runs.py) 的 `ScheduledJobRunStore`；ORM model：[models.py](models.py) 的 `ScheduledJobRunRecord` |
 
 ## 公开接口（其他模块如何使用）
 
@@ -91,6 +92,34 @@ from sebastian.store.event_log import EventLog
 log = EventLog(db_session)
 await log.append(event)
 ```
+
+## AttachmentStore
+
+`attachments.py` 负责附件的 blob 写入、状态流转与垃圾回收。
+
+### 内容寻址与引用计数
+
+- `blob_path` 由 `f"blobs/{sha[:2]}/{sha}"` 决定。多次上传同内容只占用一份 blob 文件。
+- 缩略图同样按 SHA 内容寻址：`thumbs/{sha[:2]}/{sha}.{jpg|png|webp}`。
+- `cleanup` 按 SHA 做引用计数：仅当 DB 中没有任何 record 指向该 SHA 时才物理删除 blob/thumb。
+- `cleanup` 顺序约束：DB delete 先 commit 成功，commit 后再二次查询确认 SHA 无并发新引用，最后才 unlink 物理文件。物理 unlink 失败仅 warning 不回滚 DB。
+- `upload_bytes` 失败回滚同样按 SHA 二次查询：DB commit 失败时，仅在 SHA 引用计数为 0 时才删除本次新写入的 blob/thumb，避免误删并发 upload 已 commit 的共享文件。
+- 不变量：任何 DB-committed 的活跃 `AttachmentRecord` 都能通过 `blob_path` 找到磁盘文件；缩略图存在性不是不变量（解码失败 / 老数据时缺失，端点 fallback 处理）。
+
+### 缩略图生成与 DecompressionBomb 防护
+
+`attachments.py` 在模块级设置 `Image.MAX_IMAGE_PIXELS = 100_000_000`，把 Pillow 的像素上限收紧到 1 亿（约 10000×10000）。
+
+`DecompressionBombWarning → Error` 的升级在 `_maybe_generate_thumbnail` 内部用 `warnings.catch_warnings()` 作用域化处理：
+
+```python
+with warnings.catch_warnings():
+    warnings.simplefilter("error", Image.DecompressionBombWarning)
+    with Image.open(...) as img:
+        img.load()  # 超限时抛 Error，外层 except 捕获降级
+```
+
+这样 warning filter 变更仅在本次调用栈内有效，退出后自动还原，**不产生进程级副作用**。其他使用 Pillow 的代码不受影响。
 
 ---
 

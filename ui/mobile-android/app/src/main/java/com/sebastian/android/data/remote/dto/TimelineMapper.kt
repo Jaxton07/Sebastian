@@ -5,6 +5,7 @@ import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
 import com.sebastian.android.data.model.ToolStatus
 
+
 fun List<TimelineItemDto>.toMessagesFromTimeline(baseUrl: String = ""): List<Message> {
     val sorted = sortedBy { it.seq }
     val output = mutableListOf<Message>()
@@ -76,7 +77,7 @@ fun List<TimelineItemDto>.toMessagesFromTimeline(baseUrl: String = ""): List<Mes
     }
 
     for ((seq, group) in assistantGroups) {
-        entries += Entry(seq) { group.toAssistantMessage() }
+        entries += Entry(seq) { group.toAssistantMessage(baseUrl) }
     }
 
     entries.sortedBy { it.seq }.forEach { entry ->
@@ -157,7 +158,7 @@ private fun TimelineItemDto.toSummaryMessage(): Message {
     )
 }
 
-private fun List<TimelineItemDto>.toAssistantMessage(): Message? {
+private fun List<TimelineItemDto>.toAssistantMessage(baseUrl: String): Message? {
     if (isEmpty()) return null
     val first = first()
     val sessionId = first.sessionId
@@ -173,7 +174,7 @@ private fun List<TimelineItemDto>.toAssistantMessage(): Message? {
         }
     }
 
-    val blocks = buildAssistantBlocks(sessionId)
+    val blocks = buildAssistantBlocks(sessionId, baseUrl)
 
     return Message(
         id = msgId,
@@ -184,7 +185,7 @@ private fun List<TimelineItemDto>.toAssistantMessage(): Message? {
     )
 }
 
-private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<ContentBlock> {
+private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String, baseUrl: String): List<ContentBlock> {
     val toolCalls = filter { it.kind == "tool_call" }
     val toolResults = filter { it.kind == "tool_result" }
 
@@ -220,6 +221,21 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                 val result = resultByCallId[callId]
                 if (result != null) matchedResultIds += result.id
 
+                val toolName = item.payloadString("tool_name") ?: item.payloadString("name") ?: ""
+
+                // tool result with successful artifact → inline attachment block, no ToolBlock
+                if (result?.payloadBoolean("ok") == true) {
+                    @Suppress("UNCHECKED_CAST")
+                    val artifactMap = result.payload?.get("artifact") as? Map<String, Any?>
+                    if (artifactMap != null) {
+                        val artifactBlock = artifactMapToBlock(sessionId, artifactMap, baseUrl)
+                        if (artifactBlock != null) {
+                            blocks += artifactBlock
+                            return@forEach
+                        }
+                    }
+                }
+
                 val status = when {
                     result == null -> ToolStatus.PENDING
                     result.payloadBoolean("ok") == true -> ToolStatus.DONE
@@ -230,7 +246,7 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
                 blocks += ContentBlock.ToolBlock(
                     blockId = item.stableBlockId(),
                     toolId = callId,
-                    name = item.payloadString("tool_name") ?: item.payloadString("name") ?: "",
+                    name = toolName,
                     inputs = item.content ?: "",
                     status = status,
                     resultSummary = result?.payloadString("display") ?: result?.content,
@@ -257,4 +273,48 @@ private fun List<TimelineItemDto>.buildAssistantBlocks(sessionId: String): List<
     }
 
     return blocks
+}
+
+private fun artifactMapToBlock(
+    sessionId: String,
+    artifact: Map<String, Any?>,
+    baseUrl: String,
+): ContentBlock? {
+    val attId = artifact["attachment_id"] as? String ?: return null
+    val kind = artifact["kind"] as? String ?: return null
+    val filename = artifact["filename"] as? String ?: ""
+    val mimeType = artifact["mime_type"] as? String ?: ""
+    val sizeBytes: Long = when (val v = artifact["size_bytes"]) {
+        is Long -> v
+        is Int -> v.toLong()
+        is Double -> v.toLong()
+        else -> 0L
+    }
+
+    fun absoluteUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        return if (url.startsWith("http://") || url.startsWith("https://")) url else "$baseUrl$url"
+    }
+
+    return when (kind) {
+        "image" -> ContentBlock.ImageBlock(
+            blockId = "timeline-$sessionId-artifact-$attId",
+            attachmentId = attId,
+            filename = filename,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+            downloadUrl = absoluteUrl(artifact["download_url"] as? String),
+            thumbnailUrl = (artifact["thumbnail_url"] as? String)?.let { absoluteUrl(it) }?.takeIf { it.isNotBlank() },
+        )
+        "text_file" -> ContentBlock.FileBlock(
+            blockId = "timeline-$sessionId-artifact-$attId",
+            attachmentId = attId,
+            filename = filename,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+            downloadUrl = absoluteUrl(artifact["download_url"] as? String),
+            textExcerpt = (artifact["text_excerpt"] as? String)?.takeIf { it.isNotBlank() },
+        )
+        else -> null
+    }
 }

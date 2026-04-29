@@ -8,7 +8,9 @@ import com.sebastian.android.data.model.ApprovalSnapshot
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
+import com.sebastian.android.data.model.AttachmentArtifact
 import com.sebastian.android.data.model.StreamEvent
+import com.sebastian.android.data.model.ToolStatus
 import com.sebastian.android.data.remote.SseEnvelope
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.ChatRepository
@@ -1138,6 +1140,174 @@ class ChatViewModelTest {
         dispatcher.scheduler.advanceTimeBy(500)
 
         assertEquals(todos, viewModel.uiState.value.todos)
+    }
+
+    // ── Task 5: send_file artifact → ImageBlock / FileBlock ──────────────────
+
+    @Test
+    fun `send_file tool executed with image artifact replaces tool block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_1",
+            name = "send_file",
+            resultSummary = "已向用户发送图片 photo.png",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-1",
+                filename = "photo.png",
+                mimeType = "image/png",
+                sizeBytes = 123L,
+                downloadUrl = "/api/v1/attachments/att-1",
+                thumbnailUrl = "/api/v1/attachments/att-1/thumbnail",
+            ),
+        ))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
+        val image = blocks.filterIsInstance<ContentBlock.ImageBlock>().single()
+        assertEquals("att-1", image.attachmentId)
+    }
+
+    @Test
+    fun `duplicate send_file artifact event is idempotent`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
+        val artifact = AttachmentArtifact(
+            kind = "image",
+            attachmentId = "att-1",
+            filename = "photo.png",
+            mimeType = "image/png",
+            sizeBytes = 123L,
+            downloadUrl = "/api/v1/attachments/att-1",
+        )
+        // First event replaces ToolBlock; second (SSE replay) is deduped
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
+        assertEquals(1, blocks.filterIsInstance<ContentBlock.ImageBlock>().size)
+    }
+
+    @Test
+    fun `send_file artifact dropped when assistant message not yet materialized`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        // No ToolBlockStart → assistant message never added to state
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_1",
+            name = "send_file",
+            resultSummary = "sent",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-99",
+                filename = "img.png",
+                mimeType = "image/png",
+                sizeBytes = 100L,
+                downloadUrl = "/api/v1/attachments/att-99",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        // Spec: do not create a temporary message — history hydration handles the final state
+        assertTrue(viewModel.uiState.value.messages.isEmpty())
+    }
+
+    @Test
+    fun `send_file artifact appended when message exists but no matching tool block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        // Another tool creates the assistant message
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-other", "toolu_other", "list_files"))
+        // send_file executed without a corresponding ToolBlockStart
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_sf",
+            name = "send_file",
+            resultSummary = "sent",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-5",
+                filename = "img.png",
+                mimeType = "image/png",
+                sizeBytes = 100L,
+                downloadUrl = "/api/v1/attachments/att-5",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.any { it is ContentBlock.ToolBlock }) // list_files block still present
+        val image = blocks.filterIsInstance<ContentBlock.ImageBlock>().single()
+        assertEquals("att-5", image.attachmentId)
+    }
+
+    @Test
+    fun `ToolFailed for send_file renders tool block as FAILED`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_sf", "send_file"))
+        emitEvent(StreamEvent.ToolFailed(
+            sessionId = "s1",
+            toolId = "toolu_sf",
+            name = "send_file",
+            error = "File not found: /tmp/missing.png. Do not retry automatically.",
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        val tool = blocks.filterIsInstance<ContentBlock.ToolBlock>().single()
+        assertEquals(ToolStatus.FAILED, tool.status)
+        assertTrue(tool.error?.contains("not found") == true)
+    }
+
+    @Test
+    fun `send_file tool executed without artifact marks tool block done`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "result summary", null))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        val tool = blocks.filterIsInstance<ContentBlock.ToolBlock>().single()
+        assertEquals(ToolStatus.DONE, tool.status)
+    }
+
+    @Test
+    fun `send_file tool executed with text_file artifact replaces tool block with file block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_2", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_2",
+            name = "send_file",
+            resultSummary = "已向用户发送文件 notes.md",
+            artifact = AttachmentArtifact(
+                kind = "text_file",
+                attachmentId = "att-2",
+                filename = "notes.md",
+                mimeType = "text/markdown",
+                sizeBytes = 500L,
+                downloadUrl = "/api/v1/attachments/att-2",
+                textExcerpt = "# Hello",
+            ),
+        ))
+        dispatcher.scheduler.runCurrent()
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
+        val file = blocks.filterIsInstance<ContentBlock.FileBlock>().single()
+        assertEquals("att-2", file.attachmentId)
+        assertEquals("# Hello", file.textExcerpt)
     }
 
     @Test
