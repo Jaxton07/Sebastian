@@ -173,12 +173,10 @@ for sha, p in pending_unlink:
 import warnings
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-# 模块顶部一次性设置 — 防止 DecompressionBomb 攻击
-# Pillow 默认行为：> MAX_IMAGE_PIXELS 触发 DecompressionBombWarning（不阻断）；
-# > 2 × MAX_IMAGE_PIXELS 才触发 DecompressionBombError。
-# 主动把 Warning 升级为 Error，使 1 亿像素成为真正的硬上限。
+# 模块级：仅设置像素上限常量，不修改 Python warning 系统。
+# DecompressionBombWarning → Error 的升级在 _maybe_generate_thumbnail 内部
+# 用 warnings.catch_warnings() 作用域化处理（见下方），避免进程级副作用。
 Image.MAX_IMAGE_PIXELS = 100_000_000  # 1 亿像素硬上限（约 10000×10000）
-warnings.simplefilter("error", Image.DecompressionBombWarning)
 
 THUMB_MAX_EDGE = 256
 JPEG_QUALITY = 85
@@ -191,8 +189,13 @@ _THUMB_EXT_BY_FORMAT = {
 
 def _maybe_generate_thumbnail(root_dir: Path, sha: str, data: bytes) -> tuple[Path | None, bool]:
     try:
-        with Image.open(BytesIO(data)) as img:
-            img.load()  # force decode within `with` so DecompressionBombError 在此抛
+        # catch_warnings 将 warning filter 变更作用域限制在本次调用栈内，
+        # 退出时自动还原，不污染进程全局 filter list。
+        # asyncio 单线程下无 catch_warnings 的线程安全问题。
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(data)) as img:
+                img.load()  # force decode；DecompressionBombWarning 在此升级为 Error
             src_format = img.format or ""
             # GIF 单独处理：取第一帧，输出 PNG（保留可能的透明）
             if src_format == "GIF":
@@ -252,7 +255,7 @@ def _maybe_generate_thumbnail(root_dir: Path, sha: str, data: bytes) -> tuple[Pa
 
 **关键设计点：**
 
-- **DecompressionBomb 防护**：模块级 `Image.MAX_IMAGE_PIXELS = 100_000_000` + `warnings.simplefilter("error", Image.DecompressionBombWarning)`，把 Pillow 默认的 Warning 升级为 Error，让 1 亿像素成为**真正的硬上限**（默认行为下 1 亿到 2 亿之间只警告不阻断）。原图本体不受影响（已通过 `MAX_IMAGE_BYTES = 10MB` 校验）。
+- **DecompressionBomb 防护**：`Image.MAX_IMAGE_PIXELS = 100_000_000` 在模块级设置像素上限；`warnings.simplefilter("error", Image.DecompressionBombWarning)` 用 `warnings.catch_warnings()` 作用域化，仅在 `_maybe_generate_thumbnail` 调用期间生效，退出后自动还原，不产生进程级副作用。两者配合让 1 亿像素成为**真正的硬上限**（默认行为下 1 亿到 2 亿之间只警告不阻断）。原图本体不受影响（已通过 `MAX_IMAGE_BYTES = 10MB` 校验）。
 - **EXIF orientation**：`ImageOps.exif_transpose(img)` 必须在尺寸缩放前调用。手机照片广泛带 EXIF orientation tag，跳过会出现缩略图横竖颠倒。
 - **mode 转换**：
   - JPEG 输出强制 RGB（JPEG 不支持 RGBA/P/LA/CMYK 等）。
