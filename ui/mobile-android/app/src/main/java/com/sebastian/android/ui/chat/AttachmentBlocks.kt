@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -45,19 +47,22 @@ import com.sebastian.android.data.model.ContentBlock
 fun ImageAttachmentBlock(
     block: ContentBlock.ImageBlock,
     modifier: Modifier = Modifier,
-    previewWidth: Dp = 160.dp,
-    previewHeight: Dp = 120.dp,
+    maxPreviewWidth: Dp = 160.dp,
+    maxPreviewHeight: Dp = 240.dp,
 ) {
     var showFullscreen by remember { mutableStateOf(false) }
     val imageUrl = block.thumbnailUrl ?: block.downloadUrl
     val shape = RoundedCornerShape(12.dp)
+    var previewSize by remember(imageUrl) {
+        mutableStateOf(DpSize(maxPreviewWidth, 120.dp))
+    }
 
     SubcomposeAsyncImage(
         model = imageUrl,
         contentDescription = block.filename,
         contentScale = ContentScale.Fit,
         modifier = modifier
-            .size(width = previewWidth, height = previewHeight)
+            .size(previewSize)
             .clip(shape)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -66,10 +71,21 @@ fun ImageAttachmentBlock(
             .clickable { showFullscreen = true },
     ) {
         when (painter.state) {
+            is AsyncImagePainter.State.Success -> {
+                LaunchedEffect(painter.intrinsicSize, maxPreviewWidth, maxPreviewHeight) {
+                    previewSize = fittedPreviewSize(
+                        sourceWidth = painter.intrinsicSize.width,
+                        sourceHeight = painter.intrinsicSize.height,
+                        maxWidth = maxPreviewWidth,
+                        maxHeight = maxPreviewHeight,
+                    )
+                }
+                SubcomposeAsyncImageContent()
+            }
             is AsyncImagePainter.State.Loading -> {
                 Box(
                     modifier = Modifier
-                        .size(width = previewWidth, height = previewHeight)
+                        .size(previewSize)
                         .background(
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = shape,
@@ -79,7 +95,7 @@ fun ImageAttachmentBlock(
             is AsyncImagePainter.State.Error -> {
                 Box(
                     modifier = Modifier
-                        .size(width = previewWidth, height = previewHeight)
+                        .size(previewSize)
                         .background(
                             color = MaterialTheme.colorScheme.errorContainer,
                             shape = shape,
@@ -121,6 +137,25 @@ fun ImageAttachmentBlock(
             }
         }
     }
+}
+
+private fun fittedPreviewSize(
+    sourceWidth: Float,
+    sourceHeight: Float,
+    maxWidth: Dp,
+    maxHeight: Dp,
+): DpSize {
+    if (sourceWidth <= 0f || sourceHeight <= 0f) {
+        return DpSize(maxWidth, 120.dp)
+    }
+    val aspectRatio = sourceWidth / sourceHeight
+    var width = maxWidth
+    var height = width / aspectRatio
+    if (height > maxHeight) {
+        height = maxHeight
+        width = height * aspectRatio
+    }
+    return DpSize(width, height)
 }
 
 @Composable

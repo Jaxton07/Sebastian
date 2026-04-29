@@ -77,7 +77,7 @@ UI 映射：FAB 显示 = `userAway`（绑意图而非事实 —— 流式中 `at
 
 用户上传附件和 Agent `send_file` artifact 共用的附件渲染组件：
 
-- `ImageAttachmentBlock` 使用固定预览尺寸和 `ContentScale.Fit`，保证图片完整显示、不裁切；点击进入全屏查看原图。
+- `ImageAttachmentBlock` 使用最大预览尺寸和 `ContentScale.Fit`，按图片原始宽高比自适应，保证图片完整显示、不裁切；点击进入全屏查看原图。
 - `FileAttachmentBlock` 只显示文件图标、文件名和大小，不渲染文本 excerpt；后续保存到本地或系统打开能力应在此组件上扩展交互入口。
 - 用户消息和 assistant 消息通过调用侧传入不同布局约束：用户侧保持消息气泡下方的当前视觉密度，assistant 侧使用紧凑宽度，避免附件卡片满宽铺开。
 
