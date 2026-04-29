@@ -839,6 +839,68 @@ async def test_upload_bytes_rollback_requery_failure_preserves_original_exceptio
         )
 
 
+async def test_upload_bytes_db_failure_keeps_thumb_when_blob_dedup_and_other_record(
+    attachment_store: AttachmentStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """created_blob=False + created_thumb=True + DB 失败 + 其他 record 存在 → thumb 保留。
+
+    场景：
+    - 第一次上传成功：建立 blob + thumb + record
+    - 手动删除 thumb，模拟 thumb 文件消失但 blob 和 record 仍在
+    - 第二次上传相同内容：created_blob=False（blob dedup），created_thumb=True（重新生成）
+    - DB commit 失败：二次查询发现已有第一次的 record（count > 0）→ thumb 必须保留
+    """
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    thumb_abs = attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+
+    # 第一次上传成功（建立 blob + thumb + record）
+    await attachment_store.upload_bytes(
+        filename="first.jpg", content_type="image/jpeg", kind="image", data=data
+    )
+    assert blob_abs.exists()
+    assert thumb_abs.exists()
+
+    # 删掉 thumb，使第二次上传走 created_thumb=True 分支
+    thumb_abs.unlink()
+    assert not thumb_abs.exists()
+
+    # 让第二次 upload 的 DB commit 失败
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError, match="simulated commit failure"):
+        await attachment_store.upload_bytes(
+            filename="second.jpg", content_type="image/jpeg", kind="image", data=data
+        )
+
+    # 关键断言：created_blob=False, created_thumb=True，但已有第一次的 record
+    # 二次查询 count > 0 → thumb 不能删
+    assert blob_abs.exists()
+    assert thumb_abs.exists()
+
+
 async def test_cleanup_keeps_blob_when_other_record_uses_same_sha(
     attachment_store: AttachmentStore, sqlite_session_factory
 ) -> None:
