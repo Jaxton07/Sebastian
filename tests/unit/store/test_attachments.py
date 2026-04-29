@@ -627,3 +627,88 @@ def test_thumbnail_dedup_skips_save_when_exists(
     assert thumb_abs2 == thumb_abs1
     assert created2 is False
     assert call_count["n"] == 0  # 未执行 os.replace
+
+
+async def test_upload_bytes_db_failure_keeps_dedup_blob(
+    attachment_store: AttachmentStore,
+    sqlite_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB commit 失败 + blob 是 dedup 命中（非本次新建）→ 不删 blob。"""
+    data = b"shared blob content"
+    await attachment_store.upload_bytes(
+        filename="a.md", content_type="text/markdown", kind="text_file", data=data
+    )
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+    assert blob_abs.exists()
+
+    # 让 DB commit 抛异常
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError, match="simulated commit failure"):
+        await attachment_store.upload_bytes(
+            filename="b.md", content_type="text/markdown", kind="text_file", data=data
+        )
+
+    # blob 必须保留（已有 record 在用）
+    assert blob_abs.exists()
+
+
+async def test_upload_bytes_db_failure_deletes_new_blob_when_no_other_record(
+    attachment_store: AttachmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DB commit 失败 + blob 是本次新建 + 无其他 record → 删 blob。"""
+    data = b"unique brand new content"
+    sha = _hashlib.sha256(data).hexdigest()
+    blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
+
+    real_factory = attachment_store._db_factory
+
+    def _failing_factory():
+        sess = real_factory()
+
+        class _W:
+            async def __aenter__(self):
+                self._inner = await sess.__aenter__()
+
+                async def _bad_commit():
+                    raise RuntimeError("simulated commit failure")
+
+                self._inner.commit = _bad_commit
+                return self._inner
+
+            async def __aexit__(self, *args):
+                return await sess.__aexit__(*args)
+
+        return _W()
+
+    monkeypatch.setattr(attachment_store, "_db_factory", _failing_factory)
+
+    with pytest.raises(RuntimeError):
+        await attachment_store.upload_bytes(
+            filename="x.md", content_type="text/markdown", kind="text_file", data=data
+        )
+
+    # blob 必须被删除（没有任何 record 引用它）
+    assert not blob_abs.exists()

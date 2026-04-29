@@ -178,7 +178,7 @@ class AttachmentStore:
         blob_rel = f"blobs/{sha[:2]}/{sha}"
         blob_abs = self._root_dir / blob_rel
 
-        created_blob = False  # noqa: F841 — consumed by Task 8 rollback logic
+        created_blob = False
         if not blob_abs.exists():
             blob_abs.parent.mkdir(parents=True, exist_ok=True)
             (self._root_dir / "tmp").mkdir(parents=True, exist_ok=True)
@@ -186,7 +186,7 @@ class AttachmentStore:
             try:
                 tmp_path.write_bytes(data)
                 os.replace(tmp_path, blob_abs)
-                created_blob = True  # noqa: F841
+                created_blob = True
             except Exception:
                 tmp_path.unlink(missing_ok=True)
                 raise
@@ -195,6 +195,13 @@ class AttachmentStore:
         if kind == "text_file":
             text = data.decode("utf-8")
             text_excerpt = text[:TEXT_EXCERPT_CHARS]
+
+        created_thumb = False
+        thumb_abs: Path | None = None
+        if kind == "image":
+            thumb_abs, created_thumb = _maybe_generate_thumbnail(
+                self._root_dir, sha, data
+            )
 
         att_id = str(uuid4())
         record = AttachmentRecord(
@@ -215,7 +222,20 @@ class AttachmentStore:
                 session.add(record)
                 await session.commit()
         except Exception:
-            blob_abs.unlink(missing_ok=True)
+            # 二次查询：并发 upload 可能已用同 SHA 成功入库；只有当 DB 中
+            # 完全没有该 SHA 的 record 时才能删本次新写入的文件。
+            if created_blob or created_thumb:
+                async with self._db_factory() as session2:
+                    cnt = await session2.scalar(
+                        select(func.count())
+                        .select_from(AttachmentRecord)
+                        .where(AttachmentRecord.sha256 == sha)
+                    )
+                if (cnt or 0) == 0:
+                    if created_blob:
+                        blob_abs.unlink(missing_ok=True)
+                    if created_thumb and thumb_abs is not None:
+                        thumb_abs.unlink(missing_ok=True)
             raise
 
         return UploadedAttachment(
