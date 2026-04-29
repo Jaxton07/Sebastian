@@ -85,6 +85,11 @@ def _maybe_generate_thumbnail(
                     return None, False
                 save_format = src_format
 
+            thumb_rel = f"thumbs/{sha[:2]}/{sha}.{ext}"
+            thumb_abs = root_dir / thumb_rel
+            if thumb_abs.exists():
+                return thumb_abs, False
+
             # EXIF orientation 校正必须在缩放前
             img = ImageOps.exif_transpose(img)
 
@@ -105,10 +110,6 @@ def _maybe_generate_thumbnail(
 
             img.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE))
 
-            thumb_rel = f"thumbs/{sha[:2]}/{sha}.{ext}"
-            thumb_abs = root_dir / thumb_rel
-            if thumb_abs.exists():
-                return thumb_abs, False
             thumb_abs.parent.mkdir(parents=True, exist_ok=True)
             (root_dir / "tmp").mkdir(parents=True, exist_ok=True)
             tmp_path = root_dir / "tmp" / str(uuid4())

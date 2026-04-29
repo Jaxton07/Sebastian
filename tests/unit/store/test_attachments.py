@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib as _hashlib
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -501,7 +502,8 @@ def test_thumbnail_decompression_bomb_warning_upgraded(
         size = (20000, 20000)
 
         def load(self):
-            raise Image.DecompressionBombWarning("simulated bomb")
+            import warnings
+            warnings.warn("simulated bomb", Image.DecompressionBombWarning)
 
         def __enter__(self):
             return self
@@ -529,8 +531,6 @@ def test_thumbnail_generic_exception_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """img.save 抛 MemoryError / RuntimeError 也走外层 except Exception 兜底。"""
-    import logging
-
     real_open = Image.open
 
     class _BadSaveImage:
@@ -550,20 +550,11 @@ def test_thumbnail_generic_exception_fallback(
         def load(self):
             self._real.load()
 
-        def seek(self, n):
-            self._real.seek(n)
-
         def thumbnail(self, *a, **kw):
             self._real.thumbnail(*a, **kw)
 
-        def convert(self, mode):
-            return self._real.convert(mode)
-
         def save(self, *_a, **_kw):
             raise MemoryError("simulated OOM")
-
-        def getexif(self):
-            return self._real.getexif()
 
     def _fake_open(buf):
         real = real_open(buf)
