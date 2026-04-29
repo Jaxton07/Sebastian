@@ -67,9 +67,7 @@ _THUMB_EXT_TO_MIME: dict[str, str] = {
 }
 
 
-def _maybe_generate_thumbnail(
-    root_dir: Path, sha: str, data: bytes
-) -> tuple[Path | None, bool]:
+def _maybe_generate_thumbnail(root_dir: Path, sha: str, data: bytes) -> tuple[Path | None, bool]:
     """对图片字节生成 256×256 缩略图，写到 thumbs/<sha[:2]>/<sha>.<ext>。
 
     返回 (thumb_abs, created)：
@@ -207,9 +205,7 @@ class AttachmentStore:
         created_thumb = False
         thumb_abs: Path | None = None
         if kind == "image":
-            thumb_abs, created_thumb = _maybe_generate_thumbnail(
-                self._root_dir, sha, data
-            )
+            thumb_abs, created_thumb = _maybe_generate_thumbnail(self._root_dir, sha, data)
 
         att_id = str(uuid4())
         record = AttachmentRecord(
@@ -268,9 +264,7 @@ class AttachmentStore:
             raise ValueError(f"Blob path escapes root: {record.blob_path!r}")
         return resolved
 
-    def thumb_candidate_paths(
-        self, record: AttachmentRecord
-    ) -> list[tuple[Path, str]]:
+    def thumb_candidate_paths(self, record: AttachmentRecord) -> list[tuple[Path, str]]:
         """返回该 record 可能存在的 thumbnail 候选路径与对应 MIME。
 
         thumb 按 SHA 内容寻址，扩展名只可能是 jpg/png/webp 之一（取决于上传时

@@ -503,6 +503,7 @@ def test_thumbnail_decompression_bomb_warning_upgraded(
 
         def load(self):
             import warnings
+
             warnings.warn("simulated bomb", Image.DecompressionBombWarning)
 
         def __enter__(self):
@@ -1002,6 +1003,4 @@ async def test_cleanup_does_not_double_unlink_shared_blob(
 
     blob_abs = attachment_store._root_dir / "blobs" / sha[:2] / sha
     blob_unlinks = [p for p in unlink_log if p == blob_abs]
-    assert len(blob_unlinks) == 1, (
-        f"blob {blob_abs} 被 unlink 了 {len(blob_unlinks)} 次，期望 1 次"
-    )
+    assert len(blob_unlinks) == 1, f"blob {blob_abs} 被 unlink 了 {len(blob_unlinks)} 次，期望 1 次"
