@@ -8,7 +8,9 @@ import com.sebastian.android.data.model.ApprovalSnapshot
 import com.sebastian.android.data.model.ContentBlock
 import com.sebastian.android.data.model.Message
 import com.sebastian.android.data.model.MessageRole
+import com.sebastian.android.data.model.AttachmentArtifact
 import com.sebastian.android.data.model.StreamEvent
+import com.sebastian.android.data.model.ToolStatus
 import com.sebastian.android.data.remote.SseEnvelope
 import com.sebastian.android.data.repository.AgentRepository
 import com.sebastian.android.data.repository.ChatRepository
@@ -1138,6 +1140,69 @@ class ChatViewModelTest {
         dispatcher.scheduler.advanceTimeBy(500)
 
         assertEquals(todos, viewModel.uiState.value.todos)
+    }
+
+    // ── Task 5: send_file artifact → ImageBlock / FileBlock ──────────────────
+
+    @Test
+    fun `send_file tool executed with image artifact replaces tool block`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted(
+            sessionId = "s1",
+            toolId = "toolu_1",
+            name = "send_file",
+            resultSummary = "已向用户发送图片 photo.png",
+            artifact = AttachmentArtifact(
+                kind = "image",
+                attachmentId = "att-1",
+                filename = "photo.png",
+                mimeType = "image/png",
+                sizeBytes = 123L,
+                downloadUrl = "/api/v1/attachments/att-1",
+                thumbnailUrl = "/api/v1/attachments/att-1/thumbnail",
+            ),
+        ))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertTrue(blocks.none { it is ContentBlock.ToolBlock })
+        val image = blocks.filterIsInstance<ContentBlock.ImageBlock>().single()
+        assertEquals("att-1", image.attachmentId)
+    }
+
+    @Test
+    fun `send_file tool executed with same artifact twice appends block only once`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        val artifact = AttachmentArtifact(
+            kind = "image",
+            attachmentId = "att-1",
+            filename = "photo.png",
+            mimeType = "image/png",
+            sizeBytes = 123L,
+            downloadUrl = "/api/v1/attachments/att-1",
+        )
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "sent", artifact))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        assertEquals(1, blocks.filterIsInstance<ContentBlock.ImageBlock>().size)
+    }
+
+    @Test
+    fun `send_file tool executed without artifact marks tool block done`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-tool", "toolu_1", "send_file"))
+        emitEvent(StreamEvent.ToolExecuted("s1", "toolu_1", "send_file", "result summary", null))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val blocks = viewModel.uiState.value.messages.last().blocks
+        val tool = blocks.filterIsInstance<ContentBlock.ToolBlock>().single()
+        assertEquals(ToolStatus.DONE, tool.status)
     }
 
     @Test
