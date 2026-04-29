@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import platform
 import shutil
@@ -18,7 +17,6 @@ from sebastian.core.tool import tool
 from sebastian.core.types import ToolResult
 from sebastian.permissions.types import PermissionTier
 
-logger = logging.getLogger(__name__)
 _TEMP_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -108,7 +106,7 @@ async def _run_capture_command(
             ),
         )
 
-    if size_bytes <= 0:
+    if size_bytes == 0:
         return ToolResult(
             ok=False,
             error=(
@@ -123,10 +121,14 @@ async def _run_capture_command(
 def _resolve_screenshot_filename(display_name: str | None = None) -> str:
     if display_name is None:
         return datetime.now().strftime("screenshot-%Y%m%d-%H%M%S.png")
-    path = Path(display_name)
-    if path.suffix:
-        return display_name
-    return f"{display_name}.png"
+    # Strip any directory components to prevent path traversal
+    name = Path(display_name).name
+    if not name:
+        return datetime.now().strftime("screenshot-%Y%m%d-%H%M%S.png")
+    p = Path(name)
+    if p.suffix:
+        return name
+    return f"{name}.png"
 
 
 def _screenshot_tmp_dir() -> Path:
@@ -151,8 +153,6 @@ def _cleanup_old_temp_files(directory: Path, *, now: float | None = None) -> Non
 async def capture_screenshot_and_send(display_name: str | None = None) -> ToolResult:
     filename = _resolve_screenshot_filename(display_name)
     directory = _screenshot_tmp_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    _cleanup_old_temp_files(directory)
     output_path = directory / filename
 
     try:
@@ -165,12 +165,24 @@ async def capture_screenshot_and_send(display_name: str | None = None) -> ToolRe
     except RuntimeError as exc:
         return ToolResult(ok=False, error=str(exc))
 
+    directory.mkdir(parents=True, exist_ok=True)
+    _cleanup_old_temp_files(directory)
+
     try:
         capture_error = await _run_capture_command(command, output_path)
         if capture_error is not None:
             return capture_error
 
-        result = await send_file_path(str(output_path), display_name=filename)
+        try:
+            result = await send_file_path(str(output_path), display_name=filename)
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                error=(
+                    f"Screenshot was captured but could not be sent: {exc}. "
+                    "Do not retry automatically; tell the user the screenshot could not be attached."
+                ),
+            )
         if not result.ok:
             return ToolResult(
                 ok=False,
