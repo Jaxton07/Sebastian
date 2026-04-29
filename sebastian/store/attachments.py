@@ -52,6 +52,60 @@ TEXT_EXCERPT_CHARS = 2000
 _UPLOADED_TTL = timedelta(hours=24)  # status="uploaded" blobs expire after 24 h if never referenced
 _ORPHAN_TTL = timedelta(hours=24)  # orphaned blobs expire (can differ from uploaded in future)
 
+THUMB_MAX_EDGE = 256
+JPEG_QUALITY = 85
+_THUMB_EXT_BY_FORMAT: dict[str, str] = {
+    "JPEG": "jpg",
+    "PNG": "png",
+    "WEBP": "webp",
+}
+
+
+def _maybe_generate_thumbnail(
+    root_dir: Path, sha: str, data: bytes
+) -> tuple[Path | None, bool]:
+    """对图片字节生成 256×256 缩略图，写到 thumbs/<sha[:2]>/<sha>.<ext>。
+
+    返回 (thumb_abs, created)：
+      - thumb_abs is None / created False：未生成（不支持的格式或异常降级）
+      - thumb_abs not None / created True：本次新写入了 thumb 文件
+      - thumb_abs not None / created False：thumb 已存在，跳过写入（dedup）
+    """
+    try:
+        with Image.open(BytesIO(data)) as img:
+            img.load()
+            src_format = img.format or ""
+            if src_format == "GIF":
+                img.seek(0)
+                ext = "png"
+                save_format = "PNG"
+            else:
+                ext = _THUMB_EXT_BY_FORMAT.get(src_format)
+                if ext is None:
+                    return None, False
+                save_format = src_format
+
+            img.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE))
+
+            thumb_rel = f"thumbs/{sha[:2]}/{sha}.{ext}"
+            thumb_abs = root_dir / thumb_rel
+            thumb_abs.parent.mkdir(parents=True, exist_ok=True)
+            (root_dir / "tmp").mkdir(parents=True, exist_ok=True)
+            tmp_path = root_dir / "tmp" / str(uuid4())
+            try:
+                save_kwargs: dict = {"format": save_format, "optimize": True}
+                if save_format == "JPEG":
+                    save_kwargs["quality"] = JPEG_QUALITY
+                img.save(tmp_path, **save_kwargs)
+                os.replace(tmp_path, thumb_abs)
+                return thumb_abs, True
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
+    except Exception as exc:
+        logger.warning("thumbnail generation skipped for sha=%s: %s", sha[:8], exc)
+        return None, False
+
 
 @dataclass(slots=True)
 class UploadedAttachment:

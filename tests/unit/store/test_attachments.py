@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib as _hashlib
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.config import Settings
-from sebastian.store.attachments import AttachmentStore, AttachmentValidationError
+from sebastian.store.attachments import (
+    AttachmentStore,
+    AttachmentValidationError,
+    _maybe_generate_thumbnail,
+)
 from sebastian.store.models import AttachmentRecord
 
 
@@ -356,3 +363,86 @@ async def test_mark_session_orphaned_transitions_attached_only(sqlite_session_fa
     assert r1 is not None and r1.status == "orphaned"
     assert r2 is not None and r2.status == "orphaned"
     assert r_s2 is not None and r_s2.status == "attached"
+
+
+# ── _maybe_generate_thumbnail tests ─────────────────────────────────────────
+
+
+def _make_image_bytes(format: str, size: tuple[int, int] = (800, 600), mode: str = "RGB") -> bytes:
+    if mode == "P":
+        color: int | tuple[int, ...] = 42
+    elif mode == "RGBA":
+        color = (120, 200, 50, 200)
+    else:
+        color = (120, 200, 50)
+    img = Image.new(mode, size, color=color)
+    buf = BytesIO()
+    save_kwargs: dict = {"format": format}
+    if format == "JPEG":
+        save_kwargs["quality"] = 85
+    img.save(buf, **save_kwargs)
+    return buf.getvalue()
+
+
+def test_thumbnail_jpeg_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs is not None
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.jpg"
+    assert thumb_abs.exists()
+    with Image.open(thumb_abs) as out:
+        assert out.format == "JPEG"
+        assert max(out.size) <= 256
+
+
+def test_thumbnail_png_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("PNG", mode="RGBA")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.png"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+        assert max(out.size) <= 256
+
+
+def test_thumbnail_webp_happy_path(tmp_path: Path) -> None:
+    data = _make_image_bytes("WEBP")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.webp"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "WEBP"
+
+
+def test_thumbnail_gif_first_frame_as_png(tmp_path: Path) -> None:
+    data = _make_image_bytes("GIF", mode="P")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    # GIF 强制走 PNG 输出
+    assert thumb_abs == tmp_path / "thumbs" / sha[:2] / f"{sha}.png"
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+
+
+def test_thumbnail_unsupported_format_returns_none(tmp_path: Path) -> None:
+    # BMP 不在 _THUMB_EXT_BY_FORMAT 里
+    data = _make_image_bytes("BMP")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
