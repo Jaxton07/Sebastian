@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from sebastian.store.owner_store import OwnerStore
     from sebastian.store.session_store import SessionStore
     from sebastian.store.todo_store import TodoStore
+    from sebastian.trigger.scheduler import SchedulerRunner
 
 
 class MemoryRuntimeSettings(BaseModel):
@@ -48,6 +49,7 @@ context_compaction_worker: SessionContextCompactionWorker | None = None
 agent_instances: dict[str, BaseAgent] = {}
 agent_registry: dict[str, AgentConfig] = {}
 attachment_store: AttachmentStore | None = None
+scheduler: SchedulerRunner | None = None
 
 
 def get_owner_store() -> OwnerStore:

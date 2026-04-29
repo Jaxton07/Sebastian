@@ -117,6 +117,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     attachment_store = AttachmentStore(settings.attachments_dir, db_factory)
     state.attachment_store = attachment_store
 
+    from sebastian.trigger.job_runs import ScheduledJobRunStore
+    from sebastian.trigger.jobs import register_builtin_jobs
+    from sebastian.trigger.scheduler import JobRegistry, SchedulerRunner
+
+    _job_registry = JobRegistry()
+    register_builtin_jobs(_job_registry, attachment_store=attachment_store)
+    _scheduler = SchedulerRunner(
+        registry=_job_registry,
+        run_store=ScheduledJobRunStore(db_factory),
+    )
+    await _scheduler.start()
+    state.scheduler = _scheduler
+
     session_store = SessionStore(db_factory=db_factory)
     todo_store = TodoStore(db_factory=db_factory)
 
@@ -313,6 +326,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     watchdog_task.cancel()
     try:
+        if state.scheduler is not None:
+            await state.scheduler.aclose()
+            state.scheduler = None
         await completion_notifier.aclose()
         if state.consolidation_scheduler is not None:
             await state.consolidation_scheduler.aclose()
