@@ -484,3 +484,102 @@ def test_thumbnail_png_palette_with_transparency(tmp_path: Path) -> None:
         assert out.format == "PNG"
         # 应已转换为 RGBA（保留透明信息），不是 P
         assert out.mode == "RGBA"
+
+
+def test_thumbnail_decompression_bomb_warning_upgraded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """超过 MAX_IMAGE_PIXELS 触发 DecompressionBombWarning。
+
+    应被 simplefilter 升级为 Error 并降级，thumbnail 不生成。
+    """
+
+    class _BombingImage:
+        format = "JPEG"
+        mode = "RGB"
+        size = (20000, 20000)
+
+        def load(self):
+            raise Image.DecompressionBombWarning("simulated bomb")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def _fake_open(_buf):
+        return _BombingImage()
+
+    monkeypatch.setattr("sebastian.store.attachments.Image.open", _fake_open)
+
+    data = b"\xff\xd8\xff\xe0fake"
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+    # 没有写入 thumb
+    assert not (tmp_path / "thumbs").exists() or not any((tmp_path / "thumbs").rglob("*"))
+
+
+def test_thumbnail_generic_exception_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """img.save 抛 MemoryError / RuntimeError 也走外层 except Exception 兜底。"""
+    import logging
+
+    real_open = Image.open
+
+    class _BadSaveImage:
+        def __init__(self, real):
+            self._real = real
+            self.format = real.format
+            self.mode = real.mode
+            self.size = real.size
+
+        def __enter__(self):
+            self._real.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._real.__exit__(*args)
+
+        def load(self):
+            self._real.load()
+
+        def seek(self, n):
+            self._real.seek(n)
+
+        def thumbnail(self, *a, **kw):
+            self._real.thumbnail(*a, **kw)
+
+        def convert(self, mode):
+            return self._real.convert(mode)
+
+        def save(self, *_a, **_kw):
+            raise MemoryError("simulated OOM")
+
+        def getexif(self):
+            return self._real.getexif()
+
+    def _fake_open(buf):
+        real = real_open(buf)
+        return _BadSaveImage(real)
+
+    monkeypatch.setattr("sebastian.store.attachments.Image.open", _fake_open)
+    monkeypatch.setattr(
+        "sebastian.store.attachments.ImageOps.exif_transpose",
+        lambda im: im,
+    )
+
+    data = _make_image_bytes("JPEG")
+    sha = _hashlib.sha256(data).hexdigest()
+
+    with caplog.at_level(logging.WARNING, logger="sebastian.store.attachments"):
+        thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert thumb_abs is None
+    assert created is False
+    assert any("thumbnail generation skipped" in m for m in caplog.messages)
