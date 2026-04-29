@@ -12,11 +12,6 @@ from sebastian.store.models import ScheduledJobRunRecord
 logger = logging.getLogger(__name__)
 
 
-def _naive(dt: datetime) -> datetime:
-    """Strip timezone info before storing — SQLite columns are timezone-naive."""
-    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
-
-
 class ScheduledJobRunStore:
     def __init__(self, db_factory: async_sessionmaker[AsyncSession]) -> None:
         self._db_factory = db_factory
@@ -30,7 +25,7 @@ class ScheduledJobRunStore:
                         id=run_id,
                         job_id=job_id,
                         status="running",
-                        started_at=_naive(started_at),
+                        started_at=started_at,
                     )
                 )
         return run_id
@@ -51,12 +46,11 @@ class ScheduledJobRunStore:
                     logger.warning("finish_run: run_id=%s not found", run_id)
                     return
                 record.status = status
-                record.finished_at = _naive(finished_at)
+                record.finished_at = finished_at
                 record.duration_ms = duration_ms
                 record.error = error
 
     async def record_skipped(self, job_id: str, at: datetime, reason: str) -> None:
-        naive_at = _naive(at)
         async with self._db_factory() as session:
             async with session.begin():
                 session.add(
@@ -64,8 +58,8 @@ class ScheduledJobRunStore:
                         id=str(ULID()),
                         job_id=job_id,
                         status="skipped",
-                        started_at=naive_at,
-                        finished_at=naive_at,
+                        started_at=at,
+                        finished_at=at,
                         duration_ms=0,
                         error=reason,
                     )
@@ -80,7 +74,7 @@ class ScheduledJobRunStore:
                         ScheduledJobRunRecord.job_id == job_id,
                         ScheduledJobRunRecord.status == "success",
                     )
-                    .order_by(ScheduledJobRunRecord.started_at.desc())
+                    .order_by(ScheduledJobRunRecord.finished_at.desc())
                     .limit(1)
                 )
                 return result.scalar_one_or_none()

@@ -17,8 +17,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+    types,
 )
-from sqlalchemy import types
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sebastian.store.database import Base  # noqa: F401
@@ -27,12 +27,17 @@ from sebastian.store.database import Base  # noqa: F401
 class _UTCDateTime(types.TypeDecorator):
     """DateTime column that always returns timezone-aware UTC datetimes.
 
-    SQLite stores datetimes as naive strings; this decorator re-attaches UTC
-    on load so callers always receive tz-aware values.
+    SQLite stores datetimes as naive strings; this decorator strips tzinfo on
+    write and re-attaches UTC on read, keeping all TZ logic in one place.
     """
 
     impl = types.DateTime
     cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=None) if value.tzinfo is not None else value
 
     def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
         if value is None:

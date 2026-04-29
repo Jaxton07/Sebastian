@@ -269,6 +269,45 @@ async def test_aclose_sets_shutdown_and_cancels_loop(scheduler_db) -> None:
     assert runner._loop_task.done()
 
 
+async def test_aclose_cancels_running_job_after_grace_period(scheduler_db) -> None:
+    handler_running = asyncio.Event()
+    gate = asyncio.Event()
+
+    async def blocking_handler() -> None:
+        handler_running.set()
+        await gate.wait()
+
+    job = ScheduledJob(id="test.grace", handler=blocking_handler, interval=timedelta(hours=1))
+    registry = JobRegistry()
+    registry.register(job)
+    run_store = ScheduledJobRunStore(scheduler_db)
+    runner = SchedulerRunner(registry=registry, run_store=run_store)
+
+    now = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
+    runner._next_run["test.grace"] = now
+    await runner._tick(now)  # starts the job as a background task
+
+    # Wait until handler is actually running (start_run DB write completed)
+    await handler_running.wait()
+
+    # aclose with short grace period — job won't finish, should be cancelled
+    await runner.aclose(grace_period=0.05)
+
+    # Verify: shutdown flag set, loop task done
+    assert runner._shutdown is True
+
+    # Verify: cancelled record written (handler was cancelled during aclose)
+    async with scheduler_db() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(ScheduledJobRunRecord).where(
+                    ScheduledJobRunRecord.job_id == "test.grace",
+                    ScheduledJobRunRecord.status == "cancelled",
+                )
+            )
+            assert result.first() is not None
+
+
 async def test_run_job_writes_cancelled_record_on_cancel(scheduler_db) -> None:
     handler_started = asyncio.Event()
     gate = asyncio.Event()

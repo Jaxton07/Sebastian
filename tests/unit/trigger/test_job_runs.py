@@ -104,20 +104,20 @@ async def test_record_skipped_writes_complete_record(run_store, db_factory):
     assert record.error == "previous run still in progress"
 
 
-async def test_get_last_success_at_returns_most_recent_finished_at(run_store):
-    t1_start = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
-    t1_end = datetime(2024, 1, 1, 10, 5, 0, tzinfo=UTC)
-    t2_start = datetime(2024, 1, 1, 16, 0, 0, tzinfo=UTC)
-    t2_end = datetime(2024, 1, 1, 16, 5, 0, tzinfo=UTC)
-
-    run1 = await run_store.start_run("test.job", t1_start)
-    await run_store.finish_run(run1, "success", t1_end, duration_ms=300000)
-
-    run2 = await run_store.start_run("test.job", t2_start)
-    await run_store.finish_run(run2, "success", t2_end, duration_ms=300000)
+async def test_get_last_success_at_returns_most_recently_finished(run_store) -> None:
+    # Run A: started early, finished late (long-running)
+    run_a = await run_store.start_run("test.job", datetime(2024, 1, 1, 8, 0, 0, tzinfo=UTC))
+    # Run B: started after A, finished before A (fast)
+    run_b = await run_store.start_run("test.job", datetime(2024, 1, 1, 9, 0, 0, tzinfo=UTC))
+    run_b_end = datetime(2024, 1, 1, 9, 5, 0, tzinfo=UTC)
+    await run_store.finish_run(run_b, "success", run_b_end, duration_ms=300000)
+    # A finishes last (later finished_at than B)
+    run_a_end = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
+    await run_store.finish_run(run_a, "success", run_a_end, duration_ms=7200000)
 
     result = await run_store.get_last_success_at("test.job")
-    assert result == t2_end
+    # Should return run A's finished_at (most recently finished), not run B's
+    assert result == run_a_end
 
 
 async def test_get_last_success_at_ignores_running_failed_timeout(run_store):

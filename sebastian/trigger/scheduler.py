@@ -76,7 +76,10 @@ class SchedulerRunner:
 
     async def _loop(self) -> None:
         while not self._shutdown:
-            await self._tick(datetime.now(UTC))
+            try:
+                await self._tick(datetime.now(UTC))
+            except Exception:
+                logger.exception("scheduler tick failed, will retry next poll")
             await asyncio.sleep(self._poll_interval.total_seconds())
 
     async def _tick(self, now: datetime) -> None:
