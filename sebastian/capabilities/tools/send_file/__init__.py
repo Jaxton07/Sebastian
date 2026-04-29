@@ -120,7 +120,16 @@ async def send_file(file_path: str, display_name: str | None = None) -> ToolResu
 
     kind, mime_type = kind_info
     filename = _resolve_display_name(display_name, path)
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return ToolResult(
+            ok=False,
+            error=(
+                f"Could not read file: {path}: {exc}. Do not retry automatically; "
+                "tell the user the file could not be read or sent."
+            ),
+        )
 
     try:
         uploaded = await attachment_store.upload_bytes(

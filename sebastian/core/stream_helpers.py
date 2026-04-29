@@ -46,6 +46,24 @@ def format_tool_display(result: ToolResult) -> str:
     return text
 
 
+def _artifact_model_content(artifact: dict[str, Any], display: str) -> str:
+    if display:
+        return display
+    filename = artifact.get("filename")
+    label = "图片" if artifact.get("kind") == "image" else "文件"
+    if isinstance(filename, str) and filename:
+        return f"已向用户发送{label} {filename}"
+    return f"已向用户发送{label}"
+
+
+def _tool_result_model_content(result: StreamToolResult, display: str) -> str:
+    if isinstance(result.output, dict):
+        artifact = result.output.get("artifact")
+        if isinstance(artifact, dict):
+            return _artifact_model_content(artifact, display)
+    return _tool_result_content(result)
+
+
 def append_tool_result_block(
     blocks: list[dict[str, Any]],
     *,
@@ -62,7 +80,7 @@ def append_tool_result_block(
         "type": "tool_result",
         "tool_call_id": tool_id,
         "tool_name": tool_name,
-        "model_content": _tool_result_content(result),
+        "model_content": _tool_result_model_content(result, display),
         "display": display,
         "ok": result.ok,
         "assistant_turn_id": assistant_turn_id,

@@ -311,6 +311,29 @@ async def test_send_file_too_large_returns_error(patched_state, set_ctx, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_send_file_read_error_returns_stable_error(
+    patched_state, set_ctx, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file_path = tmp_path / "notes.md"
+    file_path.write_text("hello", encoding="utf-8")
+    set_ctx("s1", "sebastian")
+
+    def deny_read(self: Path) -> bytes:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_bytes", deny_read)
+
+    from sebastian.capabilities.tools.send_file import send_file
+
+    result = await send_file(str(file_path))
+
+    assert result.ok is False
+    assert str(file_path) in result.error
+    assert "denied" in result.error
+    assert "Do not retry automatically" in result.error
+
+
+@pytest.mark.asyncio
 async def test_send_file_attachment_store_unavailable(
     patched_state, set_ctx, tmp_path: Path
 ) -> None:

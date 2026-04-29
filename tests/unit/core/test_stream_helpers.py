@@ -27,7 +27,13 @@ def _make_stream_result(
 def test_append_tool_result_block_preserves_artifact() -> None:
     from sebastian.core.stream_helpers import append_tool_result_block
 
-    artifact = {"kind": "image", "attachment_id": "att-1", "filename": "photo.png"}
+    artifact = {
+        "kind": "text_file",
+        "attachment_id": "att-1",
+        "filename": "notes.md",
+        "download_url": "/api/v1/attachments/att-1",
+        "text_excerpt": "# private excerpt",
+    }
     result = _make_stream_result(output={"artifact": artifact})
     blocks: list = []
     append_tool_result_block(
@@ -35,15 +41,43 @@ def test_append_tool_result_block_preserves_artifact() -> None:
         tool_id="toolu_1",
         tool_name="send_file",
         result=result,
-        display="已发送 photo.png",
+        display="已向用户发送文件 notes.md",
         assistant_turn_id="turn-1",
         provider_call_index=0,
         block_index=0,
     )
     assert len(blocks) == 1
     assert blocks[0]["artifact"]["attachment_id"] == "att-1"
-    assert blocks[0]["artifact"]["kind"] == "image"
-    assert blocks[0]["artifact"]["filename"] == "photo.png"
+    assert blocks[0]["artifact"]["kind"] == "text_file"
+    assert blocks[0]["artifact"]["filename"] == "notes.md"
+    assert blocks[0]["model_content"] == "已向用户发送文件 notes.md"
+    assert "attachment_id" not in blocks[0]["model_content"]
+    assert "download_url" not in blocks[0]["model_content"]
+    assert "private excerpt" not in blocks[0]["model_content"]
+
+
+def test_append_tool_result_block_artifact_fallback_model_content() -> None:
+    from sebastian.core.stream_helpers import append_tool_result_block
+
+    cases = [
+        ({"kind": "image", "filename": "photo.png"}, "已向用户发送图片 photo.png"),
+        ({"kind": "text_file", "filename": "notes.md"}, "已向用户发送文件 notes.md"),
+        ({"kind": "unknown", "filename": "data.bin"}, "已向用户发送文件 data.bin"),
+    ]
+    for artifact, expected in cases:
+        result = _make_stream_result(output={"artifact": artifact})
+        blocks: list = []
+        append_tool_result_block(
+            blocks,
+            tool_id="toolu_1",
+            tool_name="send_file",
+            result=result,
+            display="",
+            assistant_turn_id="turn-1",
+            provider_call_index=0,
+            block_index=0,
+        )
+        assert blocks[0]["model_content"] == expected
 
 
 def test_append_tool_result_block_no_artifact() -> None:

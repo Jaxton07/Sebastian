@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import os
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -312,6 +313,89 @@ def test_send_turn_with_attachment_writes_timeline(client) -> None:
     )
     # After attachment the blob is readable (200 OK)
     assert get_att_resp.status_code == 200
+
+
+def test_send_file_tool_result_artifact_hydrates_without_model_content_leak(client) -> None:
+    import sebastian.gateway.state as state
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    artifact = {
+        "kind": "text_file",
+        "attachment_id": "att-agent-1",
+        "filename": "notes.md",
+        "mime_type": "text/markdown",
+        "size_bytes": 20,
+        "download_url": "/api/v1/attachments/att-agent-1",
+        "text_excerpt": "# private excerpt",
+    }
+    blocks = [
+        {
+            "type": "tool",
+            "tool_call_id": "toolu_send_file",
+            "tool_name": "send_file",
+            "input": {"file_path": "/tmp/notes.md"},
+            "status": "done",
+            "assistant_turn_id": "turn-agent-file",
+            "provider_call_index": 0,
+            "block_index": 0,
+        },
+        {
+            "type": "tool_result",
+            "tool_call_id": "toolu_send_file",
+            "tool_name": "send_file",
+            "model_content": "已向用户发送文件 notes.md",
+            "display": "已向用户发送文件 notes.md",
+            "ok": True,
+            "artifact": artifact,
+            "assistant_turn_id": "turn-agent-file",
+            "provider_call_index": 0,
+            "block_index": 1,
+        },
+    ]
+
+    async def fake_run_streaming(content: str, session_id: str, **_kwargs) -> str:
+        await state.session_store.append_message(
+            session_id,
+            "assistant",
+            "",
+            agent_type="sebastian",
+            blocks=blocks,
+        )
+        return ""
+
+    with patch("sebastian.gateway.state.sebastian.run_streaming", side_effect=fake_run_streaming):
+        turn_resp = http_client.post(
+            "/api/v1/turns",
+            json={"content": "send me the generated file"},
+            headers=headers,
+        )
+    assert turn_resp.status_code == 200, turn_resp.text
+    session_id = turn_resp.json()["session_id"]
+
+    timeline = []
+    for _ in range(20):
+        detail_resp = http_client.get(
+            f"/api/v1/sessions/{session_id}?include_archived=true",
+            headers=headers,
+        )
+        assert detail_resp.status_code == 200, detail_resp.text
+        timeline = detail_resp.json()["timeline_items"]
+        if any(item["kind"] == "tool_result" for item in timeline):
+            break
+        time.sleep(0.05)
+
+    result_items = [item for item in timeline if item["kind"] == "tool_result"]
+    assert len(result_items) == 1
+    result_item = result_items[0]
+    payload = result_item["payload"]
+    assert payload["artifact"]["attachment_id"] == "att-agent-1"
+    assert payload["artifact"]["text_excerpt"] == "# private excerpt"
+    assert result_item["content"] == "已向用户发送文件 notes.md"
+    assert "attachment_id" not in result_item["content"]
+    assert "text_excerpt" not in payload
+    assert "model_content" not in payload
 
 
 # ─────────────────────────────────────────────────────────────────────────────

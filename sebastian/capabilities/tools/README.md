@@ -32,7 +32,7 @@ tools/
 │   └── __init__.py          # @tool: todo_read
 ├── todo_write/              # Session 级 todo 列表覆盖式写入工具（permission_tier: LOW）
 │   └── __init__.py          # @tool: todo_write
-├── send_file/               # Agent 向用户发送文件/图片工具（permission_tier: LOW）
+├── send_file/               # Agent 向用户发送文件/图片工具（permission_tier: MODEL_DECIDES）
 │   └── __init__.py          # @tool: send_file
 ├── write/                   # 文件写入工具，含 mtime 保护（permission_tier: MODEL_DECIDES）
 │   └── __init__.py          # @tool: file_write
@@ -113,7 +113,7 @@ return ToolResult(
 )
 ```
 
-给模型的 `tool_result` 仍然是完整 `output`，display 不会泄漏给 LLM。
+默认情况下，给模型的 `tool_result` 由完整 `output` 生成；因此工具应避免把不该进入上下文的内容放进普通 `output`。带 `artifact` 的工具结果是例外窄通道：`artifact` 只保留在 timeline payload / SSE 中，LLM-facing `model_content` 必须使用轻量事实文本（通常来自 `display`）。
 
 ## 工具分类：能力工具 vs 协议工具
 
