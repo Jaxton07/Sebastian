@@ -10,16 +10,25 @@ from io import BytesIO  # noqa: F401
 from pathlib import Path
 from uuid import uuid4
 
-from PIL import Image, ImageOps, UnidentifiedImageError  # noqa: F401
-from sqlalchemy import func, select, update  # noqa: F401
+from PIL import (  # noqa: F401  # ImageOps/UnidentifiedImageError used by Task 3+
+    Image,
+    ImageOps,
+    UnidentifiedImageError,
+)
+from sqlalchemy import (
+    func,  # noqa: F401  # used by Task 9
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sebastian.store.models import AttachmentRecord
 
 logger = logging.getLogger(__name__)
 
-# DecompressionBomb 防护：Pillow 默认在 > MAX_IMAGE_PIXELS 时只发 Warning，
-# > 2 × MAX 才抛 Error。主动把 Warning 升级为 Error，让 1 亿像素成为真正的硬上限。
+# DecompressionBomb 防护：Pillow 默认 MAX_IMAGE_PIXELS ≈ 89.5M（超过时仅发 Warning，
+# > 2× 才抛 Error）。这里将上限设为 100M，并把 Warning 升级为 Error，
+# 使单层阈值即触发硬阻断，而非依赖 Pillow 的双重阈值机制。
 Image.MAX_IMAGE_PIXELS = 100_000_000
 warnings.simplefilter("error", Image.DecompressionBombWarning)
 
