@@ -85,6 +85,24 @@ def _maybe_generate_thumbnail(
                     return None, False
                 save_format = src_format
 
+            # EXIF orientation 校正必须在缩放前
+            img = ImageOps.exif_transpose(img)
+
+            # 按输出格式做必要的 mode 转换
+            if save_format == "JPEG":
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+            elif save_format == "PNG":
+                if img.mode == "P":
+                    if "transparency" in img.info:
+                        img = img.convert("RGBA")
+                    else:
+                        img = img.convert("RGB")
+            elif save_format == "WEBP":
+                # WebP 同时支持 RGB / RGBA。其他 mode 一律转 RGBA，不损失 alpha。
+                if img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGBA")
+
             img.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE))
 
             thumb_rel = f"thumbs/{sha[:2]}/{sha}.{ext}"

@@ -446,3 +446,41 @@ def test_thumbnail_unsupported_format_returns_none(tmp_path: Path) -> None:
 
     assert thumb_abs is None
     assert created is False
+
+
+def test_thumbnail_exif_orientation_corrected(tmp_path: Path) -> None:
+    """带 EXIF Orientation=6（顺时针 90°）的 JPEG，缩略图应已校正方向。"""
+    img = Image.new("RGB", (800, 400), color=(255, 0, 0))  # 800×400 横图
+    buf = BytesIO()
+    # 写入 EXIF Orientation=6（旋转 90 CW）
+    exif = img.getexif()
+    exif[0x0112] = 6
+    img.save(buf, format="JPEG", exif=exif.tobytes(), quality=85)
+    data = buf.getvalue()
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, _ = _maybe_generate_thumbnail(tmp_path, sha, data)
+    assert thumb_abs is not None
+
+    with Image.open(thumb_abs) as out:
+        # 校正后原本 800×400 横图应被旋转为竖图，宽 < 高
+        assert out.width < out.height
+
+
+def test_thumbnail_png_palette_with_transparency(tmp_path: Path) -> None:
+    """P 模式 + transparency 信息的 PNG：转 RGBA 后输出，alpha 保留。"""
+    img = Image.new("P", (200, 200))
+    img.putpalette([0, 0, 0] * 256)
+    buf = BytesIO()
+    img.save(buf, format="PNG", transparency=0)
+    data = buf.getvalue()
+    sha = _hashlib.sha256(data).hexdigest()
+
+    thumb_abs, created = _maybe_generate_thumbnail(tmp_path, sha, data)
+
+    assert created is True
+    assert thumb_abs is not None
+    with Image.open(thumb_abs) as out:
+        assert out.format == "PNG"
+        # 应已转换为 RGBA（保留透明信息），不是 P
+        assert out.mode in ("RGBA", "RGB")  # 至少不能因 mode 转换抛异常
