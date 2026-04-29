@@ -47,6 +47,7 @@ store/
 | 数据库 schema 变更 | [models.py](models.py) 修改 ORM + [migrations/](migrations/) 新增 Alembic migration |
 | 新增列的幂等迁移（启动时 ALTER TABLE 补列） | [database.py](database.py) 的 `_apply_idempotent_migrations`（已存在列自动跳过） |
 | SQLAlchemy engine / session factory | [database.py](database.py) |
+| scheduler 运行历史读写 | [../trigger/job_runs.py](../trigger/job_runs.py) 的 `ScheduledJobRunStore`；ORM model：[models.py](models.py) 的 `ScheduledJobRunRecord` |
 
 ## 公开接口（其他模块如何使用）
 
