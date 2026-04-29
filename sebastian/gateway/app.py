@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
@@ -325,6 +325,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Sebastian gateway started")
     yield
     watchdog_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await watchdog_task
     try:
         if state.scheduler is not None:
             await state.scheduler.aclose()
