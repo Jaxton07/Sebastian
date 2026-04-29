@@ -79,11 +79,23 @@ async def download_thumbnail(
     record = await store.get(attachment_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    # P0: return the original image as-is (no thumbnail generation yet)
     if record.kind != "image":
         raise HTTPException(status_code=400, detail="Thumbnail only available for images")
+
+    # 按 SHA 推算 thumb 路径，逐个尝试 jpg/png/webp 三种扩展名
+    _THUMB_EXT_TO_MIME = {
+        "jpg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
+    thumb_dir = store._root_dir / "thumbs" / record.sha256[:2]
+    for ext, mime in _THUMB_EXT_TO_MIME.items():
+        candidate = thumb_dir / f"{record.sha256}.{ext}"
+        if candidate.exists():
+            return Response(content=candidate.read_bytes(), media_type=mime)
+
+    # 缺 thumb 时 fallback 返回原图（兼容老数据 / 生成失败）
     blob_path = store.blob_absolute_path(record)
     if not blob_path.exists():
         raise HTTPException(status_code=404, detail="Attachment blob not found")
-    data = blob_path.read_bytes()
-    return Response(content=data, media_type=record.mime_type)
+    return Response(content=blob_path.read_bytes(), media_type=record.mime_type)

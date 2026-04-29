@@ -627,6 +627,81 @@ def test_existing_agent_session_turn_with_attachment_writes_timeline(client) -> 
     )
 
 
+def test_thumbnail_returns_real_thumb_when_present(client) -> None:
+    """上传 image → /thumbnail 返回真正的缩略图（尺寸 ≤ 256）。"""
+    from io import BytesIO
+
+    from PIL import Image
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    img = Image.new("RGB", (1024, 768), color=(0, 100, 200))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    payload = buf.getvalue()
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        data={"kind": "image"},
+        files={"file": ("photo.jpg", payload, "image/jpeg")},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    att_id = resp.json()["attachment_id"]
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 200
+    assert thumb_resp.headers["content-type"].startswith("image/jpeg")
+
+    out = Image.open(BytesIO(thumb_resp.content))
+    assert max(out.size) <= 256
+
+
+def test_thumbnail_falls_back_to_blob_when_thumb_missing(client) -> None:
+    """thumb 不存在但 blob 存在 → fallback 返回原图。"""
+    from io import BytesIO
+
+    from PIL import Image
+
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    img = Image.new("RGB", (200, 200), color=(255, 0, 0))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    payload = buf.getvalue()
+
+    resp = http_client.post(
+        "/api/v1/attachments",
+        data={"kind": "image"},
+        files={"file": ("p.jpg", payload, "image/jpeg")},
+        headers=headers,
+    )
+    att_id = resp.json()["attachment_id"]
+    sha = resp.json()["sha256"]
+
+    # 手动删除 thumb 文件，模拟老数据 / 生成失败
+    import sebastian.gateway.state as state
+
+    thumb_abs = state.attachment_store._root_dir / "thumbs" / sha[:2] / f"{sha}.jpg"
+    thumb_abs.unlink(missing_ok=True)
+
+    thumb_resp = http_client.get(
+        f"/api/v1/attachments/{att_id}/thumbnail",
+        headers=headers,
+    )
+    assert thumb_resp.status_code == 200
+    # fallback 用 record.mime_type，仍是 image/jpeg
+    assert thumb_resp.headers["content-type"].startswith("image/jpeg")
+    # 但 body 是原图（尺寸 200×200）
+    out = Image.open(BytesIO(thumb_resp.content))
+    assert out.size == (200, 200)
+
+
 def test_orphaned_attachment_cannot_be_reused_in_new_turn(client) -> None:
     """After a session is deleted (orphaning its attachment), reusing the attachment
     must return 409."""
