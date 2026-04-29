@@ -1,5 +1,6 @@
 package com.sebastian.android.data.remote.dto
 
+import com.sebastian.android.data.model.AttachmentArtifact
 import com.sebastian.android.data.model.StreamEvent
 import org.json.JSONException
 import org.json.JSONObject
@@ -37,7 +38,13 @@ object SseFrameParser {
         "tool_block.start" -> StreamEvent.ToolBlockStart(data.getString("session_id"), data.getString("block_id"), data.getString("tool_id"), data.getString("name"))
         "tool_block.stop" -> StreamEvent.ToolBlockStop(data.getString("session_id"), data.getString("block_id"), data.getString("tool_id"), data.getString("name"), data.optJSONObject("inputs")?.toString() ?: "{}")
         "tool.running" -> StreamEvent.ToolRunning(data.getString("session_id"), data.getString("tool_id"), data.getString("name"))
-        "tool.executed" -> StreamEvent.ToolExecuted(data.getString("session_id"), data.getString("tool_id"), data.getString("name"), data.optString("result_summary", ""))
+        "tool.executed" -> StreamEvent.ToolExecuted(
+            data.getString("session_id"),
+            data.getString("tool_id"),
+            data.getString("name"),
+            data.optString("result_summary", ""),
+            data.optJSONObject("artifact")?.toArtifactOrNull(),
+        )
         "tool.failed" -> StreamEvent.ToolFailed(data.getString("session_id"), data.getString("tool_id"), data.getString("name"), data.optString("error", ""))
         "task.created" -> StreamEvent.TaskCreated(data.getString("session_id"), data.getString("task_id"), data.optString("goal", ""))
         "task.started" -> StreamEvent.TaskStarted(data.getString("session_id"), data.getString("task_id"))
@@ -68,4 +75,19 @@ object SseFrameParser {
         )
         else -> StreamEvent.Unknown
     }
+}
+
+private fun JSONObject.toArtifactOrNull(): AttachmentArtifact? {
+    val kind = optString("kind", "").takeIf { it.isNotBlank() } ?: return null
+    val attachmentId = optString("attachment_id", "").takeIf { it.isNotBlank() } ?: return null
+    return AttachmentArtifact(
+        kind = kind,
+        attachmentId = attachmentId,
+        filename = optString("filename", ""),
+        mimeType = optString("mime_type", ""),
+        sizeBytes = optLong("size_bytes", 0L),
+        downloadUrl = optString("download_url", ""),
+        thumbnailUrl = optString("thumbnail_url", "").takeIf { it.isNotBlank() },
+        textExcerpt = optString("text_excerpt", "").takeIf { it.isNotBlank() },
+    )
 }
