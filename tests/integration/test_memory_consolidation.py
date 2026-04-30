@@ -452,6 +452,7 @@ async def test_consolidate_session_disabled_writes_nothing(db_factory):
         extractor=FakeExtractor(),
         session_store=FakeSessionStore(),
         memory_settings_fn=lambda: False,
+        memory_service=_make_memory_service(db_factory),
     )
 
     await disabled_worker.consolidate_session("sess-002", "sebastian")

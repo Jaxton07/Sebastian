@@ -168,8 +168,8 @@ class SessionConsolidationWorker:
         extractor: MemoryExtractor,
         session_store: Any,
         memory_settings_fn: Callable[[], bool],
+        memory_service: MemoryService,
         resident_snapshot_refresher: ResidentMemorySnapshotRefresher | None = None,
-        memory_service: MemoryService | None = None,
     ) -> None:
         self._db_factory = db_factory
         self._consolidator = consolidator
@@ -177,7 +177,7 @@ class SessionConsolidationWorker:
         self._session_store = session_store
         self._memory_settings_fn = memory_settings_fn
         self._resident_snapshot_refresher = resident_snapshot_refresher
-        self._memory_service = memory_service
+        self._memory_service: MemoryService = memory_service
 
     async def consolidate_session(self, session_id: str, agent_type: str) -> None:
         """Run consolidation for a completed session.

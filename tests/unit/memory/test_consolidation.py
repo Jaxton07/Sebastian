@@ -533,12 +533,19 @@ class TestMemoryConsolidatorConsolidate:
                 async def extract_with_slot_retry(self, extractor_input, *, attempt_register):  # type: ignore[no-untyped-def]
                     raise AssertionError("extractor must not run when memory is disabled")
 
+            from sebastian.memory.services.memory_service import MemoryService
+            from sebastian.memory.services.writing import MemoryWriteService
+
             worker = SessionConsolidationWorker(
                 db_factory=factory,
                 consolidator=_FailingConsolidator(),  # type: ignore[arg-type]
                 extractor=_FailingExtractor(),  # type: ignore[arg-type]
                 session_store=_FakeSessionStore(),
                 memory_settings_fn=lambda: False,
+                memory_service=MemoryService(
+                    db_factory=factory,
+                    writing=MemoryWriteService(db_factory=factory),
+                ),
             )
 
             caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
