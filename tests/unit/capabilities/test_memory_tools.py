@@ -413,6 +413,59 @@ async def test_memory_save_discard_decision_log_has_input_source(
     assert rows[0].input_source["type"] == "memory_save_tool"
 
 
+@pytest.mark.asyncio
+async def test_memory_save_delegates_to_memory_service(
+    enabled_memory_state, monkeypatch
+) -> None:
+    """_do_save() 通过 state.memory_service.write_candidates() 写入，
+    并将返回的 MemoryWriteResult 正确转换为 MemorySaveResult。
+    """
+    from unittest.mock import AsyncMock
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.memory.contracts.writing import MemoryWriteRequest, MemoryWriteResult
+    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
+
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    cand = _preference_candidate()
+    # A DISCARD decision (new_memory=None) — discarded_count == 1, saved_count == 0
+    fake_decision = ResolveDecision(
+        decision=MemoryDecisionType.DISCARD,
+        reason="duplicate",
+        old_memory_ids=[],
+        new_memory=None,
+        candidate=cand,
+        subject_id="owner",
+        scope=cand.scope,
+        slot_id=cand.slot_id,
+    )
+    fake_write_result = MemoryWriteResult(
+        decisions=[fake_decision],
+        proposed_slots_registered=["user.preference.response_style"],
+        proposed_slots_rejected=[],
+    )
+    mock_write = AsyncMock(return_value=fake_write_result)
+    monkeypatch.setattr(_state.memory_service, "write_candidates", mock_write)
+
+    result = await memory_save(content="以后回答简洁中文")
+
+    assert result.ok is True
+    mock_write.assert_called_once()
+    call_args = mock_write.call_args[0][0]
+    assert isinstance(call_args, MemoryWriteRequest)
+    assert call_args.worker_id == "memory_save_tool"
+    assert call_args.rule_version == "spec-a-v1"
+    assert call_args.input_source["type"] == "memory_save_tool"
+
+    # Verify MemoryWriteResult → MemorySaveResult conversion
+    assert result.output["saved_count"] == 0
+    assert result.output["discarded_count"] == 1
+    assert result.output["proposed_slots_registered"] == ["user.preference.response_style"]
+    assert "summary" in result.output
+
+
 # ---------------------------------------------------------------------------
 # memory_search tests
 # ---------------------------------------------------------------------------
