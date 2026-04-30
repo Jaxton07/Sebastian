@@ -1448,7 +1448,10 @@ async def test_memory_search_delegates_to_memory_service(monkeypatch) -> None:
     from unittest.mock import AsyncMock, MagicMock
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.contracts.retrieval import ExplicitMemorySearchRequest, ExplicitMemorySearchResult
+    from sebastian.memory.contracts.retrieval import (
+        ExplicitMemorySearchRequest,
+        ExplicitMemorySearchResult,
+    )
 
     fake_items = [
         {

@@ -8,8 +8,12 @@ from sebastian.memory.contracts.retrieval import (
     PromptMemoryRequest,
     PromptMemoryResult,
 )
-from sebastian.memory.retrieval import RetrievalContext, RetrievalPlan, _keep_record
-from sebastian.memory.retrieval import retrieve_memory_section
+from sebastian.memory.retrieval import (
+    RetrievalContext,
+    RetrievalPlan,
+    _keep_record,
+    retrieve_memory_section,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,7 +188,9 @@ class MemoryRetrievalService:
                 }
             )
         for record in episode_records:
-            citation_type = "historical_summary" if record.kind == "summary" else "historical_evidence"
+            citation_type = (
+                "historical_summary" if record.kind == "summary" else "historical_evidence"
+            )
             items.append(
                 {
                     "lane": "episode",

@@ -60,7 +60,8 @@ def _make_candidate(slot_id: str | None = None) -> CandidateArtifact:
 async def test_worker_merges_extractor_and_consolidator_proposed_slots(
     tmp_memory_env,
 ) -> None:
-    """Worker 应把 Extractor + Consolidator 的 proposed_slots 合并后传给 MemoryService.write_candidates_in_session。
+    """Worker 应把 Extractor + Consolidator 的 proposed_slots 合并后传给
+    MemoryService.write_candidates_in_session。
 
     断言：write_candidates_in_session 被调用时 request.proposed_slots 包含两处提议（共 2 个 slot）。
     """
@@ -129,7 +130,8 @@ async def test_worker_merges_extractor_and_consolidator_proposed_slots(
 async def test_worker_passes_slot_proposal_handler_to_write_candidates_in_session(
     tmp_memory_env,
 ) -> None:
-    """Worker 应向 MemoryService.write_candidates_in_session 传入非 None 的 slot_proposal_handler。"""
+    """Worker 应向 MemoryService.write_candidates_in_session 传入非 None 的
+    slot_proposal_handler。"""
     factory = tmp_memory_env
 
     fake_extractor_output = ExtractorOutput(artifacts=[], proposed_slots=[])

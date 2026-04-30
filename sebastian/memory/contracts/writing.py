@@ -5,7 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from sebastian.memory.types import CandidateArtifact, MemoryDecisionType, ProposedSlot, ResolveDecision
+from sebastian.memory.types import (
+    CandidateArtifact,
+    MemoryDecisionType,
+    ProposedSlot,
+    ResolveDecision,
+)
 
 
 class MemoryWriteRequest(BaseModel):
@@ -37,4 +42,6 @@ class MemoryWriteResult:
 
     @property
     def discarded_count(self) -> int:
-        return sum(1 for decision in self.decisions if decision.decision == MemoryDecisionType.DISCARD)
+        return sum(
+            1 for decision in self.decisions if decision.decision == MemoryDecisionType.DISCARD
+        )
