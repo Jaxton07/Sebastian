@@ -12,6 +12,8 @@ build/
 .ruff_cache/
 .pytest_cache/
 .superpowers/
+graphify-out/
+sebastian/graphify-out/
 
 # Data & secrets
 /data/
