@@ -41,6 +41,7 @@ from sebastian.store.session_context import build_legacy_messages
 if TYPE_CHECKING:
     from sebastian.llm.registry import LLMProviderRegistry, ResolvedProvider
     from sebastian.memory.resident_snapshot import ResidentMemorySnapshotRefresher
+    from sebastian.memory.services.memory_service import MemoryService
     from sebastian.protocol.events.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -168,6 +169,7 @@ class SessionConsolidationWorker:
         session_store: Any,
         memory_settings_fn: Callable[[], bool],
         resident_snapshot_refresher: ResidentMemorySnapshotRefresher | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._db_factory = db_factory
         self._consolidator = consolidator
@@ -175,6 +177,7 @@ class SessionConsolidationWorker:
         self._session_store = session_store
         self._memory_settings_fn = memory_settings_fn
         self._resident_snapshot_refresher = resident_snapshot_refresher
+        self._memory_service = memory_service
 
     async def consolidate_session(self, session_id: str, agent_type: str) -> None:
         """Run consolidation for a completed session.
@@ -228,10 +231,10 @@ class SessionConsolidationWorker:
         #    for the same (session_id, agent_type) pair, preserving
         #    idempotency.
         async with self._db_factory() as session:
+            from sebastian.memory.contracts.writing import MemoryWriteRequest
             from sebastian.memory.decision_log import MemoryDecisionLogger
             from sebastian.memory.entity_registry import EntityRegistry
             from sebastian.memory.episode_store import EpisodeMemoryStore
-            from sebastian.memory.pipeline import process_candidates
             from sebastian.memory.profile_store import ProfileMemoryStore
             from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
             from sebastian.store.models import SessionConsolidationRecord
@@ -383,11 +386,22 @@ class SessionConsolidationWorker:
             # register_or_reuse naturally deduplicates by slot_id.
             all_proposed_slots = list(extractor_output.proposed_slots) + list(result.proposed_slots)
 
-            pipeline_result = await process_candidates(
-                summary_candidates + result.artifacts,
-                all_proposed_slots,
-                session_id=session_id,
-                agent_type=agent_type,
+            write_result = await self._memory_service.write_candidates_in_session(
+                MemoryWriteRequest(
+                    candidates=summary_candidates + result.artifacts,
+                    proposed_slots=all_proposed_slots,
+                    session_id=session_id,
+                    agent_type=agent_type,
+                    worker_id=self._WORKER_ID,
+                    model_name=model_name,
+                    rule_version=self._RULE_VERSION,
+                    input_source={
+                        "type": "session_consolidation",
+                        "session_id": session_id,
+                        "agent_type": agent_type,
+                    },
+                    proposed_by="consolidator",
+                ),
                 db_session=session,
                 profile_store=profile_store,
                 episode_store=episode_store,
@@ -395,18 +409,9 @@ class SessionConsolidationWorker:
                 decision_logger=decision_logger,
                 slot_registry=DEFAULT_SLOT_REGISTRY,
                 slot_proposal_handler=slot_handler,
-                worker_id=self._WORKER_ID,
-                model_name=model_name,
-                rule_version=self._RULE_VERSION,
-                input_source={
-                    "type": "session_consolidation",
-                    "session_id": session_id,
-                    "agent_type": agent_type,
-                },
-                proposed_by="consolidator",
             )
 
-            for d in pipeline_result.decisions:
+            for d in write_result.decisions:
                 if d.decision == MemoryDecisionType.DISCARD:
                     persisted_counts["discard"] += 1
                 elif d.candidate.kind == MemoryKind.SUMMARY:
