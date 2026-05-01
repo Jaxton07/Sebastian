@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from sebastian.memory.consolidation import SessionConsolidationWorker
+from sebastian.memory.consolidation.consolidation import SessionConsolidationWorker
+from sebastian.memory.services.memory_service import MemoryService
+from sebastian.memory.services.writing import MemoryWriteService
 from sebastian.store.models import (
     Base,
     EpisodeMemoryRecord,
@@ -98,6 +100,10 @@ async def test_two_concurrent_consolidations_produce_one_marker(db_factory):
             extractor=FakeExtractor(),
             session_store=FakeSessionStore(),
             memory_settings_fn=lambda: True,
+            memory_service=MemoryService(
+                db_factory=db_factory,
+                writing=MemoryWriteService(db_factory=db_factory),
+            ),
         )
 
     worker_a = build_worker()

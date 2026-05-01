@@ -7,14 +7,16 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.core.types import Session, SessionStatus
-from sebastian.memory.consolidation import (
+from sebastian.memory.consolidation.consolidation import (
     ConsolidationResult,
     ConsolidatorInput,
     MemorySummary,
     SessionConsolidationWorker,
     sweep_unconsolidated,
 )
-from sebastian.memory.extraction import ExtractorOutput
+from sebastian.memory.consolidation.extraction import ExtractorOutput
+from sebastian.memory.services.memory_service import MemoryService
+from sebastian.memory.services.writing import MemoryWriteService
 from sebastian.memory.types import MemoryScope
 from sebastian.store.models import (
     Base,
@@ -117,6 +119,10 @@ def _make_worker(db_factory, session_store, consolidator=None, extractor=None):
         extractor=extractor or FakeExtractor(),
         session_store=session_store,
         memory_settings_fn=lambda: True,
+        memory_service=MemoryService(
+            db_factory=db_factory,
+            writing=MemoryWriteService(db_factory=db_factory),
+        ),
     )
 
 

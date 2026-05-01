@@ -64,6 +64,12 @@ def _silent_provider(text: str = "ok") -> MockLLMProvider:
     )
 
 
+def _make_memory_service(db_factory):
+    from sebastian.memory.services.memory_service import MemoryService
+
+    return MemoryService(db_factory=db_factory)
+
+
 def _stub_session_store(agent) -> None:
     """Replace agent._session_store with a minimal mock for _stream_inner tests."""
     session_store = MagicMock()
@@ -155,10 +161,9 @@ async def test_memory_section_returns_profile_content(mem_factory) -> None:
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         result = await agent._memory_section(
             session_id="s1", agent_context="test", user_message="我喜欢中文"
         )
@@ -218,8 +223,7 @@ async def test_stream_inner_includes_memory_in_system_prompt(mem_factory) -> Non
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
@@ -230,7 +234,7 @@ async def test_stream_inner_includes_memory_in_system_prompt(mem_factory) -> Non
     empty_todo_store = MagicMock()
     empty_todo_store.read = AsyncMock(return_value=[])
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch.object(gw_state, "todo_store", empty_todo_store, create=True):
             await agent._stream_inner(
                 messages=[{"role": "user", "content": "我喜欢详细解释"}],
@@ -310,8 +314,7 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
 
     import sebastian.gateway.state as gw_state
 
-    fake_mem_settings = MagicMock()
-    fake_mem_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
@@ -319,7 +322,7 @@ async def test_stream_inner_includes_both_memory_and_todo(mem_factory) -> None:
     session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
-    with patch.object(gw_state, "memory_settings", fake_mem_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch.object(gw_state, "todo_store", fake_todo_store, create=True):
             await agent._stream_inner(
                 messages=[{"role": "user", "content": "我喜欢中文"}],
@@ -344,13 +347,12 @@ async def test_memory_section_passes_active_project_or_agent_context(mem_factory
     from unittest.mock import patch
 
     import sebastian.gateway.state as gw_state
-    from sebastian.memory.retrieval import RetrievalContext
+    from sebastian.memory.retrieval.retrieval import RetrievalContext
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s-ctx"] = 1  # depth guard: only depth=1 injects memory
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
     captured_contexts: list[RetrievalContext] = []
 
@@ -358,9 +360,9 @@ async def test_memory_section_passes_active_project_or_agent_context(mem_factory
         captured_contexts.append(ctx)
         return ""
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch(
-            "sebastian.memory.retrieval.retrieve_memory_section",
+            "sebastian.memory.services.retrieval.retrieve_memory_section",
             side_effect=_fake_retrieve,
         ):
             await agent._memory_section(
@@ -387,21 +389,22 @@ async def test_memory_section_returns_empty_on_exception(mem_factory, caplog) ->
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch(
-            "sebastian.memory.retrieval.retrieve_memory_section",
+            "sebastian.memory.services.retrieval.retrieve_memory_section",
             side_effect=RuntimeError("DB exploded"),
         ):
-            with caplog.at_level(logging.WARNING, logger="sebastian.core.base_agent"):
+            with caplog.at_level(
+                logging.WARNING, logger="sebastian.memory.services.memory_service"
+            ):
                 result = await agent._memory_section(
                     session_id="s4", agent_context="test", user_message="query"
                 )
 
     assert result == ""
-    assert any("Memory section retrieval failed" in r.message for r in caplog.records)
+    assert any("retrieve_for_prompt failed" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -415,12 +418,12 @@ async def test_memory_section_returns_empty_when_disabled(mem_factory) -> None:
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
 
     import sebastian.gateway.state as gw_state
+    from sebastian.memory.services.memory_service import MemoryService
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = False
+    disabled_ms = MemoryService(db_factory=mem_factory, memory_settings_fn=lambda: False)
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
-        with patch("sebastian.memory.retrieval.retrieve_memory_section") as mock_retrieve:
+    with patch.object(gw_state, "memory_service", disabled_ms, create=True):
+        with patch("sebastian.memory.services.retrieval.retrieve_memory_section") as mock_retrieve:
             result = await agent._memory_section(
                 session_id="s5", agent_context="test", user_message="query"
             )
@@ -503,7 +506,7 @@ async def test_stream_inner_prompt_order_resident_dynamic_todo(mem_factory) -> N
 
     # Resident refresher returns a ready snapshot.
     # rendered_record_ids contains "res-1" — so dynamic retrieval excludes that record.
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
     fake_refresher = MagicMock()
     fake_refresher.read = AsyncMock(
@@ -523,8 +526,7 @@ async def test_stream_inner_prompt_order_resident_dynamic_todo(mem_factory) -> N
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
     session_store = MagicMock()
     session_store.get_session_for_agent_type = AsyncMock(return_value=MagicMock())
@@ -532,11 +534,11 @@ async def test_stream_inner_prompt_order_resident_dynamic_todo(mem_factory) -> N
     session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch.object(gw_state, "todo_store", fake_todo_store, create=True):
             with patch.object(gw_state, "resident_snapshot_refresher", fake_refresher, create=True):
                 with patch(
-                    "sebastian.memory.retrieval.retrieve_memory_section",
+                    "sebastian.memory.services.retrieval.retrieve_memory_section",
                     side_effect=_fake_retrieve,
                 ):
                     await agent._stream_inner(
@@ -573,16 +575,15 @@ async def test_stream_inner_prompt_order_resident_dynamic_todo(mem_factory) -> N
 async def test_memory_section_receives_resident_exclusions(mem_factory) -> None:
     """When _stream_inner() calls _memory_section(), it passes the resident dedup sets
     so that dynamic retrieval can skip already-rendered records."""
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
-    from sebastian.memory.retrieval import RetrievalContext
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.retrieval.retrieval import RetrievalContext
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s-excl"] = 1
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    real_ms = _make_memory_service(mem_factory)
 
     captured_ctxs: list[RetrievalContext] = []
 
@@ -609,11 +610,11 @@ async def test_memory_section_receives_resident_exclusions(mem_factory) -> None:
     session_store.append_message = AsyncMock()
     agent._session_store = session_store
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", real_ms, create=True):
         with patch.object(gw_state, "todo_store", empty_todo_store, create=True):
             with patch.object(gw_state, "resident_snapshot_refresher", fake_refresher, create=True):
                 with patch(
-                    "sebastian.memory.retrieval.retrieve_memory_section",
+                    "sebastian.memory.services.retrieval.retrieve_memory_section",
                     side_effect=_fake_retrieve,
                 ):
                     await agent._stream_inner(
@@ -639,7 +640,7 @@ async def test_memory_section_receives_resident_exclusions(mem_factory) -> None:
 async def test_resident_memory_section_skips_depth_above_one(mem_factory) -> None:
     """When _current_depth[session] != 1, _resident_memory_section must return an
     empty result and must NOT call refresher.read()."""
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s-depth"] = 2  # sub-agent depth — memory ineligible
@@ -670,7 +671,7 @@ async def test_resident_memory_section_skips_depth_above_one(mem_factory) -> Non
 @pytest.mark.asyncio
 async def test_resident_memory_section_skips_when_memory_disabled(mem_factory) -> None:
     """When memory_settings.enabled is False, _resident_memory_section returns empty."""
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
     agent._current_depth["s-dis"] = 1
@@ -682,10 +683,10 @@ async def test_resident_memory_section_skips_when_memory_disabled(mem_factory) -
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = False
+    fake_ms = MagicMock()
+    fake_ms.is_enabled.return_value = False
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", fake_ms, create=True):
         with patch.object(gw_state, "resident_snapshot_refresher", fake_refresher, create=True):
             result = await agent._resident_memory_section("s-dis")
 
@@ -706,10 +707,10 @@ async def test_resident_memory_section_skips_missing_refresher(mem_factory) -> N
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    fake_ms = MagicMock()
+    fake_ms.is_enabled.return_value = True
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", fake_ms, create=True):
         with patch.object(gw_state, "resident_snapshot_refresher", None, create=True):
             result = await agent._resident_memory_section("s-noref")
 
@@ -725,7 +726,7 @@ async def test_resident_memory_section_skips_missing_refresher(mem_factory) -> N
 async def test_resident_memory_read_does_not_open_db_factory(mem_factory) -> None:
     """_resident_memory_section() must read from refresher.read(), not the DB.
     db_factory is patched to raise AssertionError if called."""
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
     # Build a db_factory that raises if called
     bad_factory = MagicMock(side_effect=AssertionError("db_factory must not be called"))
@@ -743,10 +744,10 @@ async def test_resident_memory_read_does_not_open_db_factory(mem_factory) -> Non
 
     import sebastian.gateway.state as gw_state
 
-    fake_settings = MagicMock()
-    fake_settings.enabled = True
+    fake_memory_service = MagicMock()
+    fake_memory_service.is_enabled.return_value = True
 
-    with patch.object(gw_state, "memory_settings", fake_settings, create=True):
+    with patch.object(gw_state, "memory_service", fake_memory_service, create=True):
         with patch.object(gw_state, "resident_snapshot_refresher", fake_refresher, create=True):
             result = await agent._resident_memory_section("s-nodb")
 

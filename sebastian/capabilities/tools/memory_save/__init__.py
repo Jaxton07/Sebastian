@@ -8,8 +8,8 @@ from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.memory.constants import MEMORY_SAVE_TIMEOUT_SECONDS
-from sebastian.memory.feedback import MemorySaveResult, render_memory_save_summary
 from sebastian.memory.trace import preview_text, trace
+from sebastian.memory.writing.feedback import MemorySaveResult, render_memory_save_summary
 from sebastian.permissions.types import PermissionTier
 
 logger = logging.getLogger(__name__)
@@ -67,17 +67,18 @@ async def memory_save(content: str) -> ToolResult:
 
 
 async def _do_save(content: str, session_id: str | None, agent_type: str) -> MemorySaveResult:
-    from sebastian.memory.decision_log import MemoryDecisionLogger
-    from sebastian.memory.entity_registry import EntityRegistry
-    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.consolidation.extraction import (
+        ExtractorInput,
+        ExtractorOutput,
+        MemoryExtractor,
+    )
+    from sebastian.memory.contracts.writing import MemoryWriteRequest
     from sebastian.memory.errors import InvalidSlotProposalError
-    from sebastian.memory.extraction import ExtractorInput, ExtractorOutput, MemoryExtractor
-    from sebastian.memory.pipeline import process_candidates
-    from sebastian.memory.profile_store import ProfileMemoryStore
-    from sebastian.memory.retrieval import DEFAULT_RETRIEVAL_PLANNER
-    from sebastian.memory.slot_definition_store import SlotDefinitionStore
-    from sebastian.memory.slot_proposals import SlotProposalHandler, validate_proposed_slot
-    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+    from sebastian.memory.writing.slot_proposals import validate_proposed_slot
+    from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
+
+    if state.memory_service is None:
+        raise RuntimeError("memory_service 未初始化，无法保存记忆。")
 
     extractor = MemoryExtractor(state.llm_registry)
     known_slots = [
@@ -93,63 +94,47 @@ async def _do_save(content: str, session_id: str | None, agent_type: str) -> Mem
         for s in DEFAULT_SLOT_REGISTRY.list_all()
     ]
 
-    async with state.db_factory() as db_session:
-        slot_store = SlotDefinitionStore(db_session)
-        handler = SlotProposalHandler(store=slot_store, registry=DEFAULT_SLOT_REGISTRY)
+    async def attempt_register(output: ExtractorOutput) -> list[tuple[str, str]]:
+        """回调：预检 proposed_slots；返回被拒的 (slot_id, reason) 列表。
 
-        async def attempt_register(output: ExtractorOutput) -> list[tuple[str, str]]:
-            """回调：预检 proposed_slots；返回被拒的 (slot_id, reason) 列表。
+        只做校验，不真正注册（真正注册在 write_candidates 里统一做）。
+        """
+        rejected: list[tuple[str, str]] = []
+        for p in output.proposed_slots:
+            try:
+                validate_proposed_slot(p)
+            except InvalidSlotProposalError as exc:
+                rejected.append((p.slot_id, str(exc)))
+        return rejected
 
-            只做校验，不真正注册（真正注册在 process_candidates 里统一做）。
-            """
-            rejected: list[tuple[str, str]] = []
-            for p in output.proposed_slots:
-                try:
-                    validate_proposed_slot(p)
-                except InvalidSlotProposalError as exc:
-                    rejected.append((p.slot_id, str(exc)))
-            return rejected
+    extractor_output = await extractor.extract_with_slot_retry(
+        ExtractorInput(
+            subject_context={"agent_type": agent_type},
+            conversation_window=[{"role": "user", "content": content}],
+            known_slots=known_slots,
+        ),
+        attempt_register=attempt_register,
+    )
 
-        extractor_output = await extractor.extract_with_slot_retry(
-            ExtractorInput(
-                subject_context={"agent_type": agent_type},
-                conversation_window=[{"role": "user", "content": content}],
-                known_slots=known_slots,
-            ),
-            attempt_register=attempt_register,
-        )
-
-        result = await process_candidates(
+    write_result = await state.memory_service.write_candidates(
+        MemoryWriteRequest(
             candidates=extractor_output.artifacts,
             proposed_slots=extractor_output.proposed_slots,
             session_id=session_id or "",
             agent_type=agent_type,
-            db_session=db_session,
-            profile_store=ProfileMemoryStore(db_session),
-            episode_store=EpisodeMemoryStore(db_session),
-            entity_registry=EntityRegistry(db_session, planner=DEFAULT_RETRIEVAL_PLANNER),
-            decision_logger=MemoryDecisionLogger(db_session),
-            slot_registry=DEFAULT_SLOT_REGISTRY,
-            slot_proposal_handler=handler,
             worker_id="memory_save_tool",
             model_name=None,
             rule_version="spec-a-v1",
             input_source={"type": "memory_save_tool", "session_id": session_id},
             proposed_by="extractor",
         )
-        _refresher = getattr(state, "resident_snapshot_refresher", None)
-        if _refresher is None:
-            await db_session.commit()
-        else:
-            async with _refresher.mutation_scope():
-                await db_session.commit()
-                await _refresher.mark_dirty_locked()
+    )
 
     save_result = MemorySaveResult(
-        saved_count=result.saved_count,
-        discarded_count=result.discarded_count,
-        proposed_slots_registered=result.proposed_slots_registered,
-        proposed_slots_rejected=result.proposed_slots_rejected,
+        saved_count=write_result.saved_count,
+        discarded_count=write_result.discarded_count,
+        proposed_slots_registered=write_result.proposed_slots_registered,
+        proposed_slots_rejected=write_result.proposed_slots_rejected,
         summary="",
     )
     save_result.summary = render_memory_save_summary(save_result)

@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from sebastian.memory.slots import _BUILTIN_SLOTS
 from sebastian.memory.startup import seed_builtin_slots
+from sebastian.memory.writing.slots import _BUILTIN_SLOTS
 from sebastian.store.models import Base, MemorySlotRecord
 
 

@@ -58,12 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from sebastian.core.task_manager import TaskManager
     from sebastian.gateway.sse import SSEManager
     from sebastian.log import setup_logging
-    from sebastian.memory.entity_registry import EntityRegistry
     from sebastian.memory.startup import (
         bootstrap_slot_registry,
         init_memory_storage,
         seed_builtin_slots,
     )
+    from sebastian.memory.stores.entity_registry import EntityRegistry
     from sebastian.orchestrator.conversation import ConversationManager
     from sebastian.orchestrator.sebas import Sebastian
     from sebastian.protocol.events.bus import bus
@@ -101,13 +101,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("jieba entity term sync failed at startup: %s", exc)
         try:
             # 把 Entity 名灌入 Planner relation 触发词缓存
-            from sebastian.memory.retrieval import DEFAULT_RETRIEVAL_PLANNER
+            from sebastian.memory.retrieval.retrieval import DEFAULT_RETRIEVAL_PLANNER
 
             await DEFAULT_RETRIEVAL_PLANNER.bootstrap_entity_triggers(entity_registry)
         except Exception as exc:  # noqa: BLE001
             logger.warning("planner entity trigger bootstrap failed at startup: %s", exc)
 
-    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+    from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 
     async with db_factory() as _bootstrap_session:
         await bootstrap_slot_registry(_bootstrap_session, DEFAULT_SLOT_REGISTRY)
@@ -152,13 +152,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await connect_all(mcp_clients, registry)
 
     event_bus = bus
-    from sebastian.memory.consolidation import (
+    from sebastian.memory.consolidation.consolidation import (
         MemoryConsolidationScheduler,
         MemoryConsolidator,
         SessionConsolidationWorker,
     )
-    from sebastian.memory.extraction import MemoryExtractor
-    from sebastian.memory.resident_snapshot import (
+    from sebastian.memory.consolidation.extraction import MemoryExtractor
+    from sebastian.memory.resident.resident_snapshot import (
         ResidentMemorySnapshotRefresher,
         ResidentSnapshotPaths,
     )
@@ -175,6 +175,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning("resident snapshot rebuild failed at startup: %s", exc, exc_info=True)
         resident_refresher.schedule_refresh()
 
+    from sebastian.memory.services import MemoryService
+
+    state.memory_service = MemoryService(
+        db_factory=db_factory,
+        resident_snapshot_refresher=resident_refresher,
+        memory_settings_fn=lambda: state.memory_settings.enabled,
+    )
+
     consolidator = MemoryConsolidator(llm_registry)
     extractor = MemoryExtractor(llm_registry)
     consolidation_worker = SessionConsolidationWorker(
@@ -184,6 +192,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         session_store=session_store,
         memory_settings_fn=lambda: state.memory_settings.enabled,
         resident_snapshot_refresher=resident_refresher,
+        memory_service=state.memory_service,
     )
     consolidation_scheduler = MemoryConsolidationScheduler(
         event_bus=event_bus,
@@ -216,7 +225,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.context_compaction_worker = _compaction_worker
 
     # Catch-up sweep: consolidate sessions that completed while the gateway was down.
-    from sebastian.memory.consolidation import sweep_unconsolidated
+    from sebastian.memory.consolidation.consolidation import sweep_unconsolidated
 
     await sweep_unconsolidated(
         db_factory=db_factory,

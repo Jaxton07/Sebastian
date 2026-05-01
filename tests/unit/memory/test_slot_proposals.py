@@ -4,9 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.memory.errors import InvalidSlotProposalError
-from sebastian.memory.slot_definition_store import SlotDefinitionStore
-from sebastian.memory.slot_proposals import SlotProposalHandler, validate_proposed_slot
-from sebastian.memory.slots import SlotRegistry
+from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
 from sebastian.memory.types import (
     Cardinality,
     MemoryKind,
@@ -14,6 +12,8 @@ from sebastian.memory.types import (
     ProposedSlot,
     ResolutionPolicy,
 )
+from sebastian.memory.writing.slot_proposals import SlotProposalHandler, validate_proposed_slot
+from sebastian.memory.writing.slots import SlotRegistry
 from sebastian.store.models import Base
 
 _SENTINEL: list[MemoryKind] = []

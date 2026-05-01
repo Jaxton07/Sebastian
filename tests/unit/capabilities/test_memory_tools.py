@@ -54,12 +54,21 @@ async def _create_in_memory_factory() -> tuple[AsyncEngine, async_sessionmaker]:
 @pytest.fixture
 async def enabled_memory_state(monkeypatch):
     """Patch gateway.state with memory enabled and a real in-memory DB factory."""
+    from sebastian.memory.services.memory_service import MemoryService
+
     fake_settings = MagicMock()
     fake_settings.enabled = True
     monkeypatch.setattr(state_module, "memory_settings", fake_settings, raising=False)
 
     engine, factory = await _create_in_memory_factory()
     monkeypatch.setattr(state_module, "db_factory", factory, raising=False)
+
+    memory_service = MemoryService(
+        db_factory=factory,
+        memory_settings_fn=lambda: True,
+    )
+    monkeypatch.setattr(state_module, "memory_service", memory_service, raising=False)
+
     yield factory
     await engine.dispose()
     # 等 aiosqlite worker 线程退出，避免 PytestUnhandledThreadExceptionWarning
@@ -121,7 +130,7 @@ def _mock_extractor(monkeypatch, candidates):
     """Patch MemoryExtractor.extract_with_slot_retry to return a fake ExtractorOutput."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from sebastian.memory.extraction import ExtractorOutput
+    from sebastian.memory.consolidation.extraction import ExtractorOutput
 
     fake_output = ExtractorOutput(artifacts=candidates, proposed_slots=[])
 
@@ -130,7 +139,7 @@ def _mock_extractor(monkeypatch, candidates):
 
     mock = AsyncMock(return_value=fake_output)
     monkeypatch.setattr(
-        "sebastian.memory.extraction.MemoryExtractor.extract_with_slot_retry",
+        "sebastian.memory.consolidation.extraction.MemoryExtractor.extract_with_slot_retry",
         mock,
         raising=True,
     )
@@ -281,7 +290,7 @@ async def test_memory_save_discard_writes_decision_log(enabled_memory_state, mon
             slot_id=candidate.slot_id,
         )
 
-    monkeypatch.setattr("sebastian.memory.pipeline.resolve_candidate", fake_resolve)
+    monkeypatch.setattr("sebastian.memory.writing.pipeline.resolve_candidate", fake_resolve)
 
     result = await memory_save(content="x")
     assert result.ok is True
@@ -392,7 +401,7 @@ async def test_memory_save_discard_decision_log_has_input_source(
             slot_id=candidate.slot_id,
         )
 
-    monkeypatch.setattr("sebastian.memory.pipeline.resolve_candidate", fake_resolve)
+    monkeypatch.setattr("sebastian.memory.writing.pipeline.resolve_candidate", fake_resolve)
 
     result = await memory_save(content="x")
     assert result.ok is True
@@ -402,6 +411,57 @@ async def test_memory_save_discard_decision_log_has_input_source(
     assert len(rows) == 1
     assert rows[0].input_source is not None
     assert rows[0].input_source["type"] == "memory_save_tool"
+
+
+@pytest.mark.asyncio
+async def test_memory_save_delegates_to_memory_service(enabled_memory_state, monkeypatch) -> None:
+    """_do_save() 通过 state.memory_service.write_candidates() 写入，
+    并将返回的 MemoryWriteResult 正确转换为 MemorySaveResult。
+    """
+    from unittest.mock import AsyncMock
+
+    import sebastian.gateway.state as _state
+    from sebastian.capabilities.tools.memory_save import memory_save
+    from sebastian.memory.contracts.writing import MemoryWriteRequest, MemoryWriteResult
+    from sebastian.memory.types import MemoryDecisionType, ResolveDecision
+
+    _mock_extractor(monkeypatch, [_preference_candidate()])
+
+    cand = _preference_candidate()
+    # A DISCARD decision (new_memory=None) — discarded_count == 1, saved_count == 0
+    fake_decision = ResolveDecision(
+        decision=MemoryDecisionType.DISCARD,
+        reason="duplicate",
+        old_memory_ids=[],
+        new_memory=None,
+        candidate=cand,
+        subject_id="owner",
+        scope=cand.scope,
+        slot_id=cand.slot_id,
+    )
+    fake_write_result = MemoryWriteResult(
+        decisions=[fake_decision],
+        proposed_slots_registered=["user.preference.response_style"],
+        proposed_slots_rejected=[],
+    )
+    mock_write = AsyncMock(return_value=fake_write_result)
+    monkeypatch.setattr(_state.memory_service, "write_candidates", mock_write)
+
+    result = await memory_save(content="以后回答简洁中文")
+
+    assert result.ok is True
+    mock_write.assert_called_once()
+    call_args = mock_write.call_args[0][0]
+    assert isinstance(call_args, MemoryWriteRequest)
+    assert call_args.worker_id == "memory_save_tool"
+    assert call_args.rule_version == "spec-a-v1"
+    assert call_args.input_source["type"] == "memory_save_tool"
+
+    # Verify MemoryWriteResult → MemorySaveResult conversion
+    assert result.output["saved_count"] == 0
+    assert result.output["discarded_count"] == 1
+    assert result.output["proposed_slots_registered"] == ["user.preference.response_style"]
+    assert "summary" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -415,8 +475,8 @@ async def test_memory_search_returns_structured_items(enabled_memory_state, capl
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -539,7 +599,7 @@ async def test_memory_search_respects_limit(enabled_memory_state) -> None:
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -616,7 +676,7 @@ async def test_memory_search_citation_type_profile(enabled_memory_state) -> None
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -669,7 +729,7 @@ async def test_memory_search_citation_type_summary(enabled_memory_state) -> None
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -722,7 +782,7 @@ async def test_memory_search_citation_type_episode(enabled_memory_state) -> None
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -775,7 +835,7 @@ async def test_memory_search_context_lane(enabled_memory_state) -> None:
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -911,7 +971,7 @@ async def test_memory_search_summary_first(enabled_memory_state) -> None:
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1010,8 +1070,8 @@ async def test_memory_search_profile_does_not_starve_episode_lane(
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1098,8 +1158,8 @@ async def test_memory_search_all_lanes_represented_within_limit(
     from uuid import uuid4
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1240,8 +1300,8 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
     from uuid import uuid4
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.episode_store import EpisodeMemoryStore
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.episode_store import EpisodeMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1376,6 +1436,60 @@ async def test_memory_search_raises_effective_limit_to_cover_active_lanes(
 
 
 # ---------------------------------------------------------------------------
+# memory_search service delegation test (Task 7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_memory_search_delegates_to_memory_service(monkeypatch) -> None:
+    """memory_search 应委托给 state.memory_service.search()，返回相同的 ToolResult 结构。"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from sebastian.capabilities.tools.memory_search import memory_search
+    from sebastian.memory.contracts.retrieval import (
+        ExplicitMemorySearchRequest,
+        ExplicitMemorySearchResult,
+    )
+
+    fake_items = [
+        {
+            "lane": "profile",
+            "kind": "preference",
+            "content": "以后回答简洁中文",
+            "source": "explicit",
+            "confidence": 1.0,
+            "citation_type": "current_truth",
+            "is_current": True,
+        }
+    ]
+
+    mock_service = MagicMock()
+    mock_service.search = AsyncMock(return_value=ExplicitMemorySearchResult(items=fake_items))
+
+    fake_settings = MagicMock()
+    fake_settings.enabled = True
+    monkeypatch.setattr(state_module, "memory_settings", fake_settings, raising=False)
+    monkeypatch.setattr(state_module, "db_factory", MagicMock(), raising=False)
+    monkeypatch.setattr(state_module, "memory_service", mock_service, raising=False)
+
+    result = await memory_search(query="简洁中文", limit=5)
+
+    assert result.ok is True
+    assert result.output == {"items": fake_items}
+
+    from sebastian.memory.writing.feedback import render_memory_search_display
+
+    assert result.display == render_memory_search_display(fake_items)
+
+    call_args = mock_service.search.call_args
+    assert call_args is not None
+    req: ExplicitMemorySearchRequest = call_args.args[0]
+    assert isinstance(req, ExplicitMemorySearchRequest)
+    assert req.query == "简洁中文"
+    assert req.limit == 5
+
+
+# ---------------------------------------------------------------------------
 # memory_search filtering tests (Task 3)
 # ---------------------------------------------------------------------------
 
@@ -1386,7 +1500,7 @@ async def test_memory_search_excludes_low_confidence_record(enabled_memory_state
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1441,7 +1555,7 @@ async def test_memory_search_excludes_expired_record(enabled_memory_state) -> No
     from datetime import UTC, datetime, timedelta
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1496,7 +1610,7 @@ async def test_memory_search_returns_do_not_auto_inject_record(enabled_memory_st
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1555,7 +1669,7 @@ async def test_memory_search_bypasses_planner_trigger_words(enabled_memory_state
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1618,7 +1732,7 @@ async def test_memory_search_unaffected_by_resident_dedup(enabled_memory_state) 
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,
@@ -1675,7 +1789,7 @@ async def test_memory_search_dedups_cross_lane_duplicates(enabled_memory_state) 
     from datetime import UTC, datetime
 
     from sebastian.capabilities.tools.memory_search import memory_search
-    from sebastian.memory.profile_store import ProfileMemoryStore
+    from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.types import (
         MemoryArtifact,
         MemoryKind,

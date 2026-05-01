@@ -12,6 +12,8 @@ build/
 .ruff_cache/
 .pytest_cache/
 .superpowers/
+graphify-out/
+sebastian/graphify-out/
 
 # Data & secrets
 /data/
@@ -28,6 +30,7 @@ build/
 .claude/settings.local.json
 .claude/worktrees/
 .codex/
+.agents/
 
 # OS
 .DS_Store

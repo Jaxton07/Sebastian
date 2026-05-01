@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from sebastian.capabilities.tools.memory_save import memory_save
-from sebastian.memory.extraction import ExtractorOutput
-from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+from sebastian.memory.consolidation.extraction import ExtractorOutput
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -17,6 +16,7 @@ from sebastian.memory.types import (
     ProposedSlot,
     ResolutionPolicy,
 )
+from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 
 _NEW_SLOT_ID = "user.profile.favorite_food"
 
@@ -78,7 +78,7 @@ async def test_memory_save_proposes_slot_and_reuses_on_second_call(
     )
 
     with patch(
-        "sebastian.memory.extraction.MemoryExtractor.extract_with_slot_retry",
+        "sebastian.memory.consolidation.extraction.MemoryExtractor.extract_with_slot_retry",
         new_callable=AsyncMock,
         return_value=first_output,
     ):
@@ -95,7 +95,7 @@ async def test_memory_save_proposes_slot_and_reuses_on_second_call(
     )
 
     # 断言 DB 里有该行
-    from sebastian.memory.slot_definition_store import SlotDefinitionStore
+    from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
 
     async with factory() as verify_session:
         store = SlotDefinitionStore(verify_session)
@@ -111,7 +111,7 @@ async def test_memory_save_proposes_slot_and_reuses_on_second_call(
     )
 
     with patch(
-        "sebastian.memory.extraction.MemoryExtractor.extract_with_slot_retry",
+        "sebastian.memory.consolidation.extraction.MemoryExtractor.extract_with_slot_retry",
         new_callable=AsyncMock,
         return_value=second_output,
     ):

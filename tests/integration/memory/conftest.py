@@ -7,6 +7,7 @@ import sqlalchemy
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import sebastian.gateway.state as state_module
+from sebastian.memory.services import MemoryService
 from sebastian.store import models  # noqa: F401 – registers ORM models
 from sebastian.store.database import Base
 
@@ -60,5 +61,11 @@ async def tmp_memory_env(monkeypatch):
 
     monkeypatch.setattr(state_module, "current_session_id", "test-session", raising=False)
     monkeypatch.setattr(state_module, "current_agent_type", "default", raising=False)
+
+    memory_service = MemoryService(
+        db_factory=factory,
+        memory_settings_fn=lambda: state_module.memory_settings.enabled,
+    )
+    monkeypatch.setattr(state_module, "memory_service", memory_service, raising=False)
 
     return factory

@@ -36,7 +36,7 @@ _memory_section()
 
 ### `retrieve_memory_section()` — 检索主流程
 
-[`retrieval.py:322`](retrieval.py)
+[`retrieval/retrieval.py:322`](retrieval/retrieval.py)
 
 ```
 retrieve_memory_section(context, db_session)
@@ -59,7 +59,7 @@ retrieve_memory_section(context, db_session)
 ### 各通道查库方式
 
 #### profile_lane → `ProfileMemoryStore.search_active()`
-[`profile_store.py:118`](profile_store.py)
+[`stores/profile_store.py:118`](stores/profile_store.py)
 
 **纯 SQL，不用 FTS。**
 
@@ -78,7 +78,7 @@ LIMIT 5
 ---
 
 #### context_lane → `ProfileMemoryStore.search_recent_context()`
-[`profile_store.py:148`](profile_store.py)
+[`stores/profile_store.py:148`](stores/profile_store.py)
 
 **FTS 优先，无结果时降级为纯 SQL。**
 
@@ -100,7 +100,7 @@ terms = jieba.cut_for_search(user_message)  → terms_for_query()
 ---
 
 #### episode_lane → summary-first 两阶段 FTS
-[`episode_store.py:118`](episode_store.py) / [`episode_store.py:133`](episode_store.py)
+[`stores/episode_store.py:118`](stores/episode_store.py) / [`stores/episode_store.py:133`](stores/episode_store.py)
 
 **完全依赖 FTS，无 terms 时直接返回 []，不降级。**
 
@@ -125,7 +125,7 @@ detail 只在 summary 不够时补充，避免把低密度原始对话塞入 pro
 ---
 
 #### relation_lane → `EntityRegistry.list_relations()`
-[`entity_registry.py`](entity_registry.py)
+[`stores/entity_registry.py`](stores/entity_registry.py)
 
 **纯 SQL，不用 FTS。** 按 `subject_id` 过滤 `relation_candidates` 表，直接拿 top-N，不做语义匹配。
 
@@ -133,7 +133,7 @@ detail 只在 summary 不够时补充，避免把低密度原始对话塞入 pro
 
 ### `MemorySectionAssembler.assemble()` — 过滤与排版
 
-[`retrieval.py:147`](retrieval.py)
+[`retrieval/retrieval.py:147`](retrieval/retrieval.py)
 
 每条记录过 `_keep()` 检查：
 
@@ -198,7 +198,7 @@ _do_save():
 
 #### 入口 B：会话结束自动沉淀（SESSION_COMPLETED 事件）
 
-[`consolidation.py`](consolidation.py)
+[`consolidation/consolidation.py`](consolidation/consolidation.py)
 
 ```
 会话结束 → EventBus.publish(SESSION_COMPLETED)
@@ -249,7 +249,7 @@ SessionConsolidationWorker.consolidate_session():
 
 ### 统一写入管道：`process_candidates()`
 
-[`pipeline.py:22`](pipeline.py)
+[`writing/pipeline.py:22`](writing/pipeline.py)
 
 `memory_save` 工具和 Consolidation 都汇入此函数：
 
@@ -266,7 +266,7 @@ for each CandidateArtifact:
          └─ kind 必须符合该 slot 的 kind_constraints
        失败 → DISCARD + decision_log，跳过此 candidate
 
-  [3] resolve_candidate()   resolver.py:58   ← 纯确定性，不查 LLM，不写 DB
+  [3] resolve_candidate()   writing/resolver.py:58   ← 纯确定性，不查 LLM，不写 DB
        ├─ kind == EPISODE/SUMMARY
        │    └─ find_active_exact() → 精确重复? DISCARD : ADD
        ├─ 无 slot_id + confidence < 0.3 → DISCARD
@@ -278,7 +278,7 @@ for each CandidateArtifact:
        │    └─ 否则 → SUPERSEDE（替换所有旧记录）
        └─ fallback → ADD
 
-  [4] 非 DISCARD → persist_decision()   write_router.py:17
+  [4] 非 DISCARD → persist_decision()   writing/write_router.py:17
        按 kind 路由到对应 store：
          EPISODE / SUMMARY → EpisodeMemoryStore.add_episode / add_summary()
          ENTITY            → EntityRegistry.upsert_entity()
@@ -300,15 +300,15 @@ LLM **不能创造新 slot**。流程是：
 
 1. `known_slots`（6 个内置 slot 的定义）序列化后随 `ExtractorInput` 传给 LLM
 2. LLM 从中选择合适的 `slot_id` 填入 `CandidateArtifact`
-3. `pipeline.py` 的 `validate_candidate()` 拦截任何未注册的 `slot_id` → DISCARD
+3. `writing/pipeline.py` 的 `validate_candidate()` 拦截任何未注册的 `slot_id` → DISCARD
 
-新增 slot 只有一条路：修改 `slots.py` 的 `_BUILTIN_SLOTS` 列表并重启，无运行时动态注册机制。
+新增 slot 只有一条路：修改 `writing/slots.py` 的 `_BUILTIN_SLOTS` 列表并重启，无运行时动态注册机制。
 
 ---
 
 ## 四、FTS 分词机制
 
-[`segmentation.py`](segmentation.py)
+[`retrieval/segmentation.py`](retrieval/segmentation.py)
 
 写入时：`segment_for_fts(content)` → jieba 搜索模式分词 → 空格连接存入 `content_segmented` 列（FTS 虚拟表）
 
@@ -322,7 +322,7 @@ LLM **不能创造新 slot**。流程是：
 
 | 易混淆 | 实际区别 |
 |--------|---------|
-| `EpisodicMemory` vs `EpisodeMemoryStore` | `EpisodicMemory`（episodic_memory.py）是**会话消息历史兼容层**，底层是 `SessionStore`，和长期记忆无关。`EpisodeMemoryStore`（episode_store.py）才是长期 Episode/Summary 的 CRUD。 |
+| `EpisodicMemory` vs `EpisodeMemoryStore` | `EpisodicMemory`（episodic_memory.py）是**会话消息历史兼容层**，底层是 `SessionStore`，和长期记忆无关。`EpisodeMemoryStore`（stores/episode_store.py）才是长期 Episode/Summary 的 CRUD。 |
 | profile_lane 为何永远开 | 用户画像（偏好/事实）对任何非 small-talk 请求都有价值，是最基础的上下文，无条件激活。 |
 | EXPIRE 为何不走 process_candidates | EXPIRE 针对**已有 memory_id**（生命周期操作），`process_candidates` 针对**未入库的候选 artifact**，语义不同，不能混用。 |
 | context_lane 和 episode_lane 的 FTS 降级差异 | context_lane 在无 FTS 结果时降级为 confidence+recency 排序；episode_lane 无 terms 时直接返回 `[]`，不降级。 |

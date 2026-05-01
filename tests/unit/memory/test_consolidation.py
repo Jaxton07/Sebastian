@@ -11,14 +11,14 @@ from pydantic import ValidationError
 from sebastian.core.stream_events import LLMStreamEvent, ProviderCallEnd, TextDelta
 from sebastian.llm.provider import LLMProvider
 from sebastian.llm.registry import ResolvedProvider
-from sebastian.memory.consolidation import (
+from sebastian.memory.consolidation.consolidation import (
     ConsolidationResult,
     ConsolidatorInput,
     MemoryConsolidator,
     MemorySummary,
     ProposedAction,
 )
-from sebastian.memory.extraction import ExtractorOutput
+from sebastian.memory.consolidation.extraction import ExtractorOutput
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryKind,
@@ -485,7 +485,7 @@ class TestMemoryConsolidatorConsolidate:
         from sqlalchemy import select, text
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-        from sebastian.memory.consolidation import SessionConsolidationWorker
+        from sebastian.memory.consolidation.consolidation import SessionConsolidationWorker
         from sebastian.store.models import (
             Base,
             EpisodeMemoryRecord,
@@ -533,12 +533,19 @@ class TestMemoryConsolidatorConsolidate:
                 async def extract_with_slot_retry(self, extractor_input, *, attempt_register):  # type: ignore[no-untyped-def]
                     raise AssertionError("extractor must not run when memory is disabled")
 
+            from sebastian.memory.services.memory_service import MemoryService
+            from sebastian.memory.services.writing import MemoryWriteService
+
             worker = SessionConsolidationWorker(
                 db_factory=factory,
                 consolidator=_FailingConsolidator(),  # type: ignore[arg-type]
                 extractor=_FailingExtractor(),  # type: ignore[arg-type]
                 session_store=_FakeSessionStore(),
                 memory_settings_fn=lambda: False,
+                memory_service=MemoryService(
+                    db_factory=factory,
+                    writing=MemoryWriteService(db_factory=factory),
+                ),
             )
 
             caplog.set_level(logging.DEBUG, logger="sebastian.memory.trace")
@@ -562,7 +569,9 @@ class TestMemoryConsolidatorConsolidate:
         from sqlalchemy import select, text
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-        from sebastian.memory.consolidation import SessionConsolidationWorker
+        from sebastian.memory.consolidation.consolidation import SessionConsolidationWorker
+        from sebastian.memory.services.memory_service import MemoryService
+        from sebastian.memory.services.writing import MemoryWriteService
         from sebastian.store.models import Base, MemoryDecisionLogRecord
 
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -621,12 +630,17 @@ class TestMemoryConsolidatorConsolidate:
                         artifacts=[],
                     )
 
+            memory_service = MemoryService(
+                db_factory=factory,
+                writing=MemoryWriteService(db_factory=factory),
+            )
             worker = SessionConsolidationWorker(
                 db_factory=factory,
                 consolidator=_FakeConsolidator(),  # type: ignore[arg-type]
                 extractor=_FakeExtractor(),  # type: ignore[arg-type]
                 session_store=_FakeSessionStore(),
                 memory_settings_fn=lambda: True,
+                memory_service=memory_service,
             )
 
             await worker.consolidate_session("sess-1", "sebastian")

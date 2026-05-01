@@ -9,9 +9,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from sebastian.memory.entity_registry import EntityRegistry
-from sebastian.memory.episode_store import EpisodeMemoryStore, ensure_episode_fts
-from sebastian.memory.profile_store import ProfileMemoryStore
+from sebastian.memory.stores.entity_registry import EntityRegistry
+from sebastian.memory.stores.episode_store import EpisodeMemoryStore, ensure_episode_fts
+from sebastian.memory.stores.profile_store import ProfileMemoryStore
 from sebastian.memory.types import (
     CandidateArtifact,
     MemoryArtifact,
@@ -22,7 +22,7 @@ from sebastian.memory.types import (
     MemoryStatus,
     ResolveDecision,
 )
-from sebastian.memory.write_router import persist_decision
+from sebastian.memory.writing.write_router import persist_decision
 from sebastian.store import models  # noqa: F401 — ensure all tables are registered
 from sebastian.store.database import Base
 from sebastian.store.models import (

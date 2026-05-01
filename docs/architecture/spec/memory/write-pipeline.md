@@ -1,6 +1,6 @@
 ---
-version: "1.1"
-last_updated: 2026-04-21
+version: "1.2"
+last_updated: 2026-04-30
 status: in-progress
 ---
 
@@ -12,6 +12,17 @@ status: in-progress
 ---
 
 ## 1. 总原则
+
+### 1.1 外部访问边界
+
+所有写入调用均通过 `MemoryService`（`sebastian/memory/services/memory_service.py`）进入，内部实现由 `MemoryWriteService`（`services/writing.py`）封装：
+
+- `memory_save` 工具 → `MemoryService.write_candidates()`
+- `SessionConsolidationWorker` → `MemoryService.write_candidates_in_session()`
+
+两者最终都调用 `process_candidates()`（`sebastian/memory/writing/pipeline.py`），该函数是内部实现，不对外直接暴露。
+
+### 1.2 写入管线总原则
 
 所有记忆写入来源都必须经过相同的逻辑阶段：
 
@@ -27,7 +38,7 @@ status: in-progress
 | `Session Consolidation` | `MemoryExtractor`（全文）+ `MemoryConsolidator`（归纳） | 完整 slot/scope/subject 解析 | 不适用（本身即 consolidation） |
 | `Cross-Session Consolidation` | 读已有 summaries 和 active memories | 完整解析 | 不适用 |
 
-**Resolve → Persist → Index → log** 四个阶段对所有来源完全一致，统一由 `sebastian/memory/pipeline.py::process_candidates()` 实现（见 §10）。
+**Resolve → Persist → Index → log** 四个阶段对所有来源完全一致，统一由 `sebastian/memory/writing/pipeline.py::process_candidates()` 实现（见 §10）。
 
 ---
 
@@ -123,7 +134,7 @@ Extractor（提取器）可以产出 `CandidateArtifact`（候选记忆产物）
 
 ### 7.1 内置 Seed Slot 集合
 
-`SlotRegistry` 预置以下内置 slot（`sebastian/memory/slots.py` 中硬编码），覆盖最高频的 user profile 场景：
+`SlotRegistry` 预置以下内置 slot（`sebastian/memory/writing/slots.py` 中硬编码），覆盖最高频的 user profile 场景：
 
 | slot_id | kind | cardinality | 说明 |
 |---------|------|-------------|------|
@@ -284,7 +295,7 @@ Agent 只需传一个字段：
 }
 ```
 
-`ok=true` 表示本次同步处理已完成。`summary` 由 `sebastian/memory/feedback.py::render_memory_save_summary()` 生成，Agent 可直接引用或改写。
+`ok=true` 表示本次同步处理已完成。`summary` 由 `sebastian/memory/writing/feedback.py::render_memory_save_summary()` 生成，Agent 可直接引用或改写。
 
 ---
 
@@ -294,7 +305,7 @@ Agent 只需传一个字段：
 
 `process_candidates()` 是所有写入来源的**共同后半段**，封装 Validate → Resolve → Persist → Index → Log 五个确定性阶段，不含任何 LLM 调用。
 
-位置：`sebastian/memory/pipeline.py`
+位置：`sebastian/memory/writing/pipeline.py`
 
 ```python
 async def process_candidates(

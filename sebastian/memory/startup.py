@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, text
 
-from sebastian.memory.episode_store import ensure_episode_fts
-from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
+from sebastian.memory.stores.episode_store import ensure_episode_fts
+from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 from sebastian.store.models import MemorySlotRecord
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
-    from sebastian.memory.slots import SlotRegistry
+    from sebastian.memory.writing.slots import SlotRegistry
 
 
 async def ensure_profile_fts(conn: AsyncConnection) -> None:
@@ -27,7 +27,7 @@ async def ensure_profile_fts(conn: AsyncConnection) -> None:
 
 async def _backfill_profile_fts(conn: AsyncConnection) -> None:
     """Index profile_memories rows not yet in the FTS virtual table."""
-    from sebastian.memory.segmentation import segment_for_fts
+    from sebastian.memory.retrieval.segmentation import segment_for_fts
 
     result = await conn.execute(
         text(
@@ -49,7 +49,7 @@ async def _backfill_profile_fts(conn: AsyncConnection) -> None:
 
 async def _backfill_episode_fts(conn: AsyncConnection) -> None:
     """Index episode_memories rows not yet in the FTS virtual table."""
-    from sebastian.memory.segmentation import segment_for_fts
+    from sebastian.memory.retrieval.segmentation import segment_for_fts
 
     result = await conn.execute(
         text(
@@ -108,7 +108,7 @@ async def bootstrap_slot_registry(
     registry: SlotRegistry,
 ) -> None:
     """服务启动时调用：把 memory_slots 表全部数据灌入 registry。"""
-    from sebastian.memory.slot_definition_store import SlotDefinitionStore
+    from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
 
     store = SlotDefinitionStore(session)
     await registry.bootstrap_from_db(store)

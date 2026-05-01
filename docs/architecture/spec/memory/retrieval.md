@@ -1,6 +1,6 @@
 ---
-version: "1.2"
-last_updated: 2026-04-26
+version: "1.3"
+last_updated: 2026-04-30
 status: in-progress
 ---
 
@@ -13,9 +13,20 @@ status: in-progress
 
 ## 1. 总原则
 
-Sebastian 不做“统一 search top-k 然后塞进 prompt”，而做：
+Sebastian 不做”统一 search top-k 然后塞进 prompt”，而做：
 
 `Intent（意图） -> Retrieval Plan（检索计划） -> Assemble（装配）`
+
+### 1.1 外部访问边界
+
+所有检索调用均通过 `MemoryService`（`sebastian/memory/services/memory_service.py`）进入，内部实现由 `MemoryRetrievalService`（`services/retrieval.py`）封装：
+
+- `BaseAgent._memory_section()` → `MemoryService.retrieve_for_prompt()` → `MemoryRetrievalService` → `retrieve_memory_section()`
+- `memory_search` 工具 → `MemoryService.search()` → `MemoryRetrievalService`
+
+`retrieve_memory_section()`（`sebastian/memory/retrieval/retrieval.py`）是内部实现，不对外直接暴露。
+
+图路由检索（graph-routed retrieval）为 P1/P2 后续工作，当前 Relation Lane 仍基于 SQLite FTS，不引入向量检索或图数据库。
 
 ---
 
@@ -57,7 +68,7 @@ Planner 输出：
 
 ### 3.1 Planner 当前实现
 
-当前 `MemoryRetrievalPlanner` 位于 `sebastian/memory/retrieval.py`，使用 `jieba.lcut()` 精确分词 + `frozenset` 词库交集判断 lane 激活。静态词库拆到 `sebastian/memory/retrieval_lexicon.py`：
+当前 `MemoryRetrievalPlanner` 位于 `sebastian/memory/retrieval/retrieval.py`，使用 `jieba.lcut()` 精确分词 + `frozenset` 词库交集判断 lane 激活。静态词库拆到 `sebastian/memory/retrieval/retrieval_lexicon.py`：
 
 | 词库 | 作用 |
 |------|------|
@@ -303,7 +314,7 @@ Assembler 在最终注入前，必须统一执行以下过滤：
 
 `MemorySectionAssembler` 在 `_keep()` 过滤阶段，对每条动态检索候选记录依次检查以上三个集合，任一命中即丢弃。
 
-去重逻辑的纯函数实现位于 `sebastian/memory/resident_dedupe.py`（`canonical_bullet`、`slot_value_dedupe_key` 等），常驻快照读写与脏标记管理位于 `sebastian/memory/resident_snapshot.py`（`ResidentMemorySnapshotRefresher`）。
+去重逻辑的纯函数实现位于 `sebastian/memory/resident/resident_dedupe.py`（`canonical_bullet`、`slot_value_dedupe_key` 等），常驻快照读写与脏标记管理位于 `sebastian/memory/resident/resident_snapshot.py`（`ResidentMemorySnapshotRefresher`）。
 
 三个字段均有默认空值（`frozenset()`），未启用常驻快照时动态检索行为与原先完全相同。
 

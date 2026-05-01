@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from sebastian.memory.errors import InvalidCandidateError, UnknownSlotError
-from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY, SlotRegistry
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -13,6 +12,7 @@ from sebastian.memory.types import (
     ResolutionPolicy,
     SlotDefinition,
 )
+from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY, SlotRegistry
 
 
 def _make_candidate(
@@ -211,13 +211,13 @@ class TestValidateCandidate:
 
 def test_validate_candidate_unknown_slot_raises_invalid_candidate_error() -> None:
     from sebastian.memory.errors import InvalidCandidateError
-    from sebastian.memory.slots import DEFAULT_SLOT_REGISTRY
     from sebastian.memory.types import (
         CandidateArtifact,
         MemoryKind,
         MemoryScope,
         MemorySource,
     )
+    from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 
     candidate = CandidateArtifact(
         kind=MemoryKind.FACT,
