@@ -14,7 +14,7 @@
 - **常驻记忆快照（Resident Memory Snapshot）**：`resident_snapshot.py`（`ResidentMemorySnapshotRefresher`，负责快照读写与脏标记管理）、`resident_dedupe.py`（纯函数辅助：`canonical_bullet`、`slot_value_dedupe_key` 等去重工具）。快照在会话结束后的记忆沉淀完成时触发重建，下一轮对话前通过 `BaseAgent._resident_memory_section()` 以固定顺序注入 system prompt（位于 base → **resident** → dynamic → todos 的第二位）。动态检索（`_memory_section()`）输出的 `RetrievalContext` 包含三个去重字段（`resident_record_ids`、`resident_dedupe_keys`、`resident_canonical_bullets`），`MemorySectionAssembler` 过滤掉已经出现在常驻快照中的记录，避免 prompt 重复。快照文件存储在 `settings.user_data_dir / "memory" / resident_snapshot.md|.meta.json`。
 - **Phase C LLM 沉淀**：`extraction.py`（`MemoryExtractor`，从会话片段提取候选 artifact；`ExtractorInput.task` 已对齐 spec，值为 `"extract_memory_artifacts"`）、`consolidation.py`（`MemoryConsolidator` + `SessionConsolidationWorker` + `MemoryConsolidationScheduler`）、`provider_bindings.py`（LLM binding 常量）。会话结束后由调度器触发后台沉淀，LLM 结果经 Normalize / Resolve 后方可写入，永不直接修改记忆状态。`memory_decision_log` 新增 `input_source` 字段，记录写入来源（`memory_save_tool` / `session_consolidation`）。
 - **统一写入 pipeline**：`pipeline.py`（`process_candidates()`，将 validate → resolve → persist → log 四步封装为单一可复用入口）。`memory_save` 工具后台任务和 `SessionConsolidationWorker` 均通过此函数写入，消除重复逻辑。
-- **Dynamic Slot System（动态 Slot 系统）**：`types.py` 新增 `ProposedSlot`、`slot_definition_store.py`（DB CRUD for `memory_slots` 表）、`slot_proposals.py`（`SlotProposalHandler`：校验 + 写 DB + 热更新 registry，savepoint 防并发 race）、`prompts.py`（Extractor / Consolidator 共享 prompt 模板）、`feedback.py`（`MemorySaveResult` 结构化结果 + `render_memory_save_summary()`）。Extractor 通过 `extract_with_slot_retry()` 支持 slot 被拒后注入反馈重试一次；`pipeline.py` 的 `process_candidates()` 在 `proposed_slots` 非空时强制要求 `slot_proposal_handler` 参数（否则 `raise ValueError`）。内置 seed slot 新增 `user.profile.name` / `user.profile.location` / `user.profile.occupation`（共 9 个）。
+- **Dynamic Slot System（动态 Slot 系统）**：`types.py` 新增 `ProposedSlot`、`slot_definition_store.py`（DB CRUD for `memory_slots` 表）、`slot_proposals.py`（`SlotProposalHandler`：校验 + 写 DB + 热更新 registry，savepoint 防并发 race）、`prompts.py`（Extractor / Consolidator 共享 prompt 模板）、`feedback.py`（`MemorySaveResult` 结构化结果 + `render_memory_save_summary()`）。Extractor 通过 `extract_with_slot_retry()` 支持 slot 被拒后注入反馈重试一次；`pipeline.py` 的 `process_candidates()` 在 `proposed_slots` 非空时强制要求 `slot_proposal_handler` 参数（否则 `raise ValueError`）。内置 seed slot 新增 `user.profile.name` / `user.profile.location` / `user.profile.occupation`（共 10 个）。
 - **Memory Trace 日志**：`trace.py` 提供 `MEMORY_TRACE` 调试日志辅助，贯穿检索、注入、决策、写入、工具和会话沉淀链路，输出到现有 `main.log`。
 
 语义记忆（向量检索）为后续规划能力，当前未实现。
@@ -83,7 +83,7 @@ memory/
 │   ├── decision_log.py      # MemoryDecisionLogger：把 ResolveDecision 写入 memory_decision_log
 │   ├── feedback.py          # MemorySaveResult + render_memory_save_summary()：memory_save 结果摘要渲染
 │   ├── slot_proposals.py    # SlotProposalHandler：proposed slot 校验 + 写 DB + 热更新 registry，savepoint 防 race
-│   └── slots.py             # SlotRegistry + 9 个内置 SlotDefinition + DEFAULT_SLOT_REGISTRY
+│   └── slots.py             # SlotRegistry + 10 个内置 SlotDefinition + DEFAULT_SLOT_REGISTRY
 ├── retrieval/               # 检索流水线
 │   ├── __init__.py
 │   ├── retrieval.py         # 检索 pipeline：MemoryRetrievalPlanner → 查 DB → MemorySectionAssembler → str
