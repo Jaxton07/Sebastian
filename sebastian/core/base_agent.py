@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from sebastian.context.compaction import CompactionScheduler
     from sebastian.llm.provider import LLMProvider
     from sebastian.llm.registry import LLMProviderRegistry
-    from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+    from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
 from ulid import ULID
 
@@ -226,7 +226,7 @@ class BaseAgent(ABC):
         Returns an empty ResidentSnapshotReadResult on any failure, if memory is
         disabled, if the refresher is absent, or if depth != 1.
         """
-        from sebastian.memory.resident_snapshot import ResidentSnapshotReadResult
+        from sebastian.memory.resident.resident_snapshot import ResidentSnapshotReadResult
 
         if not is_memory_eligible(self._current_depth.get(session_id)):
             return ResidentSnapshotReadResult(content="")
