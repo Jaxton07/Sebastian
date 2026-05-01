@@ -159,11 +159,7 @@ Sub-Agent 插件目录。当前已有：
 
 ### `memory/`
 
-记忆层实现，目前以 working / episodic 为主。
-
-- `working_memory.py`
-- `episodic_memory.py`
-- `store.py`
+长期记忆系统。外部调用通过 `contracts/` + `services/`，内部实现按 `stores/`、`writing/`、`retrieval/`、`consolidation/`、`resident/` 分包组织。详见 [memory/README.md](memory/README.md)。
 
 ### `protocol/`
 

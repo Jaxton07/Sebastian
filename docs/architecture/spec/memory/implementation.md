@@ -48,7 +48,7 @@ status: in-progress
 
 记忆系统的模型来源不限定本地部署，可使用云 API，也可使用本地 provider。
 
-引入两个 provider binding 常量（`sebastian/memory/provider_bindings.py`）：
+引入两个 provider binding 常量（`sebastian/memory/consolidation/provider_bindings.py`）：
 
 - `MEMORY_EXTRACTOR_BINDING = "memory_extractor"`
 - `MEMORY_CONSOLIDATOR_BINDING = "memory_consolidator"`
@@ -76,7 +76,7 @@ Extractor / Consolidator 的理想运行方式是稳定、低随机性、严格 
 #### 白名单与元数据
 
 ```python
-# sebastian/memory/provider_bindings.py
+# sebastian/memory/consolidation/provider_bindings.py
 MEMORY_COMPONENT_TYPES: frozenset[str] = frozenset({
     MEMORY_EXTRACTOR_BINDING,
     MEMORY_CONSOLIDATOR_BINDING,
@@ -176,7 +176,7 @@ PUT 行为与 `/agents/{agent_type}/llm-binding` 一致：
 
 #### 置信度评分规则
 
-Extractor system prompt（`sebastian/memory/prompts.py`）包含「置信度评分指南」，约束模型对 `confidence` 字段的评分行为：
+Extractor system prompt（`sebastian/memory/consolidation/prompts.py`）包含「置信度评分指南」，约束模型对 `confidence` 字段的评分行为：
 
 | 分值区间 | 适用场景 |
 |----------|---------|
@@ -557,10 +557,10 @@ Agent 继续执行，本轮无记忆注入。`warning` 级日志包含完整 tra
 
 | 文件 | 职责 |
 |------|------|
-| `sebastian/memory/resident_snapshot.py` | `ResidentMemorySnapshotRefresher`：快照读写、脏标记、重建触发 |
-| `sebastian/memory/resident_dedupe.py` | `canonical_bullet`、`slot_value_dedupe_key` 等去重纯函数 |
-| `sebastian/memory/retrieval.py` | `RetrievalContext` 新增 `resident_record_ids` / `resident_dedupe_keys` / `resident_canonical_bullets` 三字段；`MemorySectionAssembler` 在 `_keep()` 中过滤已注入记录 |
-| `sebastian/memory/consolidation.py` | `dirty scope` wrapping：会话沉淀 commit 后标记快照为脏，触发重建 |
+| `sebastian/memory/resident/resident_snapshot.py` | `ResidentMemorySnapshotRefresher`：快照读写、脏标记、重建触发 |
+| `sebastian/memory/resident/resident_dedupe.py` | `canonical_bullet`、`slot_value_dedupe_key` 等去重纯函数 |
+| `sebastian/memory/retrieval/retrieval.py` | `RetrievalContext` 新增 `resident_record_ids` / `resident_dedupe_keys` / `resident_canonical_bullets` 三字段；`MemorySectionAssembler` 在 `_keep()` 中过滤已注入记录 |
+| `sebastian/memory/consolidation/consolidation.py` | `dirty scope` wrapping：会话沉淀 commit 后标记快照为脏，触发重建 |
 | `sebastian/core/base_agent.py` | `_resident_memory_section()` 读取快照；`_memory_section()` 传入去重字段；`_stream_inner()` 按 base → resident → dynamic → todos 顺序拼接 system prompt |
 | `sebastian/gateway/state.py` | `resident_snapshot_refresher` 单例 |
 | `sebastian/gateway/app.py` | startup 调用 `rebuild()`，shutdown 调用 `cleanup()` |

@@ -66,7 +66,7 @@ status: partially-implemented
 - `memory_id` 必须非空且指向 active 的 profile memory 记录；0 命中时记录 `failed_expire` decision log，不写成功状态
 - 所有 EXPIRE 操作必须进入 `memory_decision_log`
 
-**Phase C 实现状态**：`SessionConsolidationWorker`（`sebastian/memory/consolidation.py`）已实现，由 `MemoryConsolidationScheduler` 订阅 `SESSION_COMPLETED` 事件触发。幂等性通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证；写入原子性通过单事务实现。启动时的 catch-up sweep 会补处理未沉淀的 completed session。
+**Phase C 实现状态**：`SessionConsolidationWorker`（`sebastian/memory/consolidation/consolidation.py`）已实现，由 `MemoryConsolidationScheduler` 订阅 `SESSION_COMPLETED` 事件触发。幂等性通过 `SessionConsolidationRecord(session_id, agent_type)` DB 标记保证；写入原子性通过单事务实现。启动时的 catch-up sweep 会补处理未沉淀的 completed session。
 
 `idle` / `stalled` 触发当前不属于已实现契约。未来如果需要支持，应先补独立 spec，明确：
 
