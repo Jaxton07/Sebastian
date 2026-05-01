@@ -21,12 +21,12 @@ if TYPE_CHECKING:
     from sebastian.memory.writing.slots import SlotRegistry
 
 # Store imports needed when MemoryService owns the session (mutation_scope path)
-from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+from sebastian.memory.retrieval.retrieval import DEFAULT_RETRIEVAL_PLANNER
 from sebastian.memory.stores.entity_registry import EntityRegistry
 from sebastian.memory.stores.episode_store import EpisodeMemoryStore
 from sebastian.memory.stores.profile_store import ProfileMemoryStore
-from sebastian.memory.retrieval.retrieval import DEFAULT_RETRIEVAL_PLANNER
 from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
+from sebastian.memory.writing.decision_log import MemoryDecisionLogger
 from sebastian.memory.writing.slot_proposals import SlotProposalHandler
 from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 

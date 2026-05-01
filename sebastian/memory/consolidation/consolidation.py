@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from sebastian.memory.retrieval.depth_guard import is_memory_eligible
 from sebastian.memory.consolidation.extraction import (
     ExtractorInput,
     ExtractorOutput,
@@ -20,6 +19,7 @@ from sebastian.memory.consolidation.extraction import (
 )
 from sebastian.memory.consolidation.prompts import build_consolidator_prompt, group_slots_by_kind
 from sebastian.memory.consolidation.provider_bindings import MEMORY_CONSOLIDATOR_BINDING
+from sebastian.memory.retrieval.depth_guard import is_memory_eligible
 from sebastian.memory.subject import resolve_subject
 from sebastian.memory.trace import record_ref, trace
 from sebastian.memory.types import (
@@ -232,10 +232,10 @@ class SessionConsolidationWorker:
         #    idempotency.
         async with self._db_factory() as session:
             from sebastian.memory.contracts.writing import MemoryWriteRequest
-            from sebastian.memory.writing.decision_log import MemoryDecisionLogger
             from sebastian.memory.stores.entity_registry import EntityRegistry
             from sebastian.memory.stores.episode_store import EpisodeMemoryStore
             from sebastian.memory.stores.profile_store import ProfileMemoryStore
+            from sebastian.memory.writing.decision_log import MemoryDecisionLogger
             from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
             from sebastian.store.models import SessionConsolidationRecord
 

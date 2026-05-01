@@ -7,7 +7,6 @@ import pytest
 
 from sebastian.capabilities.tools.memory_save import memory_save
 from sebastian.memory.consolidation.extraction import ExtractorOutput
-from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -17,6 +16,7 @@ from sebastian.memory.types import (
     ProposedSlot,
     ResolutionPolicy,
 )
+from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 
 _NEW_SLOT_ID = "user.profile.favorite_food"
 

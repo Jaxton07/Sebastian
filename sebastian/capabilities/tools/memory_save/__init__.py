@@ -8,8 +8,8 @@ from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ToolResult
 from sebastian.memory.constants import MEMORY_SAVE_TIMEOUT_SECONDS
-from sebastian.memory.writing.feedback import MemorySaveResult, render_memory_save_summary
 from sebastian.memory.trace import preview_text, trace
+from sebastian.memory.writing.feedback import MemorySaveResult, render_memory_save_summary
 from sebastian.permissions.types import PermissionTier
 
 logger = logging.getLogger(__name__)
@@ -67,9 +67,13 @@ async def memory_save(content: str) -> ToolResult:
 
 
 async def _do_save(content: str, session_id: str | None, agent_type: str) -> MemorySaveResult:
+    from sebastian.memory.consolidation.extraction import (
+        ExtractorInput,
+        ExtractorOutput,
+        MemoryExtractor,
+    )
     from sebastian.memory.contracts.writing import MemoryWriteRequest
     from sebastian.memory.errors import InvalidSlotProposalError
-    from sebastian.memory.consolidation.extraction import ExtractorInput, ExtractorOutput, MemoryExtractor
     from sebastian.memory.writing.slot_proposals import validate_proposed_slot
     from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 

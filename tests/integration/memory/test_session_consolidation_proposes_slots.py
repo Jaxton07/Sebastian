@@ -10,8 +10,8 @@ from sebastian.memory.consolidation.consolidation import (
     MemorySummary,
     SessionConsolidationWorker,
 )
-from sebastian.memory.contracts.writing import MemoryWriteResult
 from sebastian.memory.consolidation.extraction import ExtractorOutput, MemoryExtractor
+from sebastian.memory.contracts.writing import MemoryWriteResult
 from sebastian.memory.services.memory_service import MemoryService
 from sebastian.memory.types import (
     CandidateArtifact,

@@ -82,12 +82,12 @@ async def _run_with_proposed(
     registry=None,
     factory=None,
 ):
-    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
     from sebastian.memory.stores.entity_registry import EntityRegistry
     from sebastian.memory.stores.episode_store import EpisodeMemoryStore
-    from sebastian.memory.writing.pipeline import process_candidates
     from sebastian.memory.stores.profile_store import ProfileMemoryStore
     from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
+    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+    from sebastian.memory.writing.pipeline import process_candidates
     from sebastian.memory.writing.slot_proposals import SlotProposalHandler
     from sebastian.memory.writing.slots import SlotRegistry
 
@@ -175,13 +175,13 @@ async def test_invalid_slot_triggers_candidate_downgrade() -> None:
 @pytest.mark.asyncio
 async def test_no_proposed_slots_backward_compatible() -> None:
     """空 proposed_slots 时，行为与原有 process_candidates 一致（内置 slot 可用）。"""
-    from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
     from sebastian.memory.types import (
         CandidateArtifact,
         MemoryKind,
         MemoryScope,
         MemorySource,
     )
+    from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 
     candidate = CandidateArtifact(
         kind=MemoryKind.PREFERENCE,

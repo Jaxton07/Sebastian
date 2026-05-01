@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from sebastian.memory.writing.decision_log import MemoryDecisionLogger
 from sebastian.memory.types import (
     CandidateArtifact,
     Cardinality,
@@ -19,6 +18,7 @@ from sebastian.memory.types import (
     ResolutionPolicy,
     ResolveDecision,
 )
+from sebastian.memory.writing.decision_log import MemoryDecisionLogger
 from sebastian.store import models  # noqa: F401
 from sebastian.store.database import Base
 

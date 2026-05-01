@@ -8,10 +8,10 @@ from sebastian.memory.writing.pipeline import process_candidates
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
     from sebastian.memory.stores.entity_registry import EntityRegistry
     from sebastian.memory.stores.episode_store import EpisodeMemoryStore
     from sebastian.memory.stores.profile_store import ProfileMemoryStore
+    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
     from sebastian.memory.writing.slot_proposals import SlotProposalHandler
     from sebastian.memory.writing.slots import SlotRegistry
 
@@ -57,12 +57,12 @@ class MemoryWriteService:
         )
 
     async def write_candidates(self, request: MemoryWriteRequest) -> MemoryWriteResult:
-        from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+        from sebastian.memory.retrieval.retrieval import DEFAULT_RETRIEVAL_PLANNER
         from sebastian.memory.stores.entity_registry import EntityRegistry
         from sebastian.memory.stores.episode_store import EpisodeMemoryStore
         from sebastian.memory.stores.profile_store import ProfileMemoryStore
-        from sebastian.memory.retrieval.retrieval import DEFAULT_RETRIEVAL_PLANNER
         from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
+        from sebastian.memory.writing.decision_log import MemoryDecisionLogger
         from sebastian.memory.writing.slot_proposals import SlotProposalHandler
         from sebastian.memory.writing.slots import DEFAULT_SLOT_REGISTRY
 

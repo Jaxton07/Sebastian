@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 
-
 MOVED_MEMORY_MODULES = [
     "sebastian.memory.stores.profile_store",
     "sebastian.memory.stores.episode_store",

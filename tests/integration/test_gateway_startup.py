@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from sebastian.memory.writing.slots import SlotRegistry
 from sebastian.memory.startup import bootstrap_slot_registry, seed_builtin_slots
+from sebastian.memory.writing.slots import SlotRegistry
 from sebastian.store.models import Base
 
 

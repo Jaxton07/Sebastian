@@ -418,7 +418,6 @@ async def test_memory_section_returns_empty_when_disabled(mem_factory) -> None:
     agent = _make_test_agent(_silent_provider(), db_factory=mem_factory)
 
     import sebastian.gateway.state as gw_state
-
     from sebastian.memory.services.memory_service import MemoryService
 
     disabled_ms = MemoryService(db_factory=mem_factory, memory_settings_fn=lambda: False)

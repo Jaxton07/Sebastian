@@ -63,9 +63,8 @@ async def base_agent_with_memory():
 
     # Patch memory_settings to enabled=True for all tests in this file,
     # and set memory_service to a real MemoryService backed by the test db.
-    from sebastian.memory.services.memory_service import MemoryService
-
     import sebastian.gateway.state as gw_state
+    from sebastian.memory.services.memory_service import MemoryService
 
     fake_settings = MagicMock()
     fake_settings.enabled = True

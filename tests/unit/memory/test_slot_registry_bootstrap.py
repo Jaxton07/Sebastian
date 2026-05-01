@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from sebastian.memory.stores.slot_definition_store import SlotDefinitionStore
-from sebastian.memory.writing.slots import SlotRegistry
 from sebastian.memory.types import (
     Cardinality,
     MemoryKind,
@@ -14,6 +13,7 @@ from sebastian.memory.types import (
     ResolutionPolicy,
     SlotDefinition,
 )
+from sebastian.memory.writing.slots import SlotRegistry
 from sebastian.store.models import Base
 
 

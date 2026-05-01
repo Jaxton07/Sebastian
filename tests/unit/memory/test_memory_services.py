@@ -152,12 +152,12 @@ async def test_retrieval_service_search_returns_empty_on_no_data(db_session, mon
 async def test_write_service_caller_owned_does_not_commit(db_session, monkeypatch) -> None:
     from unittest.mock import AsyncMock, MagicMock
 
-    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+    from sebastian.memory.services.writing import MemoryWriteService
     from sebastian.memory.stores.entity_registry import EntityRegistry
     from sebastian.memory.stores.episode_store import EpisodeMemoryStore
-    from sebastian.memory.writing.pipeline import PipelineResult
     from sebastian.memory.stores.profile_store import ProfileMemoryStore
-    from sebastian.memory.services.writing import MemoryWriteService
+    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+    from sebastian.memory.writing.pipeline import PipelineResult
     from sebastian.memory.writing.slot_proposals import SlotProposalHandler
     from sebastian.memory.writing.slots import SlotRegistry
 
@@ -220,8 +220,8 @@ async def test_write_service_owned_commits(monkeypatch) -> None:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from sebastian.memory.writing.pipeline import PipelineResult
     from sebastian.memory.services.writing import MemoryWriteService
+    from sebastian.memory.writing.pipeline import PipelineResult
 
     fake_result = PipelineResult(
         decisions=[],
@@ -559,11 +559,11 @@ async def test_memory_service_disabled_write_candidates_in_session_returns_empty
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
+    from sebastian.memory.services.memory_service import MemoryService
     from sebastian.memory.stores.entity_registry import EntityRegistry
     from sebastian.memory.stores.episode_store import EpisodeMemoryStore
     from sebastian.memory.stores.profile_store import ProfileMemoryStore
-    from sebastian.memory.services.memory_service import MemoryService
+    from sebastian.memory.writing.decision_log import MemoryDecisionLogger
     from sebastian.memory.writing.slot_proposals import SlotProposalHandler
     from sebastian.memory.writing.slots import SlotRegistry
 
