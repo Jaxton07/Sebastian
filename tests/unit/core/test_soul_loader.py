@@ -31,6 +31,12 @@ def test_list_souls_returns_stems(souls_dir: Path, loader: SoulLoader) -> None:
     assert loader.list_souls() == ["alice", "bob"]
 
 
+def test_list_souls_excludes_hidden_files(souls_dir: Path, loader: SoulLoader) -> None:
+    (souls_dir / "alice.md").write_text("Alice persona")
+    (souls_dir / ".hidden.md").write_text("Hidden")
+    assert loader.list_souls() == ["alice"]
+
+
 def test_load_returns_content(souls_dir: Path, loader: SoulLoader) -> None:
     (souls_dir / "alice.md").write_text("Alice persona")
     assert loader.load("alice") == "Alice persona"

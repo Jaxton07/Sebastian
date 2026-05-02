@@ -12,7 +12,7 @@ class SoulLoader:
     def list_souls(self) -> list[str]:
         if not self._souls_dir.exists():
             return []
-        return sorted(p.stem for p in self._souls_dir.glob("*.md"))
+        return sorted(p.stem for p in self._souls_dir.glob("*.md") if not p.stem.startswith("."))
 
     def load(self, soul_name: str) -> str | None:
         # reject empty, path separators, traversal, hidden files

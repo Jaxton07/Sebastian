@@ -62,8 +62,10 @@ async def test_restore_defaults_to_sebastian_when_no_setting(db_factory, soul_lo
     agent = _make_sebastian()
     await _restore_active_soul(soul_loader, db_factory, agent)
 
+    # active soul == current_soul (both "sebastian") → short-circuit, no rebuild
     assert agent.persona == "You are Sebastian."
     assert soul_loader.current_soul == "sebastian"
+    agent.build_system_prompt.assert_not_called()
 
 
 @pytest.mark.asyncio
