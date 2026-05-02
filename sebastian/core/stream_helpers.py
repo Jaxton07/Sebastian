@@ -20,6 +20,29 @@ from sebastian.core.types import ToolResult
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_display_name(
+    name: str,
+    inputs: dict[str, Any],
+    spec_display_name: str | None,
+) -> str:
+    """Compute the UI display name for a tool call.
+
+    Handles three tools that need dynamic titles built from agent_type;
+    all others use spec_display_name or fall back to the internal name.
+    spawn_sub_agent is NOT in the match — its display name comes from @tool(display_name="Worker").
+    """
+    agent_type = inputs.get("agent_type", "") if isinstance(inputs, dict) else ""
+    match name:
+        case "delegate_to_agent":
+            return f"Agent: {agent_type.capitalize()}" if agent_type else "Agent"
+        case "stop_agent":
+            return f"Stop Agent: {agent_type.capitalize()}" if agent_type else "Stop Agent"
+        case "resume_agent":
+            return f"Resume Agent: {agent_type.capitalize()}" if agent_type else "Resume Agent"
+    return spec_display_name or name
+
+
 _DISPLAY_MAX = 4000
 
 

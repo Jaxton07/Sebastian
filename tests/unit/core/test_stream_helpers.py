@@ -245,3 +245,65 @@ async def test_dispatch_tool_call_failed_result_publishes_tool_failed_without_ar
     # No artifact in any event
     for _, _, data in published:
         assert "artifact" not in data
+
+
+# ---------------------------------------------------------------------------
+# _resolve_display_name
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_display_name_delegate_with_agent_type() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", {"agent_type": "forge"}, None)
+    assert result == "Agent: Forge"
+
+
+def test_resolve_display_name_delegate_without_agent_type() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", {}, None)
+    assert result == "Agent"
+
+
+def test_resolve_display_name_stop_agent() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("stop_agent", {"agent_type": "forge"}, None)
+    assert result == "Stop Agent: Forge"
+
+
+def test_resolve_display_name_resume_agent() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("resume_agent", {"agent_type": "builder"}, None)
+    assert result == "Resume Agent: Builder"
+
+
+def test_resolve_display_name_spec_display_name_for_spawn_sub_agent() -> None:
+    """spawn_sub_agent has no match case — its display name comes from spec_display_name."""
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("spawn_sub_agent", {"goal": "do stuff"}, "Worker")
+    assert result == "Worker"
+
+
+def test_resolve_display_name_uses_spec_display_name() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("memory_save", {}, "Save Memory")
+    assert result == "Save Memory"
+
+
+def test_resolve_display_name_falls_back_to_name() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("some_tool", {}, None)
+    assert result == "some_tool"
+
+
+def test_resolve_display_name_non_dict_inputs() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", "not-a-dict", None)
+    assert result == "Agent"
