@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     def attachments_dir(self) -> Path:
         return self.user_data_dir / "attachments"
 
+    @property
+    def souls_dir(self) -> Path:
+        return self.user_data_dir / "souls"
+
     def resolved_secret_key_path(self) -> Path:
         if self.sebastian_secret_key_path:
             return Path(self.sebastian_secret_key_path).expanduser()
@@ -106,6 +110,7 @@ def ensure_data_dir() -> None:
         settings.attachments_dir / "blobs",
         settings.attachments_dir / "thumbs",
         settings.attachments_dir / "tmp",
+        settings.souls_dir,
     ):
         sub.mkdir(parents=True, exist_ok=True)
 

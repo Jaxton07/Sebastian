@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 APP_SETTING_MEMORY_ENABLED = "memory_enabled"
+APP_SETTING_ACTIVE_SOUL = "active_soul"
 
 
 class AppSettingsStore:
