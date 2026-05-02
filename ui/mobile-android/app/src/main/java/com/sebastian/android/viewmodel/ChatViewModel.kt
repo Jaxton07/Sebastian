@@ -278,13 +278,14 @@ class ChatViewModel @Inject constructor(
                 updateToolBlockByToolId(event.toolId) { existing ->
                     existing.copy(
                         status = ToolStatus.RUNNING,
-                        displayName = event.displayName.ifBlank { existing.displayName },
+                        displayName = event.displayName,
                     )
                 }
             }
 
             is StreamEvent.ToolExecuted -> {
                 if (event.artifact != null) {
+                    // Artifact replaces the ToolBlock entirely; displayName was already set by ToolRunning.
                     val sessionId = _uiState.value.activeSessionId
                     if (sessionId == event.sessionId && currentAssistantMessageId != null) {
                         replaceOrAppendArtifactBlock(
@@ -297,7 +298,7 @@ class ChatViewModel @Inject constructor(
                         existing.copy(
                             status = ToolStatus.DONE,
                             resultSummary = event.resultSummary,
-                            displayName = event.displayName.ifBlank { existing.displayName },
+                            displayName = event.displayName,
                         )
                     }
                 }
@@ -308,7 +309,7 @@ class ChatViewModel @Inject constructor(
                     existing.copy(
                         status = ToolStatus.FAILED,
                         error = event.error,
-                        displayName = event.displayName.ifBlank { existing.displayName },
+                        displayName = event.displayName,
                     )
                 }
             }

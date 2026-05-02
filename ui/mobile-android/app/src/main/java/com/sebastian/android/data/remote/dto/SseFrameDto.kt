@@ -41,7 +41,7 @@ object SseFrameParser {
             data.getString("session_id"),
             data.getString("tool_id"),
             data.getString("name"),
-            data.optString("display_name", data.getString("name")),
+            data.optString("display_name", data.optString("name", "")),
         )
         "tool.executed" -> StreamEvent.ToolExecuted(
             sessionId = data.getString("session_id"),
@@ -49,14 +49,14 @@ object SseFrameParser {
             name = data.getString("name"),
             resultSummary = data.optString("result_summary", ""),
             artifact = data.optJSONObject("artifact")?.toArtifactOrNull(),
-            displayName = data.optString("display_name", data.getString("name")),
+            displayName = data.optString("display_name", data.optString("name", "")),
         )
         "tool.failed" -> StreamEvent.ToolFailed(
             data.getString("session_id"),
             data.getString("tool_id"),
             data.getString("name"),
             data.optString("error", ""),
-            data.optString("display_name", data.getString("name")),
+            data.optString("display_name", data.optString("name", "")),
         )
         "task.created" -> StreamEvent.TaskCreated(data.getString("session_id"), data.getString("task_id"), data.optString("goal", ""))
         "task.started" -> StreamEvent.TaskStarted(data.getString("session_id"), data.getString("task_id"))
