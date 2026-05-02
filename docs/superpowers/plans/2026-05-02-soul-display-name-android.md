@@ -382,22 +382,18 @@ data class SoulCurrentDto(
     }
 ```
 
-- [ ] **Step 8: GlobalSseDispatcher 注入 settingsRepository 并处理 SoulChanged**
+- [ ] **Step 8: GlobalSseDispatcher 处理 SoulChanged**
 
-`data/remote/GlobalSseDispatcher.kt`，`settingsRepository` 已注入，在 `_events.emit(event)` 之后添加 soul 同步逻辑：
+`data/remote/GlobalSseDispatcher.kt`，`settingsRepository` 已注入。在已有的 `_events.emit(event)` 之后插入 3 行（不要重写整个 collect 块）：
 
 ```kotlin
-                    .collect { event ->
-                        if (_connectionState.value != ConnectionState.Connected) {
-                            _connectionState.value = ConnectionState.Connected
-                        }
                         _events.emit(event)
+                        // ← 新增：SSE 通知后同步写 DataStore，fire-and-forget 不阻塞 SSE 流
                         if (event is StreamEvent.SoulChanged) {
                             scope.launch(dispatcher) {
                                 settingsRepository.saveActiveSoul(event.soulName)
                             }
                         }
-                    }
 ```
 
 - [ ] **Step 9: Commit**
@@ -477,7 +473,7 @@ data class ChatUiState(
 
     private fun fetchInitialSoulIfNeeded() {
         viewModelScope.launch(dispatcher) {
-            val cached = settingsRepository.activeSoul.value
+            val cached = settingsRepository.activeSoul.first()  // Flow<String> 用 first()，不是 .value
             if (cached.isNotBlank()) return@launch
             settingsRepository.fetchActiveSoul()
                 .onSuccess { name ->
