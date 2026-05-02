@@ -66,6 +66,16 @@ async def switch_soul(soul_name: str) -> ToolResult:
         state.sebastian.system_prompt = state.sebastian.build_system_prompt(
             state.sebastian._gate, state.sebastian._agent_registry
         )
+
+        from sebastian.protocol.events.types import Event, EventType
+
+        await state.event_bus.publish(
+            Event(
+                type=EventType.SOUL_CHANGED,
+                data={"soul_name": soul_name},
+            )
+        )
+
         msg = f"已切换到 {soul_name}"
         return ToolResult(ok=True, output=msg, display=msg)
 

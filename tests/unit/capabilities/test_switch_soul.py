@@ -33,10 +33,13 @@ def _make_state(souls_dir: Path, current_soul: str = "sebastian") -> MagicMock:
     db_cm.__aexit__ = AsyncMock(return_value=None)
     db_factory = MagicMock(return_value=db_cm)
 
+    event_bus = AsyncMock()
+
     state = MagicMock()
     state.soul_loader = loader
     state.sebastian = sebastian
     state.db_factory = db_factory
+    state.event_bus = event_bus  # ← new
     return state
 
 
@@ -95,6 +98,10 @@ async def test_switch_soul_success(tmp_path: Path) -> None:
     # 验证 DB 持久化：commit 必须被调用，否则重启后 soul 不会恢复
     db_session = state.db_factory.return_value.__aenter__.return_value
     db_session.commit.assert_awaited_once()
+    # soul.changed 事件必须被发布
+    state.event_bus.publish.assert_awaited_once()
+    published_event = state.event_bus.publish.call_args[0][0]
+    assert published_event.data["soul_name"] == "cortana"
 
 
 @pytest.mark.asyncio
