@@ -55,8 +55,11 @@ class SSEManager:
             if subscription.session_id is not None:
                 event_session_id = event.data.get("session_id")
                 event_parent_id = event.data.get("parent_session_id")
-                if subscription.session_id not in (event_session_id, event_parent_id):
-                    continue
+                # Events with no session_id are global broadcasts (e.g. soul.changed);
+                # only filter when the event targets a specific session.
+                if event_session_id is not None or event_parent_id is not None:
+                    if subscription.session_id not in (event_session_id, event_parent_id):
+                        continue
             try:
                 subscription.queue.put_nowait(buffered_event)
             except asyncio.QueueFull:
