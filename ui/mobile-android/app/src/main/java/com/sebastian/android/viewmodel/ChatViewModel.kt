@@ -261,6 +261,7 @@ class ChatViewModel @Inject constructor(
                     blockId = event.blockId,
                     toolId = event.toolId,
                     name = event.name,
+                    displayName = event.name,  // 初始 fallback，ToolRunning 时会更新
                     inputs = "",
                     status = ToolStatus.PENDING,
                 )
@@ -275,12 +276,16 @@ class ChatViewModel @Inject constructor(
 
             is StreamEvent.ToolRunning -> {
                 updateToolBlockByToolId(event.toolId) { existing ->
-                    existing.copy(status = ToolStatus.RUNNING)
+                    existing.copy(
+                        status = ToolStatus.RUNNING,
+                        displayName = event.displayName,
+                    )
                 }
             }
 
             is StreamEvent.ToolExecuted -> {
                 if (event.artifact != null) {
+                    // Artifact replaces the ToolBlock entirely; displayName was already set by ToolRunning.
                     val sessionId = _uiState.value.activeSessionId
                     if (sessionId == event.sessionId && currentAssistantMessageId != null) {
                         replaceOrAppendArtifactBlock(
@@ -290,14 +295,22 @@ class ChatViewModel @Inject constructor(
                     }
                 } else {
                     updateToolBlockByToolId(event.toolId) { existing ->
-                        existing.copy(status = ToolStatus.DONE, resultSummary = event.resultSummary)
+                        existing.copy(
+                            status = ToolStatus.DONE,
+                            resultSummary = event.resultSummary,
+                            displayName = event.displayName,
+                        )
                     }
                 }
             }
 
             is StreamEvent.ToolFailed -> {
                 updateToolBlockByToolId(event.toolId) { existing ->
-                    existing.copy(status = ToolStatus.FAILED, error = event.error)
+                    existing.copy(
+                        status = ToolStatus.FAILED,
+                        error = event.error,
+                        displayName = event.displayName,
+                    )
                 }
             }
 

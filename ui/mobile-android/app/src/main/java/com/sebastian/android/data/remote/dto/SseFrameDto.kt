@@ -37,15 +37,27 @@ object SseFrameParser {
         "text_block.stop" -> StreamEvent.TextBlockStop(data.getString("session_id"), data.getString("block_id"))
         "tool_block.start" -> StreamEvent.ToolBlockStart(data.getString("session_id"), data.getString("block_id"), data.getString("tool_id"), data.getString("name"))
         "tool_block.stop" -> StreamEvent.ToolBlockStop(data.getString("session_id"), data.getString("block_id"), data.getString("tool_id"), data.getString("name"), data.optJSONObject("inputs")?.toString() ?: "{}")
-        "tool.running" -> StreamEvent.ToolRunning(data.getString("session_id"), data.getString("tool_id"), data.getString("name"))
-        "tool.executed" -> StreamEvent.ToolExecuted(
+        "tool.running" -> StreamEvent.ToolRunning(
             data.getString("session_id"),
             data.getString("tool_id"),
             data.getString("name"),
-            data.optString("result_summary", ""),
-            data.optJSONObject("artifact")?.toArtifactOrNull(),
+            data.optString("display_name", data.optString("name", "")),
         )
-        "tool.failed" -> StreamEvent.ToolFailed(data.getString("session_id"), data.getString("tool_id"), data.getString("name"), data.optString("error", ""))
+        "tool.executed" -> StreamEvent.ToolExecuted(
+            sessionId = data.getString("session_id"),
+            toolId = data.getString("tool_id"),
+            name = data.getString("name"),
+            resultSummary = data.optString("result_summary", ""),
+            artifact = data.optJSONObject("artifact")?.toArtifactOrNull(),
+            displayName = data.optString("display_name", data.optString("name", "")),
+        )
+        "tool.failed" -> StreamEvent.ToolFailed(
+            data.getString("session_id"),
+            data.getString("tool_id"),
+            data.getString("name"),
+            data.optString("error", ""),
+            data.optString("display_name", data.optString("name", "")),
+        )
         "task.created" -> StreamEvent.TaskCreated(data.getString("session_id"), data.getString("task_id"), data.optString("goal", ""))
         "task.started" -> StreamEvent.TaskStarted(data.getString("session_id"), data.getString("task_id"))
         "task.completed" -> StreamEvent.TaskCompleted(data.getString("session_id"), data.getString("task_id"))

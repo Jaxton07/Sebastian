@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -172,24 +172,28 @@ async def test_dispatch_tool_call_publishes_artifact_on_tool_executed() -> None:
     async def publish(session_id: str, event_type: EventType, data: object) -> None:
         published.append((session_id, event_type, data))
 
+    mock_spec = MagicMock()
+    mock_spec.display_name = "Send File"
+
     blocks: list = []
-    await dispatch_tool_call(
-        _make_event(),
-        session_id="sess-1",
-        task_id=None,
-        agent_context="sebastian",
-        assistant_turn_id="turn-1",
-        assistant_blocks=blocks,
-        current_pci=0,
-        block_index=1,
-        gate_call=gate_call,
-        update_activity=update_activity,
-        publish=publish,
-        current_task_goals={},
-        current_depth={},
-        allowed_tools=None,
-        pending_blocks={},
-    )
+    with patch("sebastian.core.stream_helpers.get_tool", return_value=(mock_spec, MagicMock())):
+        await dispatch_tool_call(
+            _make_event(),
+            session_id="sess-1",
+            task_id=None,
+            agent_context="sebastian",
+            assistant_turn_id="turn-1",
+            assistant_blocks=blocks,
+            current_pci=0,
+            block_index=1,
+            gate_call=gate_call,
+            update_activity=update_activity,
+            publish=publish,
+            current_task_goals={},
+            current_depth={},
+            allowed_tools=None,
+            pending_blocks={},
+        )
 
     executed_events = [
         (sid, et, data) for (sid, et, data) in published if et == EventType.TOOL_EXECUTED
@@ -197,6 +201,12 @@ async def test_dispatch_tool_call_publishes_artifact_on_tool_executed() -> None:
     assert len(executed_events) == 1
     _, _, data = executed_events[0]
     assert data["artifact"]["attachment_id"] == "att-1"
+    assert data["display_name"] == "Send File"  # display_name wired from spec through to event
+
+    running_events = [(sid, et, d) for (sid, et, d) in published if et == EventType.TOOL_RUNNING]
+    assert len(running_events) == 1
+    _, _, running_data = running_events[0]
+    assert running_data["display_name"] == "Send File"
 
 
 @pytest.mark.asyncio
@@ -219,24 +229,28 @@ async def test_dispatch_tool_call_failed_result_publishes_tool_failed_without_ar
     async def publish(session_id: str, event_type: EventType, data: object) -> None:
         published.append((session_id, event_type, data))
 
+    mock_spec = MagicMock()
+    mock_spec.display_name = "Send File"
+
     blocks: list = []
-    await dispatch_tool_call(
-        _make_event(),
-        session_id="sess-1",
-        task_id=None,
-        agent_context="sebastian",
-        assistant_turn_id="turn-1",
-        assistant_blocks=blocks,
-        current_pci=0,
-        block_index=1,
-        gate_call=gate_call,
-        update_activity=update_activity,
-        publish=publish,
-        current_task_goals={},
-        current_depth={},
-        allowed_tools=None,
-        pending_blocks={},
-    )
+    with patch("sebastian.core.stream_helpers.get_tool", return_value=(mock_spec, MagicMock())):
+        await dispatch_tool_call(
+            _make_event(),
+            session_id="sess-1",
+            task_id=None,
+            agent_context="sebastian",
+            assistant_turn_id="turn-1",
+            assistant_blocks=blocks,
+            current_pci=0,
+            block_index=1,
+            gate_call=gate_call,
+            update_activity=update_activity,
+            publish=publish,
+            current_task_goals={},
+            current_depth={},
+            allowed_tools=None,
+            pending_blocks={},
+        )
 
     event_types = [et for (_, et, _) in published]
     assert EventType.TOOL_FAILED in event_types
@@ -245,3 +259,71 @@ async def test_dispatch_tool_call_failed_result_publishes_tool_failed_without_ar
     # No artifact in any event
     for _, _, data in published:
         assert "artifact" not in data
+
+    failed_events = [(sid, et, d) for (sid, et, d) in published if et == EventType.TOOL_FAILED]
+    assert len(failed_events) == 1
+    _, _, failed_data = failed_events[0]
+    # display_name wired from spec through to event
+    assert failed_data["display_name"] == "Send File"
+
+
+# ---------------------------------------------------------------------------
+# _resolve_display_name
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_display_name_delegate_with_agent_type() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", {"agent_type": "forge"}, None)
+    assert result == "Agent: Forge"
+
+
+def test_resolve_display_name_delegate_without_agent_type() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", {}, None)
+    assert result == "Agent"
+
+
+def test_resolve_display_name_stop_agent() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("stop_agent", {"agent_type": "forge"}, None)
+    assert result == "Stop Agent: Forge"
+
+
+def test_resolve_display_name_resume_agent() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("resume_agent", {"agent_type": "builder"}, None)
+    assert result == "Resume Agent: Builder"
+
+
+def test_resolve_display_name_spec_display_name_for_spawn_sub_agent() -> None:
+    """spawn_sub_agent has no match case — its display name comes from spec_display_name."""
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("spawn_sub_agent", {"goal": "do stuff"}, "Worker")
+    assert result == "Worker"
+
+
+def test_resolve_display_name_uses_spec_display_name() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("memory_save", {}, "Save Memory")
+    assert result == "Save Memory"
+
+
+def test_resolve_display_name_falls_back_to_name() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("some_tool", {}, None)
+    assert result == "some_tool"
+
+
+def test_resolve_display_name_non_dict_inputs() -> None:
+    from sebastian.core.stream_helpers import _resolve_display_name
+
+    result = _resolve_display_name("delegate_to_agent", "not-a-dict", None)
+    assert result == "Agent"

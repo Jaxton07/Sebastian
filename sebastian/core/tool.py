@@ -29,7 +29,7 @@ _NoneType = type(None)
 class ToolSpec:
     """Specification and metadata for a registered tool."""
 
-    __slots__ = ("name", "description", "parameters", "permission_tier")
+    __slots__ = ("name", "description", "parameters", "permission_tier", "display_name")
 
     def __init__(
         self,
@@ -37,11 +37,13 @@ class ToolSpec:
         description: str,
         parameters: dict[str, Any],
         permission_tier: PermissionTier = PermissionTier.LOW,
+        display_name: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
         self.parameters = parameters
         self.permission_tier = permission_tier
+        self.display_name = display_name
 
 
 # Module-level registry: tool name → (spec, async callable)
@@ -161,6 +163,7 @@ def tool(
     name: str,
     description: str,
     permission_tier: PermissionTier = PermissionTier.MODEL_DECIDES,
+    display_name: str | None = None,
 ) -> Callable[[ToolFn], ToolFn]:
     """Decorator that registers an async function as a callable tool."""
 
@@ -170,6 +173,7 @@ def tool(
             description=description,
             parameters=_infer_json_schema(fn),
             permission_tier=permission_tier,
+            display_name=display_name,
         )
 
         @functools.wraps(fn)

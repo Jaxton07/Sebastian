@@ -92,11 +92,10 @@ fun ToolCallCard(
 
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     val interactionSource = remember { MutableInteractionSource() }
-    val display = remember(block.name, block.inputs) {
-        ToolDisplayName.resolve(block.name, block.inputs)
+    val displayName = block.displayName
+    val summary = remember(block.name, block.inputs) {
+        ToolCallInputExtractor.extractInputSummary(block.name, block.inputs)
     }
-    val displayName = display.title
-    val summary = display.summary
 
     Column(
         modifier = modifier

@@ -16,9 +16,33 @@ from typing import Any
 from sebastian.core.agent_loop import _tool_result_content
 from sebastian.core.stream_events import ToolCallReady
 from sebastian.core.stream_events import ToolResult as StreamToolResult
+from sebastian.core.tool import get_tool
 from sebastian.core.types import ToolResult
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_display_name(
+    name: str,
+    inputs: dict[str, Any],
+    spec_display_name: str | None,
+) -> str:
+    """Compute the UI display name for a tool call.
+
+    Handles three tools that need dynamic titles built from agent_type;
+    all others use spec_display_name or fall back to the internal name.
+    spawn_sub_agent is NOT in the match — its display name comes from @tool(display_name="Worker").
+    """
+    agent_type = inputs.get("agent_type", "") if isinstance(inputs, dict) else ""
+    match name:
+        case "delegate_to_agent":
+            return f"Agent: {agent_type.capitalize()}" if agent_type else "Agent"
+        case "stop_agent":
+            return f"Stop Agent: {agent_type.capitalize()}" if agent_type else "Stop Agent"
+        case "resume_agent":
+            return f"Resume Agent: {agent_type.capitalize()}" if agent_type else "Resume Agent"
+    return spec_display_name or name
+
 
 _DISPLAY_MAX = 4000
 
@@ -169,6 +193,10 @@ async def dispatch_tool_call(
     """
     from sebastian.protocol.events.types import EventType
 
+    tool_entry = get_tool(event.name)
+    spec_display_name = tool_entry[0].display_name if tool_entry else None
+    display_name = _resolve_display_name(event.name, event.inputs, spec_display_name)
+
     await publish(
         session_id,
         EventType.TOOL_BLOCK_STOP,
@@ -177,12 +205,18 @@ async def dispatch_tool_call(
     await publish(
         session_id,
         EventType.TOOL_RUNNING,
-        {"tool_id": event.tool_id, "name": event.name, "input": event.inputs},
+        {
+            "tool_id": event.tool_id,
+            "name": event.name,
+            "display_name": display_name,
+            "input": event.inputs,
+        },
     )
     record: dict[str, Any] = {
         "type": "tool",
         "tool_call_id": event.tool_id,
         "tool_name": event.name,
+        "display_name": display_name,
         "input": event.inputs,
         "status": "failed",
         "assistant_turn_id": assistant_turn_id,
@@ -231,7 +265,12 @@ async def dispatch_tool_call(
         await publish(
             session_id,
             EventType.TOOL_FAILED,
-            {"tool_id": event.tool_id, "name": event.name, "error": error},
+            {
+                "tool_id": event.tool_id,
+                "name": event.name,
+                "display_name": display_name,
+                "error": error,
+            },
         )
         return stream_result, block_index
 
@@ -242,6 +281,7 @@ async def dispatch_tool_call(
         event_data: dict[str, Any] = {
             "tool_id": event.tool_id,
             "name": event.name,
+            "display_name": display_name,
             "result_summary": display,
         }
         if isinstance(result.output, dict):
@@ -258,7 +298,12 @@ async def dispatch_tool_call(
         await publish(
             session_id,
             EventType.TOOL_FAILED,
-            {"tool_id": event.tool_id, "name": event.name, "error": result.error},
+            {
+                "tool_id": event.tool_id,
+                "name": event.name,
+                "display_name": display_name,
+                "error": result.error,
+            },
         )
     stream_result = StreamToolResult(
         tool_id=event.tool_id,

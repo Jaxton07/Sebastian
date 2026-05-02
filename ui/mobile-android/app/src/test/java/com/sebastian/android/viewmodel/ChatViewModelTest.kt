@@ -1269,6 +1269,87 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun `ToolRunning event updates ToolBlock displayName`() = vmTest {
+        // Arrange: pre-insert a ToolBlock in PENDING state via ToolBlockStart
+        val toolId = "toolu_test_dn"
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-1", toolId, "memory_save"))
+
+        // Act
+        emitEvent(
+            StreamEvent.ToolRunning(
+                sessionId = "s1",
+                toolId = toolId,
+                name = "memory_save",
+                displayName = "Save Memory",
+            )
+        )
+        dispatcher.scheduler.runCurrent()
+
+        // Assert
+        val block = viewModel.uiState.value.messages
+            .flatMap { it.blocks }
+            .filterIsInstance<ContentBlock.ToolBlock>()
+            .first { it.toolId == toolId }
+        assertEquals("Save Memory", block.displayName)
+        assertEquals(ToolStatus.RUNNING, block.status)
+    }
+
+    @Test
+    fun `ToolExecuted event updates ToolBlock displayName`() = vmTest {
+        val toolId = "toolu_test_dn_executed"
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-2", toolId, "memory_save"))
+
+        emitEvent(
+            StreamEvent.ToolExecuted(
+                sessionId = "s1",
+                toolId = toolId,
+                name = "memory_save",
+                resultSummary = "saved",
+                artifact = null,
+                displayName = "Save Memory",
+            )
+        )
+        dispatcher.scheduler.runCurrent()
+
+        val block = viewModel.uiState.value.messages
+            .flatMap { it.blocks }
+            .filterIsInstance<ContentBlock.ToolBlock>()
+            .first { it.toolId == toolId }
+        assertEquals("Save Memory", block.displayName)
+        assertEquals(ToolStatus.DONE, block.status)
+    }
+
+    @Test
+    fun `ToolFailed event updates ToolBlock displayName`() = vmTest {
+        val toolId = "toolu_test_dn_failed"
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "block-3", toolId, "memory_save"))
+
+        emitEvent(
+            StreamEvent.ToolFailed(
+                sessionId = "s1",
+                toolId = toolId,
+                name = "memory_save",
+                error = "timeout",
+                displayName = "Save Memory",
+            )
+        )
+        dispatcher.scheduler.runCurrent()
+
+        val block = viewModel.uiState.value.messages
+            .flatMap { it.blocks }
+            .filterIsInstance<ContentBlock.ToolBlock>()
+            .first { it.toolId == toolId }
+        assertEquals("Save Memory", block.displayName)
+        assertEquals(ToolStatus.FAILED, block.status)
+    }
+
+    @Test
     fun `send_file tool executed without artifact marks tool block done`() = vmTest {
         activateSession()
         emitEvent(StreamEvent.TurnReceived("s1"))

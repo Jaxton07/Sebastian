@@ -113,3 +113,33 @@ def test_tool_spec_no_requires_approval_field() -> None:
     spec, _ = tool_module._tools["check_slots"]
     assert not hasattr(spec, "requires_approval")
     assert not hasattr(spec, "permission_level")
+
+
+def test_tool_display_name_stored_in_spec() -> None:
+    from sebastian.core import tool as tool_module
+    from sebastian.core.tool import tool
+    from sebastian.core.types import ToolResult
+
+    tool_module._tools.clear()
+
+    @tool(name="fancy_tool", description="test", display_name="Fancy Tool")
+    async def fancy(x: str) -> ToolResult:
+        return ToolResult(ok=True, output=x)
+
+    spec, _ = tool_module._tools["fancy_tool"]
+    assert spec.display_name == "Fancy Tool"
+
+
+def test_tool_display_name_defaults_to_none() -> None:
+    from sebastian.core import tool as tool_module
+    from sebastian.core.tool import tool
+    from sebastian.core.types import ToolResult
+
+    tool_module._tools.clear()
+
+    @tool(name="plain_tool", description="test")
+    async def plain(x: str) -> ToolResult:
+        return ToolResult(ok=True, output=x)
+
+    spec, _ = tool_module._tools["plain_tool"]
+    assert spec.display_name is None
