@@ -46,6 +46,13 @@ def test_load_rejects_path_traversal(loader: SoulLoader) -> None:
     assert loader.load("/absolute/path") is None
 
 
+def test_load_rejects_empty_and_dot_names(loader: SoulLoader) -> None:
+    assert loader.load("") is None
+    assert loader.load(".") is None
+    assert loader.load("..") is None
+    assert loader.load(".hidden") is None
+
+
 def test_ensure_defaults_creates_missing_files(souls_dir: Path, loader: SoulLoader) -> None:
     loader.ensure_defaults()
     assert (souls_dir / "sebastian.md").read_text() == "You are Sebastian."

@@ -15,7 +15,8 @@ class SoulLoader:
         return sorted(p.stem for p in self._souls_dir.glob("*.md"))
 
     def load(self, soul_name: str) -> str | None:
-        if soul_name != Path(soul_name).name:  # reject path separators / traversal
+        # reject empty, path separators, traversal, hidden files
+        if not soul_name or soul_name != Path(soul_name).name or soul_name.startswith("."):
             return None
         path = self._souls_dir / f"{soul_name}.md"
         if not path.exists():
