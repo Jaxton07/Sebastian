@@ -203,9 +203,7 @@ async def test_dispatch_tool_call_publishes_artifact_on_tool_executed() -> None:
     assert data["artifact"]["attachment_id"] == "att-1"
     assert data["display_name"] == "Send File"  # display_name wired from spec through to event
 
-    running_events = [
-        (sid, et, d) for (sid, et, d) in published if et == EventType.TOOL_RUNNING
-    ]
+    running_events = [(sid, et, d) for (sid, et, d) in published if et == EventType.TOOL_RUNNING]
     assert len(running_events) == 1
     _, _, running_data = running_events[0]
     assert running_data["display_name"] == "Send File"
@@ -265,7 +263,8 @@ async def test_dispatch_tool_call_failed_result_publishes_tool_failed_without_ar
     failed_events = [(sid, et, d) for (sid, et, d) in published if et == EventType.TOOL_FAILED]
     assert len(failed_events) == 1
     _, _, failed_data = failed_events[0]
-    assert failed_data["display_name"] == "Send File"  # display_name wired from spec through to event
+    # display_name wired from spec through to event
+    assert failed_data["display_name"] == "Send File"
 
 
 # ---------------------------------------------------------------------------
