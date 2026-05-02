@@ -1393,6 +1393,24 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun `fetchInitialSoulIfNeeded keeps default activeSoulName when network fails`() = runTest {
+        // activeSoul cache is blank → will trigger fetch
+        whenever(settingsRepository.activeSoul).thenReturn(flowOf(""))
+        // fetchActiveSoul fails with a network error
+        whenever(settingsRepository.fetchActiveSoul()).thenReturn(Result.failure(RuntimeException("network error")))
+
+        val vm = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, agentRepository, networkMonitor, dispatcher)
+        try {
+            dispatcher.scheduler.runCurrent()  // let coroutines settle
+
+            // Default "Sebastian" must be preserved
+            assertEquals("Sebastian", vm.uiState.value.activeSoulName)
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    @Test
     fun `connectionFailed while PENDING resets composerState to IDLE_EMPTY`() = vmTest {
         // Cancel old ViewModel so we can install a throwing SSE flow
         viewModel.viewModelScope.cancel()

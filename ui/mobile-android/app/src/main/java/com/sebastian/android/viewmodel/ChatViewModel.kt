@@ -337,6 +337,11 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
+            is StreamEvent.SoulChanged -> {
+                val name = event.soulName.replaceFirstChar { c -> c.uppercase() }
+                _uiState.update { it.copy(activeSoulName = name) }
+            }
+
             is StreamEvent.TodoUpdated -> {
                 val sessionId = _uiState.value.activeSessionId ?: return
                 viewModelScope.launch(dispatcher) {
