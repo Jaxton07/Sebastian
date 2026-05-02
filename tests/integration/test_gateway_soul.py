@@ -39,6 +39,11 @@ def _make_sebastian(persona: str = "You are Sebastian.") -> MagicMock:
     agent._gate = MagicMock()
     agent._agent_registry = {}
     agent.build_system_prompt = MagicMock(return_value="rebuilt_prompt")
+
+    def _rebuild_system_prompt() -> None:
+        agent.system_prompt = agent.build_system_prompt(agent._gate, agent._agent_registry)
+
+    agent.rebuild_system_prompt = MagicMock(side_effect=_rebuild_system_prompt)
     return agent
 
 
@@ -82,3 +87,5 @@ async def test_restore_falls_back_to_hardcoded_when_file_missing(db_factory, sou
     # soul file missing → persona unchanged, system_prompt NOT rebuilt
     assert agent.persona == original_persona
     agent.build_system_prompt.assert_not_called()
+    # soul file missing → current_soul must NOT be updated to "ghost"
+    assert soul_loader.current_soul == "sebastian"

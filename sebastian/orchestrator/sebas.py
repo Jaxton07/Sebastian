@@ -161,6 +161,9 @@ class Sebastian(BaseAgent):
         # Rebuild with agent_registry so _agents_section is included
         self.system_prompt = self.build_system_prompt(gate, self._agent_registry)
 
+    def rebuild_system_prompt(self) -> None:
+        self.system_prompt = self.build_system_prompt(self._gate, self._agent_registry)
+
     def _persona_section(self) -> str:
         return f"{BASE_BUTLER_RULES}\n\n{self.persona}"
 

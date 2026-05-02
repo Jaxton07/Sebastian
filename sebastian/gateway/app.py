@@ -73,9 +73,7 @@ async def _restore_active_soul(
             return
         soul_loader.current_soul = active
         sebastian_agent.persona = content
-        sebastian_agent.system_prompt = sebastian_agent.build_system_prompt(
-            sebastian_agent._gate, sebastian_agent._agent_registry
-        )
+        sebastian_agent.rebuild_system_prompt()
     except Exception:
         logger.warning("soul restore failed at startup, keeping default persona", exc_info=True)
 

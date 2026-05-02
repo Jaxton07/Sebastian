@@ -30,7 +30,6 @@ async def switch_soul(soul_name: str) -> ToolResult:
     try:
         state = _get_state()
         soul_loader = state.soul_loader
-        soul_loader.ensure_defaults()
 
         if soul_name == "list":
             souls = soul_loader.list_souls()
@@ -63,9 +62,7 @@ async def switch_soul(soul_name: str) -> ToolResult:
 
         soul_loader.current_soul = soul_name
         state.sebastian.persona = content
-        state.sebastian.system_prompt = state.sebastian.build_system_prompt(
-            state.sebastian._gate, state.sebastian._agent_registry
-        )
+        state.sebastian.rebuild_system_prompt()
 
         from sebastian.protocol.events.types import Event, EventType
 

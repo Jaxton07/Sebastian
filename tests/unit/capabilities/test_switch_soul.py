@@ -23,6 +23,13 @@ def _make_state(souls_dir: Path, current_soul: str = "sebastian") -> MagicMock:
     sebastian._agent_registry = {}
     sebastian.build_system_prompt = MagicMock(return_value="new_prompt")
 
+    def _rebuild_system_prompt() -> None:
+        sebastian.system_prompt = sebastian.build_system_prompt(
+            sebastian._gate, sebastian._agent_registry
+        )
+
+    sebastian.rebuild_system_prompt = MagicMock(side_effect=_rebuild_system_prompt)
+
     execute_result = MagicMock()
     execute_result.scalar_one_or_none.return_value = None
     db_session = AsyncMock()
@@ -120,6 +127,8 @@ async def test_switch_soul_db_failure(tmp_path: Path) -> None:
 
     assert result.ok is False
     assert "Do not retry automatically" in result.error
+    # DB 失败时 soul_loader.current_soul 不能被修改
+    assert state.soul_loader.current_soul == "sebastian"
 
 
 @pytest.mark.asyncio
