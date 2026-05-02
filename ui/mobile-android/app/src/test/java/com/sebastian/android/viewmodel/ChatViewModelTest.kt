@@ -77,6 +77,7 @@ class ChatViewModelTest {
         whenever(appContext.contentResolver).thenReturn(contentResolver)
         whenever(networkMonitor.isOnline).thenReturn(onlineFlow)
         whenever(settingsRepository.serverUrl).thenReturn(serverUrlFlow)
+        whenever(settingsRepository.activeSoul).thenReturn(flowOf(""))
         whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
         runBlocking {
