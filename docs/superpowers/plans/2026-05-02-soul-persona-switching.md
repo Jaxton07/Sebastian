@@ -82,6 +82,12 @@ def test_load_returns_none_when_missing(loader: SoulLoader) -> None:
     assert loader.load("nonexistent") is None
 
 
+def test_load_rejects_path_traversal(loader: SoulLoader) -> None:
+    assert loader.load("../../etc/passwd") is None
+    assert loader.load("../secret") is None
+    assert loader.load("/absolute/path") is None
+
+
 def test_ensure_defaults_creates_missing_files(souls_dir: Path, loader: SoulLoader) -> None:
     loader.ensure_defaults()
     assert (souls_dir / "sebastian.md").read_text() == "You are Sebastian."
@@ -141,6 +147,8 @@ class SoulLoader:
         return sorted(p.stem for p in self._souls_dir.glob("*.md"))
 
     def load(self, soul_name: str) -> str | None:
+        if soul_name != Path(soul_name).name:  # reject path separators / traversal
+            return None
         path = self._souls_dir / f"{soul_name}.md"
         if not path.exists():
             return None
@@ -413,13 +421,25 @@ soul_loader: SoulLoader
 
 - [ ] **Step 4: 在 `app.py` 提取 `_restore_active_soul` 并接入 lifespan**
 
-在 `_initialize_agent_instances` 函数之后（`lifespan` 函数之前），添加独立函数：
+在 `_initialize_agent_instances` 函数之后（`lifespan` 函数之前），添加独立函数。`app.py` 顶部已有 `from __future__ import annotations`，所以 `TYPE_CHECKING` 块里的类型只在静态检查时求值，不影响运行时：
+
+在文件顶部 `TYPE_CHECKING` 块（已存在）里追加：
+
+```python
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from sebastian.core.soul_loader import SoulLoader
+    from sebastian.orchestrator.sebas import Sebastian
+```
+
+然后添加独立函数：
 
 ```python
 async def _restore_active_soul(
-    soul_loader: Any,
-    db_factory: Any,
-    sebastian_agent: Any,
+    soul_loader: SoulLoader,
+    db_factory: async_sessionmaker[AsyncSession],
+    sebastian_agent: Sebastian,
 ) -> None:
     import logging
 
@@ -581,6 +601,9 @@ async def test_switch_soul_success(tmp_path: Path) -> None:
     assert state.sebastian.persona == "You are Cortana."
     assert state.sebastian.system_prompt == "new_prompt"
     assert state.soul_loader.current_soul == "cortana"
+    # 验证 DB 持久化：commit 必须被调用，否则重启后 soul 不会恢复
+    db_session = state.db_factory.return_value.__aenter__.return_value
+    db_session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

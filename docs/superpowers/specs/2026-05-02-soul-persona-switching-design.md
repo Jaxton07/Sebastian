@@ -24,6 +24,7 @@ status: planned
 - **仅限 Sebastian 主管家**，sub-agent（forge 等）的人格沿用 manifest.toml，不在本设计范围内
 - 切换为全局生效（Sebastian 是进程级单例）
 - 切换机制：仅通过 `switch_soul` 工具，不提供 Android UI（可后续扩展）
+- `switch_soul` 工具对任意激活人格均可调用（cortana 可以切换回 sebastian，或切换到其他 soul），这是预期行为
 
 ---
 
@@ -68,14 +69,18 @@ class SoulLoader:
         ...
 
     def list_souls(self) -> list[str]:
-        """返回 souls/ 下所有 .md 文件名（不含扩展名）"""
+        """返回 souls/ 下所有 .md 文件名（不含扩展名），按字母升序排列"""
 
     def load(self, soul_name: str) -> str | None:
-        """读取 soul 文件内容，文件不存在返回 None"""
+        """读取 soul 文件内容，文件不存在或 soul_name 含路径分隔符时返回 None"""
 
     def ensure_defaults(self) -> None:
         """检查并重建所有内置 soul，缺哪个建哪个，不覆盖已有文件"""
+
+    current_soul: str  # 当前激活 soul 名，初始值 "sebastian"，由 lifespan 和 switch_soul 工具维护
 ```
+
+**路径安全**：`load()` 在拼接路径前校验 `soul_name == Path(soul_name).name`（即不含 `/` 或 `..`），不合法时直接返回 `None`，拒绝路径穿越。
 
 `builtin_souls` 在 `gateway/app.py` lifespan 里构造：
 
