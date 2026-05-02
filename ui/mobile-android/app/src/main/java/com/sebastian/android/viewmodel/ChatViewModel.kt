@@ -276,7 +276,10 @@ class ChatViewModel @Inject constructor(
 
             is StreamEvent.ToolRunning -> {
                 updateToolBlockByToolId(event.toolId) { existing ->
-                    existing.copy(status = ToolStatus.RUNNING)
+                    existing.copy(
+                        status = ToolStatus.RUNNING,
+                        displayName = event.displayName.ifBlank { existing.displayName },
+                    )
                 }
             }
 
@@ -291,14 +294,22 @@ class ChatViewModel @Inject constructor(
                     }
                 } else {
                     updateToolBlockByToolId(event.toolId) { existing ->
-                        existing.copy(status = ToolStatus.DONE, resultSummary = event.resultSummary)
+                        existing.copy(
+                            status = ToolStatus.DONE,
+                            resultSummary = event.resultSummary,
+                            displayName = event.displayName.ifBlank { existing.displayName },
+                        )
                     }
                 }
             }
 
             is StreamEvent.ToolFailed -> {
                 updateToolBlockByToolId(event.toolId) { existing ->
-                    existing.copy(status = ToolStatus.FAILED, error = event.error)
+                    existing.copy(
+                        status = ToolStatus.FAILED,
+                        error = event.error,
+                        displayName = event.displayName.ifBlank { existing.displayName },
+                    )
                 }
             }
 

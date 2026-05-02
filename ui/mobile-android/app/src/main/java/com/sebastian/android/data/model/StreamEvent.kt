@@ -35,15 +35,27 @@ sealed class StreamEvent {
     // Tool
     data class ToolBlockStart(val sessionId: String, val blockId: String, val toolId: String, val name: String) : StreamEvent()
     data class ToolBlockStop(val sessionId: String, val blockId: String, val toolId: String, val name: String, val inputs: String) : StreamEvent()
-    data class ToolRunning(val sessionId: String, val toolId: String, val name: String) : StreamEvent()
+    data class ToolRunning(
+        val sessionId: String,
+        val toolId: String,
+        val name: String,
+        val displayName: String = "",
+    ) : StreamEvent()
     data class ToolExecuted(
         val sessionId: String,
         val toolId: String,
         val name: String,
         val resultSummary: String,
         val artifact: AttachmentArtifact? = null,
+        val displayName: String = "",
     ) : StreamEvent()
-    data class ToolFailed(val sessionId: String, val toolId: String, val name: String, val error: String) : StreamEvent()
+    data class ToolFailed(
+        val sessionId: String,
+        val toolId: String,
+        val name: String,
+        val error: String,
+        val displayName: String = "",
+    ) : StreamEvent()
 
     // Task
     data class TaskCreated(val sessionId: String, val taskId: String, val goal: String) : StreamEvent()
