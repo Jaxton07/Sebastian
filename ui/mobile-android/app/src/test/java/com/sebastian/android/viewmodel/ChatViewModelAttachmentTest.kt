@@ -74,6 +74,8 @@ class ChatViewModelAttachmentTest {
         whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
         runBlocking {
+            whenever(settingsRepository.readServerUrl()).thenReturn("http://test.local:8823")
+            whenever(settingsRepository.readActiveSoul()).thenReturn("")
             whenever(chatRepository.sendTurn(any(), any(), any())).thenReturn(Result.success("s1"))
             whenever(chatRepository.cancelTurn(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.getMessages(any())).thenReturn(Result.success(emptyList()))

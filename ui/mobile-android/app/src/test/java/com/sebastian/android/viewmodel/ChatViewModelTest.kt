@@ -81,6 +81,8 @@ class ChatViewModelTest {
         whenever(chatRepository.sessionStream(any(), any(), anyOrNull())).thenReturn(sseFlow)
         whenever(chatRepository.globalStream(any(), any())).thenReturn(flowOf())
         runBlocking {
+            whenever(settingsRepository.readServerUrl()).thenReturn("http://test.local:8823")
+            whenever(settingsRepository.readActiveSoul()).thenReturn("")
             whenever(chatRepository.sendTurn(any(), any(), any())).thenReturn(Result.success("s1"))
             whenever(chatRepository.grantApproval(any())).thenReturn(Result.success(Unit))
             whenever(chatRepository.denyApproval(any())).thenReturn(Result.success(Unit))
@@ -1393,12 +1395,11 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `fetchInitialSoulIfNeeded keeps default activeSoulName when network fails`() = runTest {
-        // activeSoul cache is blank → will trigger fetch
-        whenever(settingsRepository.activeSoul).thenReturn(flowOf(""))
-        // fetchActiveSoul fails with a network error
+    fun `fetchInitialSoulIfNeeded keeps default activeSoulName when network fails`() = vmTest {
+        // fetchActiveSoul fails with a network error; readActiveSoul() returns "" (from setup)
         whenever(settingsRepository.fetchActiveSoul()).thenReturn(Result.failure(RuntimeException("network error")))
 
+        viewModel.viewModelScope.cancel()
         val vm = ChatViewModel(appContext, chatRepository, sessionRepository, settingsRepository, agentRepository, networkMonitor, dispatcher)
         try {
             dispatcher.scheduler.runCurrent()  // let coroutines settle

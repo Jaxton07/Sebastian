@@ -7,7 +7,7 @@ import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -33,7 +33,7 @@ class NotificationDispatcherTest {
     ): GlobalSseDispatcher {
         val chatRepo = mock<ChatRepository>()
         val settings = mock<SettingsRepository>()
-        whenever(settings.serverUrl).thenReturn(MutableStateFlow("http://x"))
+        runBlocking { whenever(settings.readServerUrl()).thenReturn("http://x") }
         whenever(chatRepo.globalStream("http://x", null)).thenReturn(upstream)
         return GlobalSseDispatcher(chatRepo, settings, dispatcher)
     }

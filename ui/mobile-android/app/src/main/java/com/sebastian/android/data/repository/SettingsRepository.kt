@@ -21,6 +21,8 @@ interface SettingsRepository {
 
     val activeSoul: Flow<String>
     suspend fun saveActiveSoul(name: String)
+    suspend fun readServerUrl(): String
+    suspend fun readActiveSoul(): String
     suspend fun fetchActiveSoul(): Result<String>
 
     suspend fun getLlmCatalog(): Result<List<CatalogProvider>>

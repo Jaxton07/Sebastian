@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -55,4 +56,10 @@ class SettingsDataStore @Inject constructor(
     suspend fun saveActiveSoul(name: String) {
         context.dataStore.edit { it[ACTIVE_SOUL] = name }
     }
+
+    suspend fun readServerUrl(): String =
+        context.dataStore.data.first()[SERVER_URL] ?: ""
+
+    suspend fun readActiveSoul(): String =
+        context.dataStore.data.first()[ACTIVE_SOUL] ?: ""
 }

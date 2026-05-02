@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -42,7 +41,7 @@ class GlobalSseDispatcher @Inject constructor(
     fun start(scope: CoroutineScope) {
         if (job?.isActive == true) return
         job = scope.launch(dispatcher) {
-            val baseUrl = settingsRepository.serverUrl.first()
+            val baseUrl = settingsRepository.readServerUrl()
             if (baseUrl.isEmpty()) return@launch
             _connectionState.value = ConnectionState.Connecting
             try {

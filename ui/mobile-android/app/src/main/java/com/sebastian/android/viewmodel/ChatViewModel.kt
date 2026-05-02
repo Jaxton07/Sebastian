@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
@@ -127,7 +126,7 @@ class ChatViewModel @Inject constructor(
 
     private fun fetchInitialSoulIfNeeded() {
         viewModelScope.launch(dispatcher) {
-            val cached = settingsRepository.activeSoul.first()  // Flow<String>.first(), NOT .value
+            val cached = settingsRepository.readActiveSoul()
             if (cached.isNotBlank()) return@launch
             settingsRepository.fetchActiveSoul()
                 .onSuccess { name ->
@@ -186,7 +185,7 @@ class ChatViewModel @Inject constructor(
     ) {
         sseJob?.cancel()
         sseJob = viewModelScope.launch(dispatcher) {
-            val baseUrl = settingsRepository.serverUrl.first()
+            val baseUrl = settingsRepository.readServerUrl()
             if (baseUrl.isEmpty()) {
                 _uiState.update { it.copy(isServerNotConfigured = true) }
                 return@launch

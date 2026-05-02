@@ -35,6 +35,8 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun saveServerUrl(url: String) = dataStore.saveServerUrl(url)
     override suspend fun saveTheme(theme: String) = dataStore.saveTheme(theme)
     override suspend fun saveActiveSoul(name: String) = dataStore.saveActiveSoul(name)
+    override suspend fun readServerUrl(): String = dataStore.readServerUrl()
+    override suspend fun readActiveSoul(): String = dataStore.readActiveSoul()
     override suspend fun fetchActiveSoul(): Result<String> = runCatching {
         apiService.getCurrentSoul().activeSoul
     }
