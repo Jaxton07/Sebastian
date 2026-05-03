@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-05-03
+
 ### Added
 - 新增 Soul 人格切换系统：Sebastian 可通过 `switch_soul` 工具在内置人格间切换，Gateway 启动时恢复上次激活的人格，Android App 实时显示当前人格名。
 
