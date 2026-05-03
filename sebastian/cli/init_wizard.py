@@ -48,9 +48,10 @@ async def run_interactive_headless_cli() -> None:
             password = typer.prompt("Password", hide_input=True)
         confirm = typer.prompt("Confirm password", hide_input=True)
 
-    from sebastian.config import settings
+    from sebastian.config import ensure_data_dir, settings
     from sebastian.store.database import get_session_factory, init_db
 
+    ensure_data_dir()
     await init_db()
     from sebastian.store.owner_store import OwnerStore
 
