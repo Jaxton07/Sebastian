@@ -1,6 +1,6 @@
 ---
-version: "1.1"
-last_updated: 2026-05-02
+version: "1.2"
+last_updated: 2026-05-03
 status: implemented
 ---
 
@@ -13,7 +13,7 @@ status: implemented
 目标：
 
 1. 将人格提示词提取为独立的 `.md` 文件（soul 文件），用户可直接用文本编辑器修改
-2. 支持多个 soul 文件并存，通过工具调用实时切换
+2. 支持多个 soul 文件并存，通过工具调用实时切换前台管家身份
 3. 内置两个预设人格：`sebastian`（男管家）和 `cortana`（女管家）
 4. 切换下个 LLM turn 立即生效，重启 gateway 后自动恢复上次激活的 soul
 
@@ -25,6 +25,7 @@ status: implemented
 - 切换为全局生效（Sebastian 是进程级单例）
 - 切换机制：仅通过 `switch_soul` 工具，不提供 Android UI（可后续扩展）
 - `switch_soul` 工具对任意激活人格均可调用（cortana 可以切换回 sebastian，或切换到其他 soul），这是预期行为
+- 当前 soul 是面向用户的第一人称前台身份，不应在日常回复中自称为 Sebastian 系统中的人格、模块或配置
 
 ---
 
@@ -75,7 +76,7 @@ class SoulLoader:
         """读取 soul 文件内容，文件不存在或 soul_name 含路径分隔符时返回 None"""
 
     def ensure_defaults(self) -> None:
-        """检查并重建所有内置 soul，缺哪个建哪个，不覆盖已有文件"""
+        """检查并重建所有内置 soul；只升级精确匹配旧版默认内容的内置文件"""
 
     current_soul: str  # 当前激活 soul 名，初始值 "sebastian"，由 lifespan 和 switch_soul 工具维护
 ```
@@ -106,7 +107,7 @@ soul_loader = SoulLoader(
 ```python
 @tool(
     name="switch_soul",
-    description="列出或切换 Sebastian 的当前人格（soul）。soul_name='list' 查看可用列表，其他值执行切换。",
+    description="列出或切换当前前台管家身份配置。soul_name='list' 查看可用列表，其他值执行切换。",
     permission_tier=PermissionTier.LOW,
     display_name="Soul",
 )
@@ -118,10 +119,14 @@ async def switch_soul(soul_name: str) -> ToolResult:
 ```
 switch_soul(soul_name)
 │
-├── 入口：调用 soul_loader.ensure_defaults()（恢复误删的内置文件）
+├── 入口：调用 soul_loader.ensure_defaults()（恢复误删的内置文件；精确升级旧默认文件）
 │
 ├── soul_name == "list"
-│   └── ToolResult(ok=True, output=soul_loader.list_souls())
+│   └── ToolResult(
+│           ok=True,
+│           output={"current": soul_loader.current_soul, "available": soul_loader.list_souls()},
+│           display="可用管家：..."
+│       )
 │
 ├── soul_name == 当前 active_soul
 │   └── ToolResult(ok=True, output="{soul_name} 已经在了，无需切换")
@@ -180,13 +185,15 @@ switch_soul(soul_name)
 
 ### 6.1 内容拆分
 
-Soul 文件**只含人格灵魂内容**，用中文书写。所有管家共用的行为约束（忠诚原则、顾问职责、委派规则、行事规范）提取为 `BASE_BUTLER_RULES` 常量，由 `Sebastian._persona_section()` 在注入 soul 内容前固定拼接——对切换机制透明，用户编辑 soul 文件时无需关心。
+Soul 文件**只含前台身份的人格灵魂内容**，用中文书写。所有管家共用的行为约束（忠诚原则、身份呈现、顾问职责、委派规则、行事规范）提取为 `BASE_BUTLER_RULES` 常量，由 `Sebastian._persona_section()` 在注入 soul 内容前固定拼接——对切换机制透明，用户编辑 soul 文件时无需关心。
+
+身份呈现规则：当前 soul 是你面对主人的第一人称身份。日常对话中不要自称为 soul、persona、配置、模块、皮肤或 Sebastian 系统的一部分；只有主人明确询问实现机制、soul 切换原理或系统架构时，才说明后台事实。
 
 ### 6.2 内置人格
 
 **`sebastian.md`**（男管家）：优雅克制，维多利亚式正式腔调，带压制的骄傲。沉默胜于评论，给主人的永远是需要的，而非仅仅舒服的。
 
-**`cortana.md`**（女管家）：敏锐温暖，观察力极强，会注意到主人没有开口问的事并在恰当时机提一次。偶有干燥机锋，从不表演聪明。与 Sebastian 形成真实反差——一个是冷峻执行者，另一个是更懂人心的谋士。
+**`cortana.md`**（女管家）：敏锐温暖，判断力强。工作时清醒利落，能读懂目标背后的真实意图并提醒遗漏；闲聊时更柔和、更有情绪回应，但不说空泛鸡汤，不夸张安慰。
 
 ### 6.3 Sebastian._persona_section() 覆盖
 

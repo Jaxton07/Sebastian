@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,58 @@ def test_ensure_defaults_creates_missing_files(souls_dir: Path, loader: SoulLoad
     loader.ensure_defaults()
     assert (souls_dir / "sebastian.md").read_text() == "You are Sebastian."
     assert (souls_dir / "cortana.md").read_text() == "You are Cortana."
+
+
+def test_ensure_defaults_upgrades_exact_legacy_builtin_content(souls_dir: Path) -> None:
+    (souls_dir / "cortana.md").write_text("Old Cortana", encoding="utf-8")
+    loader = SoulLoader(
+        souls_dir=souls_dir,
+        builtin_souls={"cortana": "New Cortana"},
+        upgradable_builtin_souls={"cortana": ("Old Cortana",)},
+    )
+
+    loader.ensure_defaults()
+
+    assert (souls_dir / "cortana.md").read_text(encoding="utf-8") == "New Cortana"
+
+
+def test_ensure_defaults_upgrades_exact_legacy_builtin_hash(souls_dir: Path) -> None:
+    (souls_dir / "cortana.md").write_text("Old Cortana", encoding="utf-8")
+    loader = SoulLoader(
+        souls_dir=souls_dir,
+        builtin_souls={"cortana": "New Cortana"},
+        upgradable_builtin_soul_hashes={"cortana": (sha256(b"Old Cortana").hexdigest(),)},
+    )
+
+    loader.ensure_defaults()
+
+    assert (souls_dir / "cortana.md").read_text(encoding="utf-8") == "New Cortana"
+
+
+def test_ensure_defaults_does_not_upgrade_customized_builtin_file(souls_dir: Path) -> None:
+    (souls_dir / "cortana.md").write_text("Custom Cortana", encoding="utf-8")
+    loader = SoulLoader(
+        souls_dir=souls_dir,
+        builtin_souls={"cortana": "New Cortana"},
+        upgradable_builtin_souls={"cortana": ("Old Cortana",)},
+    )
+
+    loader.ensure_defaults()
+
+    assert (souls_dir / "cortana.md").read_text(encoding="utf-8") == "Custom Cortana"
+
+
+def test_ensure_defaults_does_not_upgrade_non_builtin_files(souls_dir: Path) -> None:
+    (souls_dir / "alice.md").write_text("Old Cortana", encoding="utf-8")
+    loader = SoulLoader(
+        souls_dir=souls_dir,
+        builtin_souls={"cortana": "New Cortana"},
+        upgradable_builtin_souls={"cortana": ("Old Cortana",)},
+    )
+
+    loader.ensure_defaults()
+
+    assert (souls_dir / "alice.md").read_text(encoding="utf-8") == "Old Cortana"
 
 
 def test_ensure_defaults_does_not_overwrite_existing(souls_dir: Path, loader: SoulLoader) -> None:

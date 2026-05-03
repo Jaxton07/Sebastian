@@ -6,6 +6,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+def test_switch_soul_tool_description_frames_identity_as_front_stage_butler() -> None:
+    import sebastian.capabilities.tools.switch_soul  # noqa: F401  # registers tool
+    from sebastian.core.tool import get_tool
+
+    entry = get_tool("switch_soul")
+
+    assert entry is not None
+    spec, _ = entry
+    assert "当前前台管家身份配置" in spec.description
+    assert "不要在面向用户的回复中自称为 soul、persona、配置或系统组成部分" in spec.description
+
+
 def _make_state(souls_dir: Path, current_soul: str = "sebastian") -> MagicMock:
     from sebastian.core.soul_loader import SoulLoader
 
@@ -54,13 +66,15 @@ def _make_state(souls_dir: Path, current_soul: str = "sebastian") -> MagicMock:
 async def test_switch_soul_list(tmp_path: Path) -> None:
     from sebastian.capabilities.tools.switch_soul import switch_soul
 
-    state = _make_state(tmp_path)
+    state = _make_state(tmp_path, current_soul="cortana")
     with patch("sebastian.capabilities.tools.switch_soul._get_state", return_value=state):
         result = await switch_soul("list")
 
     assert result.ok is True
-    assert "sebastian" in result.output
-    assert "cortana" in result.output
+    assert result.output == {"current": "cortana", "available": ["cortana", "sebastian"]}
+    assert result.display is not None
+    assert "- cortana (当前)" in result.display
+    assert "- sebastian" in result.display
 
 
 @pytest.mark.asyncio

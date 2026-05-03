@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.12+, SQLAlchemy async, pytest-asyncio, `unittest.mock`
 
+> 2026-05-03 identity refinement: 当前 soul 是面向用户的第一人称前台管家身份，不是“Sebastian 系统里的一个人格”。`switch_soul` 工具名保留，但 description 改为运行时身份配置；内置默认 soul 文件在精确匹配旧版默认内容时自动升级，用户自定义文件不覆盖。
+
 ---
 
 ## 文件变更清单
@@ -648,7 +650,7 @@ def _get_state() -> ModuleType:
 @tool(
     name="switch_soul",
     description=(
-        "列出或切换 Sebastian 的当前人格（soul）。"
+        "列出或切换当前前台管家身份配置。"
         "soul_name='list' 查看可用列表，其他值执行切换。"
     ),
     permission_tier=PermissionTier.LOW,
@@ -768,14 +770,14 @@ pytest tests/unit/core/test_prompt_builder.py -v
 在目录结构的能力工具区（`memory_search/` 条目之后）追加：
 
 ```
-├── switch_soul/             # Sebastian 人格切换工具（Sebastian-only，permission_tier: LOW）
-│   └── __init__.py          # @tool: switch_soul(soul_name)；list 列出可用 soul；其他值切换并重建 system_prompt
+├── switch_soul/             # 前台管家身份切换工具（Sebastian-only，permission_tier: LOW）
+│   └── __init__.py          # @tool: switch_soul(soul_name)；list 返回 current + available 并标记当前项；其他值切换并重建 system_prompt
 ```
 
 在「修改导航」表末尾追加：
 
 ```
-| Sebastian 人格切换工具 | [switch_soul/\_\_init\_\_.py](switch_soul/__init__.py) |
+| 前台管家身份切换工具 | [switch_soul/\_\_init\_\_.py](switch_soul/__init__.py) |
 ```
 
 - [ ] **Step 4: 更新 `docs/architecture/spec/core/system-prompt.md`**
@@ -809,7 +811,7 @@ pytest tests/unit/core/test_prompt_builder.py -v
 
 `switch_soul(soul_name)` 为 Sebastian-only 工具（`permission_tier: LOW`）：
 
-- `"list"` → 返回可用 soul 列表
+- `"list"` → 返回 `{"current": 当前身份, "available": 全量可用身份列表}`，`display` 标记当前项
 - 已激活同名 → 返回 "xxx 已经在了"，不操作
 - 文件不存在 → `ok=False` + `Do not retry automatically`
 - 正常切换 → 写 DB + 更新 `sebastian.persona` + 重建 `system_prompt`，下个 turn 立即生效

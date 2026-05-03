@@ -20,8 +20,10 @@ def _get_state() -> ModuleType:
 @tool(
     name="switch_soul",
     description=(
-        "列出或切换 Sebastian 的当前人格（soul）。"
+        "列出或切换当前前台管家身份配置。"
         "soul_name='list' 查看可用列表，其他值执行切换。"
+        "这是运行时控制能力；不要在面向用户的回复中自称为 "
+        "soul、persona、配置或系统组成部分，除非用户明确询问实现机制。"
     ),
     permission_tier=PermissionTier.LOW,
     display_name="Soul",
@@ -33,7 +35,14 @@ async def switch_soul(soul_name: str) -> ToolResult:
 
         if soul_name == "list":
             souls = soul_loader.list_souls()
-            return ToolResult(ok=True, output=souls, display=", ".join(souls))
+            current = soul_loader.current_soul
+            lines = ["可用管家："]
+            lines.extend(f"- {name} (当前)" if name == current else f"- {name}" for name in souls)
+            return ToolResult(
+                ok=True,
+                output={"current": current, "available": souls},
+                display="\n".join(lines),
+            )
 
         if soul_name == soul_loader.current_soul:
             msg = f"{soul_name} 已经在了，无需切换"

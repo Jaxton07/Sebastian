@@ -1,6 +1,6 @@
 ---
-version: "1.1"
-last_updated: 2026-05-02
+version: "1.2"
+last_updated: 2026-05-03
 status: implemented
 ---
 
@@ -31,12 +31,14 @@ BASE_BUTLER_RULES          ← 常量，始终注入，切换 soul 不变
 soul 文件内容（中文）       ← 当前激活 soul 的人格灵魂，可热切换
 ```
 
-**`BASE_BUTLER_RULES`**（`sebastian/orchestrator/sebas.py`）包含所有管家共用的行为约束：忠诚原则、顾问职责、能力边界、委派原则、行事规范。这些是系统机制，不随人格切换而变动。
+**`BASE_BUTLER_RULES`**（`sebastian/orchestrator/sebas.py`）包含所有管家共用的行为约束：忠诚原则、身份呈现、顾问职责、能力边界、委派原则、行事规范。这些是系统机制，不随人格切换而变动。
+
+身份呈现规则规定：当前 soul 是面向用户的第一人称身份。日常对话中，Agent 不应自称为 soul、persona、配置、模块、皮肤或 Sebastian 系统的一部分；只有用户明确询问实现机制、soul 切换原理或系统架构时，才说明后台事实。
 
 **soul 文件**只含人格灵魂内容（性格、语气、自我定位），用中文书写，用户可直接编辑。内置两个预设：
 
 - `sebastian.md`：优雅克制，维多利亚式正式腔调，带压制的骄傲
-- `cortana.md`：敏锐温暖，洞察力强，偶有干燥的机锋，与 sebastian 形成真实反差
+- `cortana.md`：敏锐温暖，洞察力强，工作时清醒利落，闲聊时更有人味和情绪回应
 
 ### 2.2 运行时注入
 
@@ -146,9 +148,10 @@ def _persona_section(self) -> str:
 
 人格提示词可通过 Soul 文件热切换，无需修改源码或重启 gateway。
 
-- Soul 文件存放于 `~/.sebastian/data/souls/`，纯文本 `.md` 格式，**仅含人格灵魂内容（中文）**
+- Soul 文件存放于 `~/.sebastian/data/souls/`，纯文本 `.md` 格式，**仅含前台身份的人格灵魂内容（中文）**
 - 行为约束（`BASE_BUTLER_RULES`）由代码固定注入，不写入 soul 文件，用户编辑 soul 时无需关心
 - 内置两个预设：`sebastian.md`（男管家）、`cortana.md`（女管家）；首次启动自动创建
+- 内置文件只有在内容精确等于已知旧版默认文本时才会自动升级；用户自定义修改过的文件不覆盖
 - `app_settings` 表存储当前激活的 soul 名（key = `active_soul`，value = 文件名不含扩展名）
 - gateway 重启时自动从 DB 读取并恢复上次切换的 soul
 
@@ -160,14 +163,14 @@ def _persona_section(self) -> str:
 |---------|------|
 | `list_souls()` | 返回 souls/ 下所有 `.md` 文件名（不含扩展名），按字母升序，过滤点开头的隐藏文件 |
 | `load(name)` | 读取文件内容；不合法名称（空串、含分隔符、点开头）或文件不存在返回 `None` |
-| `ensure_defaults()` | 补建缺失的内置 soul 文件，不覆盖已有文件 |
+| `ensure_defaults()` | 补建缺失的内置 soul 文件；仅精确匹配旧版默认内容时升级，不覆盖用户自定义文件 |
 | `current_soul` | 当前激活 soul 名（内存态），由 lifespan 和 switch_soul 工具维护 |
 
 ### 6.3 switch_soul 工具
 
-`switch_soul(soul_name)` 工具（`permission_tier: LOW`）对任意激活人格均可调用（含 Cortana 切回 Sebastian）：
+`switch_soul(soul_name)` 工具（`permission_tier: LOW`）对任意激活身份均可调用（含 Cortana 切回 Sebastian）。工具描述面向模型强调它是运行时控制能力，不应让当前身份在面向用户的回复中自称为 soul/persona/配置/系统组成部分：
 
-- `"list"` → 返回可用 soul 列表
+- `"list"` → 返回 `{"current": 当前身份, "available": 全量可用身份列表}`，`display` 标记当前项
 - 已激活同名 → 返回 "xxx 已经在了"，不操作
 - 文件不存在 → `ok=False` + `Do not retry automatically`
 - 正常切换 → 写 DB + 更新 `sebastian.persona` + 重建 `system_prompt`，下个 turn 立即生效

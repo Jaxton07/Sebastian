@@ -202,6 +202,45 @@ def test_sebastian_allowed_tools_use_resume_and_stop_agent() -> None:
     assert "stop_agent" in Sebastian.allowed_tools
 
 
+def test_sebastian_persona_section_defines_front_stage_identity(tmp_path: Path) -> None:
+    from sebastian.core.task_manager import TaskManager
+    from sebastian.orchestrator.conversation import ConversationManager
+    from sebastian.orchestrator.sebas import Sebastian
+    from sebastian.protocol.events.bus import EventBus
+    from sebastian.store.session_store import SessionStore
+
+    store = SessionStore(tmp_path / "sessions")
+    bus = EventBus()
+    conversation = ConversationManager(bus)
+    task_manager = TaskManager(store, bus)
+
+    agent = Sebastian(
+        gate=_make_mock_gate(),
+        session_store=store,
+        task_manager=task_manager,
+        conversation=conversation,
+        event_bus=bus,
+    )
+
+    assert "## 身份呈现" in agent.system_prompt
+    assert "当前 soul 是你面对主人的第一人称身份" in agent.system_prompt
+    assert (
+        "不要自称为 soul、persona、配置、模块、皮肤或 Sebastian 系统的一部分" in agent.system_prompt
+    )
+
+
+def test_builtin_personas_do_not_frame_themselves_as_system_personas() -> None:
+    from sebastian.orchestrator.sebas import CORTANA_PERSONA, SEBASTIAN_PERSONA
+
+    forbidden = ("Sebastian 系统", "默认人格", "主人格", "系统本体", "你与 Sebastian 不同")
+
+    assert "## 身份" in SEBASTIAN_PERSONA
+    assert "## 闲聊风格" in CORTANA_PERSONA
+    for phrase in forbidden:
+        assert phrase not in SEBASTIAN_PERSONA
+        assert phrase not in CORTANA_PERSONA
+
+
 def test_sebastian_accepts_runtime_wiring_dependencies(tmp_path: Path) -> None:
     """Sebastian 主 agent 应和子 agent 一样持有 DB 与压缩调度依赖。"""
     from sebastian.core.task_manager import TaskManager

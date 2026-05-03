@@ -67,9 +67,7 @@ async def _restore_active_soul(
             return
         content = soul_loader.load(active)
         if content is None:
-            logger.warning(
-                "active soul file '%s.md' not found, keeping default persona", active
-            )
+            logger.warning("active soul file '%s.md' not found, keeping default persona", active)
             return
         soul_loader.current_soul = active
         sebastian_agent.persona = content
@@ -296,11 +294,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Soul restore ── 从 DB 恢复上次激活的 soul，用 builtin_souls 防止误删
     from sebastian.core.soul_loader import SoulLoader
-    from sebastian.orchestrator.sebas import CORTANA_PERSONA, SEBASTIAN_PERSONA
+    from sebastian.orchestrator.sebas import (
+        BUILTIN_SOUL_UPGRADES,
+        CORTANA_PERSONA,
+        SEBASTIAN_PERSONA,
+    )
 
     _soul_loader = SoulLoader(
         souls_dir=settings.souls_dir,
         builtin_souls={"sebastian": SEBASTIAN_PERSONA, "cortana": CORTANA_PERSONA},
+        upgradable_builtin_soul_hashes=BUILTIN_SOUL_UPGRADES,
     )
     _soul_loader.ensure_defaults()
     state.soul_loader = _soul_loader
