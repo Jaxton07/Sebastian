@@ -6,26 +6,30 @@ import com.sebastian.android.data.repository.ChatRepository
 import com.sebastian.android.data.repository.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GlobalSseDispatcherTest {
+
+    private suspend fun buildSettings(url: String): SettingsRepository =
+        mock<SettingsRepository>().also { whenever(it.readServerUrl()).thenReturn(url) }
 
     @Test
     fun `events flow fans out to multiple subscribers`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val upstream = MutableSharedFlow<SseEnvelope>(extraBufferCapacity = 64)
         val chatRepo = mock<ChatRepository>()
-        val settings = mock<SettingsRepository>()
-        whenever(settings.serverUrl).thenReturn(MutableStateFlow("http://x"))
+        val settings = buildSettings("http://x")
         whenever(chatRepo.globalStream("http://x", null)).thenReturn(upstream)
 
         val sut = GlobalSseDispatcher(chatRepo, settings, dispatcher)
@@ -55,8 +59,7 @@ class GlobalSseDispatcherTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val upstream = MutableSharedFlow<SseEnvelope>(extraBufferCapacity = 64)
         val chatRepo = mock<ChatRepository>()
-        val settings = mock<SettingsRepository>()
-        whenever(settings.serverUrl).thenReturn(MutableStateFlow("http://x"))
+        val settings = buildSettings("http://x")
         whenever(chatRepo.globalStream("http://x", null)).thenReturn(upstream)
 
         val sut = GlobalSseDispatcher(chatRepo, settings, dispatcher)
@@ -77,5 +80,21 @@ class GlobalSseDispatcherTest {
             assertEquals(ConnectionState.Disconnected, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `start does not connect when readServerUrl returns blank`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val chatRepo = mock<ChatRepository>()
+        val settings = buildSettings("")
+
+        val sut = GlobalSseDispatcher(chatRepo, settings, dispatcher)
+        val scope = TestScope(dispatcher)
+
+        sut.start(scope)
+        testScheduler.advanceUntilIdle()
+
+        verify(chatRepo, never()).globalStream(org.mockito.kotlin.any(), org.mockito.kotlin.anyOrNull())
+        assertFalse(sut.connectionState.value == ConnectionState.Connecting)
     }
 }

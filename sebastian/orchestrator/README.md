@@ -21,7 +21,7 @@ orchestrator/
 
 | 如果要修改… | 看这里 |
 |------------|--------|
-| Sebastian 人格、系统指令（Prompt） | [sebas.py](sebas.py) 的 `SEBASTIAN_PERSONA` 常量 |
+| Sebastian 前台身份、管家共用规则、系统指令（Prompt） | [sebas.py](sebas.py) 的 `BASE_BUTLER_RULES` / soul 常量 |
 | 对话入口逻辑（Session 创建/复用、消息预处理） | [sebas.py](sebas.py) 的 `chat()` 和 `get_or_create_session()` |
 | Sub-Agent 可用列表的 Prompt 注入 | [sebas.py](sebas.py) 的 `_agents_section()` |
 | 后台任务提交逻辑 | [sebas.py](sebas.py) 的 `submit_background_task()` |

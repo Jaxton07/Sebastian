@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -27,6 +28,7 @@ class SettingsDataStore @Inject constructor(
     companion object {
         val SERVER_URL = stringPreferencesKey("server_url")
         val THEME = stringPreferencesKey("theme")
+        val ACTIVE_SOUL = stringPreferencesKey("active_soul")
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -39,6 +41,10 @@ class SettingsDataStore @Inject constructor(
         prefs[THEME] ?: "system"
     }
 
+    val activeSoul: StateFlow<String> = context.dataStore.data
+        .map { prefs -> prefs[ACTIVE_SOUL] ?: "" }
+        .stateIn(scope, SharingStarted.Eagerly, "")
+
     suspend fun saveServerUrl(url: String) {
         context.dataStore.edit { it[SERVER_URL] = url }
     }
@@ -46,4 +52,14 @@ class SettingsDataStore @Inject constructor(
     suspend fun saveTheme(theme: String) {
         context.dataStore.edit { it[THEME] = theme }
     }
+
+    suspend fun saveActiveSoul(name: String) {
+        context.dataStore.edit { it[ACTIVE_SOUL] = name }
+    }
+
+    suspend fun readServerUrl(): String =
+        context.dataStore.data.first()[SERVER_URL] ?: ""
+
+    suspend fun readActiveSoul(): String =
+        context.dataStore.data.first()[ACTIVE_SOUL] ?: ""
 }

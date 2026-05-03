@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
@@ -111,6 +110,29 @@ class ChatViewModel @Inject constructor(
         observeNetwork()
         startDeltaFlusher()
         // activeSessionId starts as null → blank new conversation
+        observeActiveSoul()
+        fetchInitialSoulIfNeeded()
+    }
+
+    private fun observeActiveSoul() {
+        viewModelScope.launch(dispatcher) {
+            settingsRepository.activeSoul.collect { name ->
+                if (name.isNotBlank()) {
+                    _uiState.update { it.copy(activeSoulName = name.replaceFirstChar { c -> c.uppercase() }) }
+                }
+            }
+        }
+    }
+
+    private fun fetchInitialSoulIfNeeded() {
+        viewModelScope.launch(dispatcher) {
+            val cached = settingsRepository.readActiveSoul()
+            if (cached.isNotBlank()) return@launch
+            settingsRepository.fetchActiveSoul()
+                .onSuccess { name ->
+                    settingsRepository.saveActiveSoul(name)
+                }
+        }
     }
 
     private fun startDeltaFlusher() {
@@ -163,7 +185,7 @@ class ChatViewModel @Inject constructor(
     ) {
         sseJob?.cancel()
         sseJob = viewModelScope.launch(dispatcher) {
-            val baseUrl = settingsRepository.serverUrl.first()
+            val baseUrl = settingsRepository.readServerUrl()
             if (baseUrl.isEmpty()) {
                 _uiState.update { it.copy(isServerNotConfigured = true) }
                 return@launch
@@ -312,6 +334,11 @@ class ChatViewModel @Inject constructor(
                         displayName = event.displayName,
                     )
                 }
+            }
+
+            is StreamEvent.SoulChanged -> {
+                val name = event.soulName.replaceFirstChar { c -> c.uppercase() }
+                _uiState.update { it.copy(activeSoulName = name) }
             }
 
             is StreamEvent.TodoUpdated -> {

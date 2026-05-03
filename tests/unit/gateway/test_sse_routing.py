@@ -84,3 +84,37 @@ async def test_event_not_routed_to_unrelated_subscriber():
         pass
 
     assert len(received) == 0
+
+
+@pytest.mark.asyncio
+async def test_global_event_routed_to_per_session_subscriber():
+    """soul.changed 等无 session_id 的全局事件应广播给所有订阅者（含 per-session stream）。"""
+    bus = EventBus()
+    mgr = SSEManager(bus)
+
+    received: list[str] = []
+
+    async def consume():
+        async for chunk in mgr.stream(session_id="seb-123"):
+            received.append(chunk)
+            break
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0)
+
+    await bus.publish(
+        Event(
+            type=EventType.SOUL_CHANGED,
+            data={"soul_name": "cortana"},
+        )
+    )
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert len(received) == 1
+    assert "soul.changed" in received[0]
+    assert "cortana" in received[0]
