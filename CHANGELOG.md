@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-05-03
+
 ### Added
 - 新增 `docs/AGENTIC_DEPLOYMENT.md`，提供面向 Codex / Claude Code / Sebastian 等本机 AI Agent 的部署 Runbook，覆盖环境补齐、安装、开机自启和 Cloudflare Tunnel 等联网方案。
 
