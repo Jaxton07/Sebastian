@@ -108,9 +108,11 @@ short explanation so a non-technical user understands what they are choosing:
      systemd service and may need linger for reboot-time startup.
 6. Is the user in mainland China or another region?
    - Why it matters: package downloads from Anaconda and PyPI may be slow or
-     unreliable from mainland China. If the user is in mainland China, configure
-     Conda and pip to use a domestic mirror before creating environments or
-     installing dependencies. If the user is elsewhere, keep the default upstream
+     unreliable from mainland China, and GitHub/raw.githubusercontent.com access
+     may be unstable. If the user is in mainland China, configure Conda, pip, and
+     pip3 to use domestic mirrors before creating environments or installing
+     dependencies, and prefer a currently reachable GitHub mirror/accelerator for
+     GitHub downloads. If the user is elsewhere, keep the default upstream
      sources unless they explicitly request a mirror.
 
 Recommended default for non-technical users:
@@ -197,8 +199,14 @@ conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/m
 conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
 conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
 conda config --set show_channel_urls yes
-pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+python -m pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+command -v pip >/dev/null 2>&1 && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+command -v pip3 >/dev/null 2>&1 && pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+
+If `pip` or `pip3` is not installed in the current shell, skip only the missing
+command and continue. Always configure `python -m pip` for the Python that will
+run Sebastian.
 
 If a `sebastian` environment already exists, use it after verifying Python 3.12+.
 If it does not exist, create it:
@@ -267,6 +275,23 @@ deployment.
 ## Phase 3: Install Sebastian
 
 Use the official installer from the latest release.
+
+If the user is in mainland China, GitHub and `raw.githubusercontent.com` may be
+slow or unreliable. Prefer a currently reachable GitHub mirror/accelerator for
+downloads, but keep the original GitHub URL visible and do not skip the
+installer's checksum verification. Choose the accelerator by testing connectivity
+from the user's machine; do not assume a single mirror is always available.
+
+Example pattern:
+
+```bash
+OFFICIAL_BOOTSTRAP_URL="https://raw.githubusercontent.com/PhantomButler/Sebastian/main/bootstrap.sh"
+GITHUB_ACCELERATOR_PREFIX="<tested-github-accelerator-prefix>"
+curl -fsSL "${GITHUB_ACCELERATOR_PREFIX}${OFFICIAL_BOOTSTRAP_URL}" | bash
+```
+
+If no GitHub accelerator works, fall back to the official URL and explain that
+the remaining blocker is network access rather than a Sebastian install problem.
 
 If using Conda, make the Conda environment's Python the first `python3` on PATH
 before running the installer. This is important: Sebastian's installer creates
@@ -631,13 +656,30 @@ https://github.com/PhantomButler/Sebastian
 https://raw.githubusercontent.com/PhantomButler/Sebastian/main/bootstrap.sh
 ```
 
-If GitHub is blocked or down, stop and explain the network blocker.
+For mainland China users, try a currently reachable GitHub mirror/accelerator
+before giving up. Keep the original URL visible, use HTTPS, avoid mirrors that
+rewrite files without preserving release assets, and rely on Sebastian's release
+checksum verification before trusting downloaded artifacts.
+
+If GitHub and available accelerators are blocked or down, stop and explain the
+network blocker.
 
 ### pip Install Fails
 
 Check whether the active Python is 3.12+, whether the venv exists, and whether
 the error is a network/index problem or a compiler/system dependency problem.
 Fix the smallest missing dependency, then retry.
+
+For mainland China users, verify all available pip entrypoints are configured:
+
+```bash
+python -m pip config get global.index-url || true
+pip config get global.index-url || true
+pip3 config get global.index-url || true
+```
+
+If any installed entrypoint still points at the default PyPI index, configure it
+to a domestic mirror and retry.
 
 ### Service Install Fails
 
