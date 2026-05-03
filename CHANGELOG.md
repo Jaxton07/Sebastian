@@ -13,6 +13,9 @@
 - Agentic 部署指南明确 Conda 路径下应先把 `sebastian` Conda 环境的 Python 放到 PATH，再运行安装器，避免安装脚本误用 Ubuntu 系统 Python 并提示安装 `python3.12-venv`。
 - Agentic 部署指南新增用户地区确认；中国大陆用户会先配置 Conda / pip 国内镜像，再创建环境和安装依赖。
 
+### Fixed
+- 修复首次运行 `sebastian init --headless` 时未创建数据目录导致 SQLite 无法打开数据库文件的问题。
+
 ## [0.5.5] - 2026-05-03
 
 ### Added
