@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+- 新增 Soul 人格切换系统：Sebastian 可通过 `switch_soul` 工具在内置人格间切换，Gateway 启动时恢复上次激活的人格，Android App 实时显示当前人格名。
+
+### Changed
+- 工具调用显示名改由后端统一提供，Android 工具卡片直接使用后端 `display_name`，减少前后端显示规则分叉。
+- Memory 内部结构重组为 service facade 与 stores / writing / retrieval / consolidation / resident 子包，统一记忆检索、写入和后台 consolidation 的入口边界。
+
+### Fixed
+- 修复无 `session_id` 的 SSE 事件无法被会话流收到的问题，确保 `soul.changed` 等全局事件能广播到已订阅客户端。
+- 修复调度任务成功记录缺少完成时间时的 fallback，避免运行记录出现空成功时间。
+
 ## [0.5.4] - 2026-04-29
 
 ### Added
