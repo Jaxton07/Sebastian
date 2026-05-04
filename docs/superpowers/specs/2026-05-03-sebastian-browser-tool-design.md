@@ -29,7 +29,8 @@ permission gate, event logging, artifact path, and agent tool whitelist.
 - No browser data clearing UI or tool in the first version.
 - No upload, PDF export, network log inspection, or browser fingerprint work in the first
   version.
-- No access for Aide, Forge, or other sub-agents in the first version.
+- No access for Aide, Forge, or other sub-agents in the first version, including extension
+  sub-agents whose manifests omit `allowed_tools`.
 - No guest/family browser access in the first version. Browser state is owner-only until
   Sebastian has per-user browser profiles and user identity in tool context.
 
@@ -52,9 +53,14 @@ The package has three internal layers:
   cannot bypass safety rules.
 - Native tools: expose a small set of registered tools to the model.
 
-The browser tools are globally registered by the existing tool loader, but only Sebastian
-receives them in its `allowed_tools` list in `sebastian/orchestrator/sebas.py`. They are not
-added to Aide, Forge, or sub-agent manifests.
+The browser tools are globally registered by the existing tool loader, but they must be marked
+with explicit Sebastian-only visibility/execution metadata, for example `sebastian_only=True`
+or an equivalent `visible_to_agent_types={"sebastian"}` rule. Sebastian also receives them in
+its `allowed_tools` list in `sebastian/orchestrator/sebas.py`, but `allowed_tools` is not the
+security boundary by itself: extension sub-agents currently get `allowed_tools=None` when their
+manifest omits the field, which means unrestricted by the normal loader rules. Therefore
+PolicyGate/spec generation must hide browser tools from any non-Sebastian context and execution
+must reject direct non-Sebastian browser tool calls even when `allowed_tools is None`.
 
 Because persistent browser state can contain the owner's authenticated sessions, the first
 version should be owner-only. Guest or family identities must not be able to drive the shared
@@ -440,7 +446,9 @@ as test-authorized.
 
 ## Acceptance Criteria
 
-- Sebastian can use the browser tools; Aide and Forge cannot see them by default.
+- Sebastian can use the browser tools; Aide, Forge, built-in sub-agents, and extension
+  sub-agents cannot see or execute them, including the `allowed_tools=None` unrestricted
+  extension-agent case.
 - Under the current single-owner auth model, only authenticated owner turns can reach browser
   tools. Before guest/family users exist, browser access must either remain owner-only or
   `ToolCallContext` must carry user identity for an explicit owner gate.
