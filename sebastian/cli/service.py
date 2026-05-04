@@ -190,7 +190,11 @@ def _systemd_state() -> ServiceState:
         kind="systemd",
         installed=True,
         active=state == "active",
-        status_text=f"systemd user service: {state}",
+        status_text=(
+            f"systemd user service: {state}\n"
+            "  status:  systemctl --user status sebastian\n"
+            "  restart: sebastian service restart"
+        ),
     )
 
 
@@ -248,6 +252,11 @@ def _uninstall_launchd() -> None:
 
 def _launchd_state() -> ServiceState:
     plist = _launchd_plist_path()
+    command_hints = (
+        "\n"
+        "  status:  launchctl list com.sebastian\n"
+        "  restart: sebastian service restart"
+    )
     if not plist.exists():
         return ServiceState(
             kind="launchd",
@@ -267,7 +276,7 @@ def _launchd_state() -> ServiceState:
             kind="launchd",
             installed=True,
             active=False,
-            status_text="launchd: installed but not loaded",
+            status_text=f"launchd: installed but not loaded{command_hints}",
         )
     fields = proc.stdout.split(None, 1)
     first_field = fields[0] if fields else ""
@@ -276,13 +285,13 @@ def _launchd_state() -> ServiceState:
             kind="launchd",
             installed=True,
             active=False,
-            status_text="launchd: loaded but not running",
+            status_text=f"launchd: loaded but not running{command_hints}",
         )
     return ServiceState(
         kind="launchd",
         installed=True,
         active=True,
-        status_text=f"launchd:\n{proc.stdout}",
+        status_text=f"launchd: running{command_hints}",
     )
 
 

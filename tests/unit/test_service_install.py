@@ -153,7 +153,31 @@ def test_systemd_service_state_reports_installed_and_active(
     assert state.kind == "systemd"
     assert state.installed is True
     assert state.active is True
-    assert state.status_text == "systemd user service: active"
+    assert "systemd user service: active" in state.status_text
+    assert "systemctl --user status sebastian" in state.status_text
+    assert "sebastian service restart" in state.status_text
+
+
+def test_systemd_status_output_suggests_correct_commands(
+    linux_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.cli import service
+
+    unit = linux_env / ".config/systemd/user/sebastian.service"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text("[Unit]\n")
+    monkeypatch.setattr(
+        service.subprocess,
+        "run",
+        lambda *args, **kwargs: MagicMock(returncode=0, stdout="active\n", stderr=""),
+    )
+
+    output = service.status()
+
+    assert "systemd user service: active" in output
+    assert "systemctl --user status sebastian" in output
+    assert "sebastian service restart" in output
 
 
 def test_launchd_service_state_reports_loaded(
@@ -201,7 +225,9 @@ def test_launchd_service_state_reports_loaded_but_not_running(
     assert state.kind == "launchd"
     assert state.installed is True
     assert state.active is False
-    assert state.status_text == "launchd: loaded but not running"
+    assert "launchd: loaded but not running" in state.status_text
+    assert "launchctl list com.sebastian" in state.status_text
+    assert "sebastian service restart" in state.status_text
 
 
 def test_restart_systemd_service_uses_systemctl(
