@@ -63,12 +63,15 @@ from sebastian.capabilities.registry import CapabilityRegistry
 
 registry = CapabilityRegistry()
 
-# 获取所有工具 spec（直接传给 Anthropic API）
+# 获取所有工具 spec（兼容入口，显式按 ALL_TOOLS 取全量工具）
 tool_specs = registry.get_all_tool_specs()
 
 # 调用工具
 result = await registry.call("file_read", path="/foo/bar.txt")
 # result.ok, result.output, result.error
+
+# 按白名单获取工具；allowed_tools=None 表示不暴露能力工具，ALL_TOOLS 表示全量能力工具
+tool_specs = registry.get_callable_specs(allowed_tools={"Read"}, allowed_skills=None)
 
 # 注入 MCP 工具（由 app.py lifespan 调用）
 await registry.register_mcp_tools(mcp_client)
