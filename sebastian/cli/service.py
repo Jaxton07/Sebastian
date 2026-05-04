@@ -1,4 +1,4 @@
-"""``sebastian service`` subcommands — install/uninstall/start/stop/status.
+"""``sebastian service`` subcommands — install/uninstall/start/stop/restart/status.
 
 User-level systemd units (Linux) and launchd LaunchAgents (macOS). No sudo.
 """
@@ -84,6 +84,16 @@ def stop() -> None:
         _run(["systemctl", "--user", "stop", "sebastian.service"])
     elif sys.platform == "darwin":
         _run(["launchctl", "stop", "com.sebastian"])
+    else:
+        raise _platform_unsupported()
+
+
+def restart() -> None:
+    if sys.platform.startswith("linux"):
+        _run(["systemctl", "--user", "restart", "sebastian.service"])
+    elif sys.platform == "darwin":
+        _run(["launchctl", "stop", "com.sebastian"])
+        _run(["launchctl", "start", "com.sebastian"])
     else:
         raise _platform_unsupported()
 
@@ -338,6 +348,17 @@ def cmd_stop() -> None:
     except ServiceError as e:
         typer.echo(f"❌ {e}", err=True)
         raise typer.Exit(code=1) from e
+
+
+@app.command("restart")
+def cmd_restart() -> None:
+    """重启 Sebastian 系统服务。"""
+    try:
+        restart()
+    except ServiceError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=1) from e
+    typer.echo("✓ Sebastian 系统服务已重启")
 
 
 @app.command("status")
