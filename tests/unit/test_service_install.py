@@ -14,8 +14,14 @@ from sebastian.cli.service_templates import (
 def test_systemd_unit_contains_exec_start(tmp_path: Path) -> None:
     install_bin = tmp_path / ".venv" / "bin" / "sebastian"
     logs_dir = tmp_path / "logs"
-    unit = render_systemd_unit(install_bin=install_bin, logs_dir=logs_dir)
+    env_file = tmp_path / ".env"
+    unit = render_systemd_unit(
+        install_bin=install_bin,
+        logs_dir=logs_dir,
+        env_file=env_file,
+    )
     assert f"ExecStart={install_bin} serve" in unit
+    assert f"EnvironmentFile=-{env_file}" in unit
     assert "Restart=on-failure" in unit
     assert f"StandardOutput=append:{logs_dir / 'service.out.log'}" in unit
     assert f"StandardError=append:{logs_dir / 'service.err.log'}" in unit
@@ -25,9 +31,18 @@ def test_systemd_unit_contains_exec_start(tmp_path: Path) -> None:
 def test_launchd_plist_renders_paths(tmp_path: Path) -> None:
     install_bin = Path("/Users/eric/.sebastian/app/.venv/bin/sebastian")
     logs_dir = Path("/Users/eric/.sebastian/logs")
-    plist = render_launchd_plist(install_bin=install_bin, logs_dir=logs_dir)
+    env_file = Path("/Users/eric/.sebastian/.env")
+    plist = render_launchd_plist(
+        install_bin=install_bin,
+        logs_dir=logs_dir,
+        env_file=env_file,
+    )
     assert "<key>Label</key><string>com.sebastian</string>" in plist
     assert f"<string>{install_bin}</string>" in plist
+    assert "<key>EnvironmentVariables</key>" in plist
+    assert "<key>SEBASTIAN_ENV_FILE</key>" in plist
+    assert f"<string>{env_file}</string>" in plist
+    assert "<key>WorkingDirectory</key>" in plist
     assert f"<string>{logs_dir / 'service.out.log'}</string>" in plist
     assert "<key>RunAtLoad</key><true/>" in plist
     assert "<key>KeepAlive</key>" in plist
@@ -64,9 +79,11 @@ def test_install_writes_systemd_unit_on_linux(linux_env: Path, tmp_path: Path) -
     from sebastian.cli import service
 
     fake_dir = _fake_install_dir(tmp_path)
+    data_dir = tmp_path / "data-root"
     with (
         patch.object(service.subprocess, "run", return_value=MagicMock(returncode=0)) as run,
         patch("sebastian.cli.updater.resolve_install_dir", return_value=fake_dir),
+        patch("sebastian.config.settings.sebastian_data_dir", str(data_dir)),
     ):
         service.install()
 
@@ -75,6 +92,7 @@ def test_install_writes_systemd_unit_on_linux(linux_env: Path, tmp_path: Path) -
     content = unit.read_text()
     assert "Sebastian personal AI butler" in content
     assert str(fake_dir / ".venv" / "bin" / "sebastian") in content
+    assert f"EnvironmentFile=-{data_dir / '.env'}" in content
     cmds = [call.args[0] for call in run.call_args_list]
     assert ["systemctl", "--user", "daemon-reload"] in cmds
     assert ["systemctl", "--user", "enable", "--now", "sebastian.service"] in cmds
@@ -84,9 +102,11 @@ def test_install_writes_plist_on_macos(macos_env: Path, tmp_path: Path) -> None:
     from sebastian.cli import service
 
     fake_dir = _fake_install_dir(tmp_path)
+    data_dir = tmp_path / "data-root"
     with (
         patch.object(service.subprocess, "run", return_value=MagicMock(returncode=0)) as run,
         patch("sebastian.cli.updater.resolve_install_dir", return_value=fake_dir),
+        patch("sebastian.config.settings.sebastian_data_dir", str(data_dir)),
     ):
         service.install()
 
@@ -95,6 +115,8 @@ def test_install_writes_plist_on_macos(macos_env: Path, tmp_path: Path) -> None:
     content = plist.read_text()
     assert "com.sebastian" in content
     assert str(fake_dir / ".venv" / "bin" / "sebastian") in content
+    assert "<key>SEBASTIAN_ENV_FILE</key>" in content
+    assert f"<string>{data_dir / '.env'}</string>" in content
     cmds = [call.args[0] for call in run.call_args_list]
     assert ["launchctl", "load", "-w", str(plist)] in cmds
 

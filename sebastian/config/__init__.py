@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _user_env_file() -> Path:
+    explicit = os.environ.get("SEBASTIAN_ENV_FILE")
+    if explicit:
+        return Path(explicit).expanduser()
+    data_root = os.environ.get("SEBASTIAN_DATA_DIR")
+    if data_root:
+        return Path(data_root).expanduser() / ".env"
+    return Path.home() / ".sebastian" / ".env"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", _user_env_file()),
         env_file_encoding="utf-8",
         extra="ignore",
     )

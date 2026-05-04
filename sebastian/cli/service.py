@@ -103,7 +103,14 @@ def _install_systemd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     unit.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    unit.write_text(render_systemd_unit(install_bin=install_bin, logs_dir=settings.logs_dir))
+    env_file = settings.data_dir / ".env"
+    unit.write_text(
+        render_systemd_unit(
+            install_bin=install_bin,
+            logs_dir=settings.logs_dir,
+            env_file=env_file,
+        )
+    )
     _run(["systemctl", "--user", "daemon-reload"])
     _run(["systemctl", "--user", "enable", "--now", "sebastian.service"])
     _check_linger()
@@ -169,7 +176,14 @@ def _install_launchd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     plist.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    plist.write_text(render_launchd_plist(install_bin=install_bin, logs_dir=settings.logs_dir))
+    env_file = settings.data_dir / ".env"
+    plist.write_text(
+        render_launchd_plist(
+            install_bin=install_bin,
+            logs_dir=settings.logs_dir,
+            env_file=env_file,
+        )
+    )
     _run(["launchctl", "load", "-w", str(plist)])
 
 

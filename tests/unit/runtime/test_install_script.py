@@ -48,6 +48,7 @@ exit 1
 """
     )
     (fake_bin / "python3").chmod(0o755)
+    data_root = tmp_path / "custom-data-root"
 
     result = subprocess.run(
         [str(scripts / "install.sh")],
@@ -55,7 +56,8 @@ exit 1
         env={
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
             "CALLS_LOG": str(calls),
-            "HOME": os.environ.get("HOME", str(tmp_path)),
+            "HOME": str(tmp_path / "home"),
+            "SEBASTIAN_DATA_DIR": str(data_root),
         },
         capture_output=True,
         text=True,
@@ -69,3 +71,9 @@ exit 1
     # macOS / 有 $DISPLAY → sebastian serve；headless Linux → sebastian init --headless
     assert ("sebastian serve" in log) or ("sebastian init --headless" in log)
     assert "service install" not in log
+    env_file = data_root / ".env"
+    assert env_file.is_file()
+    env_content = env_file.read_text()
+    assert f"SEBASTIAN_DATA_DIR={data_root}" in env_content
+    assert "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:7890" in env_content
+    assert "# SEBASTIAN_BROWSER_DNS_MODE=auto" in env_content

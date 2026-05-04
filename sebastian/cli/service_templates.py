@@ -16,6 +16,7 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStart={install_bin} serve
+EnvironmentFile=-{env_file}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:{out_log}
@@ -36,6 +37,11 @@ _LAUNCHD_PLIST_TEMPLATE = """\
     <string>{install_bin}</string>
     <string>serve</string>
   </array>
+  <key>WorkingDirectory</key><string>{working_dir}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SEBASTIAN_ENV_FILE</key><string>{env_file}</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key>
   <dict>
@@ -48,17 +54,20 @@ _LAUNCHD_PLIST_TEMPLATE = """\
 """
 
 
-def render_systemd_unit(*, install_bin: Path, logs_dir: Path) -> str:
+def render_systemd_unit(*, install_bin: Path, logs_dir: Path, env_file: Path) -> str:
     return (
         _SYSTEMD_UNIT_TEMPLATE.replace("{install_bin}", str(install_bin))
+        .replace("{env_file}", str(env_file))
         .replace("{out_log}", str(logs_dir / "service.out.log"))
         .replace("{err_log}", str(logs_dir / "service.err.log"))
     )
 
 
-def render_launchd_plist(*, install_bin: Path, logs_dir: Path) -> str:
+def render_launchd_plist(*, install_bin: Path, logs_dir: Path, env_file: Path) -> str:
     return (
         _LAUNCHD_PLIST_TEMPLATE.replace("{install_bin}", str(install_bin))
+        .replace("{env_file}", str(env_file))
+        .replace("{working_dir}", str(env_file.parent))
         .replace("{out_log}", str(logs_dir / "service.out.log"))
         .replace("{err_log}", str(logs_dir / "service.err.log"))
     )

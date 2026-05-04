@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 
@@ -28,6 +29,60 @@ def test_database_url_uses_data_dir(tmp_path: Path) -> None:
 
     s = Settings(sebastian_data_dir=str(tmp_path))
     assert str(tmp_path) in s.database_url
+
+
+def test_module_settings_loads_explicit_user_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / "installed.env"
+    data_dir = tmp_path / "sebastian-data"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SEBASTIAN_OWNER_NAME=Installed Owner",
+                f"SEBASTIAN_DATA_DIR={data_dir}",
+                "SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:7890",
+            ]
+        )
+    )
+    monkeypatch.setenv("SEBASTIAN_ENV_FILE", str(env_file))
+    monkeypatch.delenv("SEBASTIAN_OWNER_NAME", raising=False)
+    monkeypatch.delenv("SEBASTIAN_DATA_DIR", raising=False)
+    monkeypatch.delenv("SEBASTIAN_BROWSER_UPSTREAM_PROXY", raising=False)
+
+    import sebastian.config as config
+
+    try:
+        config = importlib.reload(config)
+
+        assert config.settings.sebastian_owner_name == "Installed Owner"
+        assert config.settings.data_dir == data_dir.resolve()
+        assert config.settings.sebastian_browser_upstream_proxy == "http://127.0.0.1:7890"
+    finally:
+        monkeypatch.delenv("SEBASTIAN_ENV_FILE", raising=False)
+        importlib.reload(config)
+
+
+def test_module_settings_real_env_overrides_user_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / "installed.env"
+    env_file.write_text("SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://file-proxy:7890\n")
+    monkeypatch.setenv("SEBASTIAN_ENV_FILE", str(env_file))
+    monkeypatch.setenv("SEBASTIAN_BROWSER_UPSTREAM_PROXY", "http://env-proxy:7890")
+
+    import sebastian.config as config
+
+    try:
+        config = importlib.reload(config)
+
+        assert config.settings.sebastian_browser_upstream_proxy == "http://env-proxy:7890"
+    finally:
+        monkeypatch.delenv("SEBASTIAN_ENV_FILE", raising=False)
+        monkeypatch.delenv("SEBASTIAN_BROWSER_UPSTREAM_PROXY", raising=False)
+        importlib.reload(config)
 
 
 def test_jwt_create_and_decode() -> None:
