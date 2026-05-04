@@ -54,10 +54,19 @@ color_grn "✓ 依赖安装完成"
 
 # 5. 数据目录定位
 DATA_ROOT="${SEBASTIAN_DATA_DIR:-$HOME/.sebastian}"
+case "${DATA_ROOT}" in
+  "~") DATA_ROOT="${HOME}" ;;
+  "~/"*) DATA_ROOT="${HOME}/${DATA_ROOT#~/}" ;;
+esac
+case "${DATA_ROOT}" in
+  /*) ;;
+  *) DATA_ROOT="${PROJECT_ROOT}/${DATA_ROOT}" ;;
+esac
+mkdir -p "${DATA_ROOT}"
+DATA_ROOT="$(cd "${DATA_ROOT}" && pwd)"
 USER_DATA_DIR="${DATA_ROOT}/data"
 ENV_FILE="${DATA_ROOT}/.env"
 if [[ ! -f "${ENV_FILE}" ]]; then
-  mkdir -p "${DATA_ROOT}"
   {
     printf "# Sebastian user runtime config.\n"
     printf "# This file is loaded by service-managed starts.\n"

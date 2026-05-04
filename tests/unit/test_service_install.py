@@ -180,6 +180,30 @@ def test_launchd_service_state_reports_loaded(
     assert state.status_text.startswith("launchd:")
 
 
+def test_launchd_service_state_reports_loaded_but_not_running(
+    macos_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.cli import service
+
+    plist = macos_env / "Library/LaunchAgents/com.sebastian.plist"
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text("<plist/>")
+
+    def fake_run(cmd, capture_output=False, text=False, check=False):
+        assert cmd == ["launchctl", "list", "com.sebastian"]
+        return MagicMock(returncode=0, stdout="-\t0\tcom.sebastian\n", stderr="")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    state = service.get_service_state()
+
+    assert state.kind == "launchd"
+    assert state.installed is True
+    assert state.active is False
+    assert state.status_text == "launchd: loaded but not running"
+
+
 def test_restart_systemd_service_uses_systemctl(
     linux_env: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -223,6 +247,33 @@ def test_restart_launchd_service_stops_and_starts(
 
     assert ["launchctl", "stop", "com.sebastian"] in calls
     assert ["launchctl", "start", "com.sebastian"] in calls
+
+
+def test_restart_launchd_starts_when_stop_reports_not_running(
+    macos_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.cli import service
+
+    plist = macos_env / "Library/LaunchAgents/com.sebastian.plist"
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text("<plist/>")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *_args, **_kwargs):
+        calls.append(cmd)
+        if cmd == ["launchctl", "stop", "com.sebastian"]:
+            return MagicMock(returncode=3, stdout="", stderr="not running")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    service.restart()
+
+    assert calls == [
+        ["launchctl", "stop", "com.sebastian"],
+        ["launchctl", "start", "com.sebastian"],
+    ]
 
 
 def test_uninstall_removes_unit_on_linux(linux_env: Path) -> None:

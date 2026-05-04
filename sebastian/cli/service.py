@@ -92,7 +92,7 @@ def restart() -> None:
     if sys.platform.startswith("linux"):
         _run(["systemctl", "--user", "restart", "sebastian.service"])
     elif sys.platform == "darwin":
-        _run(["launchctl", "stop", "com.sebastian"])
+        subprocess.run(["launchctl", "stop", "com.sebastian"], check=False)
         _run(["launchctl", "start", "com.sebastian"])
     else:
         raise _platform_unsupported()
@@ -268,6 +268,15 @@ def _launchd_state() -> ServiceState:
             installed=True,
             active=False,
             status_text="launchd: installed but not loaded",
+        )
+    fields = proc.stdout.split(None, 1)
+    first_field = fields[0] if fields else ""
+    if not first_field.isdigit():
+        return ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text="launchd: loaded but not running",
         )
     return ServiceState(
         kind="launchd",
