@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-05-04
+
 ### Added
 - 新增 `sebastian version` / `sebastian --version`，方便部署和升级后确认当前版本。
 
