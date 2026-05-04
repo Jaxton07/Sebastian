@@ -16,8 +16,12 @@ tools/
 ├── _path_utils.py           # 统一文件路径解析（相对路径 → workspace_dir，所有工具必须使用）
 ├── _session_lock.py         # Session 级 asyncio.Lock，防止并发 turn 冲突
 ├── _session_permission.py   # stop/resume 操作的 depth 边界权限校验（被 stop_agent/resume_agent 调用）
-├── browser/                 # 浏览器运行时（当前不含 @tool，不暴露给 Agent）
-│   └── manager.py           # BrowserSessionManager：Playwright 持久化 context + FilteringProxy 生命周期
+├── browser/                 # 浏览器运行时 + Sebastian 内置 browser_* 工具
+│   ├── __init__.py          # @tool: browser_open / observe / act / capture / downloads
+│   ├── artifacts.py         # 浏览器截图 / 下载 artifact 上传与发送
+│   ├── downloads.py         # 下载列表与发送 helper
+│   ├── manager.py           # BrowserSessionManager：Playwright context / 下载 / 截图 / action helper
+│   └── observe.py           # 当前页面内容观察与敏感表单脱敏
 │
 │   # ── 能力工具（manifest allowed_tools 白名单管控）────────────────
 ├── bash/                    # Shell 命令执行工具（permission_tier: MODEL_DECIDES）
@@ -130,10 +134,10 @@ return ToolResult(
 
 | 类别 | 工具 | 控制方式 | 说明 |
 |------|------|---------|------|
-| **能力工具** | Read / Write / Edit / Bash / Glob / Grep / todo_write / todo_read / send_file / capture_screenshot_and_send 等 | manifest `allowed_tools` 白名单 | 决定 Agent 的领域执行范围 |
+| **能力工具** | Read / Write / Edit / Bash / Glob / Grep / todo_write / todo_read / send_file / browser_* / capture_screenshot_and_send 等 | manifest `allowed_tools` 白名单 | 决定 Agent 的领域执行范围 |
 | **协议工具** | ask_parent / resume_agent / stop_agent / spawn_sub_agent / check_sub_agents / inspect_session（sub-agent 自动注入）；delegate_to_agent（Sebastian 手工配置） | 按 Agent 层级角色分配 | 决定 Agent 在层级中的通信与监控方式 |
 
-`capture_screenshot_and_send` 当前只加入 `Sebastian.allowed_tools`，不要加入 sub-agent manifest。
+`capture_screenshot_and_send` 与 `browser_*` 当前只加入 `Sebastian.allowed_tools`，不要加入 sub-agent manifest。
 
 **`manifest.toml` 的 `allowed_tools` 只需声明能力工具。**
 协议工具由 `_loader.py` 根据 Agent 角色自动追加，无需手动填写。

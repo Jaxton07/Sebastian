@@ -72,6 +72,12 @@ routes/
 | `POST /auth/login` — 密码登录，获取 JWT | [turns.py](turns.py) |
 | `POST /turns` — 发送消息，触发主对话轮次（effort 由 binding 决定） | [turns.py](turns.py) |
 
+## Artifact / 附件语义
+
+- `POST /attachments` 的 `kind` 支持 `image`、`text_file`、`download`。其中 `download` 用于浏览器下载等通用文件，不要求能被 Android 预览。
+- 工具返回 `ToolResult.output["artifact"]` 时，stream helper 会把 artifact 原样写入 timeline 的 `tool_result.artifact`，因此 `GET /sessions/{id}` 的 `timeline_items` 能恢复同一个附件入口。
+- 同一个 artifact 也会透传到实时 SSE `tool.executed.artifact`，客户端可在不重新拉取整段 history 的情况下把工具卡替换为图片或文件块。
+
 ---
 
 > 修改本目录或模块后，请同步更新此 README。

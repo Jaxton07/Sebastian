@@ -35,10 +35,47 @@ class _FakePage:
         self.url = "about:blank"
         self.final_url = final_url
         self.closed = False
+        self.handlers: dict[str, Any] = {}
 
     async def goto(self, url: str, *, timeout: int) -> object:
         self.calls.append(f"goto:{url}:{timeout}")
         self.url = self.final_url
+        return object()
+
+    async def click(self, target: str, *, timeout: int) -> object:
+        self.calls.append(f"click:{target}:{timeout}")
+        return object()
+
+    async def fill(self, target: str, value: str, *, timeout: int) -> object:
+        self.calls.append(f"fill:{target}:{value}:{timeout}")
+        return object()
+
+    async def press(self, target: str, key: str, *, timeout: int) -> object:
+        self.calls.append(f"press:{target}:{key}:{timeout}")
+        return object()
+
+    async def select_option(self, target: str, value: str, *, timeout: int) -> object:
+        self.calls.append(f"select:{target}:{value}:{timeout}")
+        return object()
+
+    async def wait_for_selector(self, target: str, *, timeout: int) -> object:
+        self.calls.append(f"wait_for_selector:{target}:{timeout}")
+        return object()
+
+    async def go_back(self, *, timeout: int) -> object:
+        self.calls.append(f"go_back:{timeout}")
+        return object()
+
+    async def go_forward(self, *, timeout: int) -> object:
+        self.calls.append(f"go_forward:{timeout}")
+        return object()
+
+    async def reload(self, *, timeout: int) -> object:
+        self.calls.append(f"reload:{timeout}")
+        return object()
+
+    async def screenshot(self, *, path: str, full_page: bool) -> object:
+        self.calls.append(f"screenshot:{path}:{full_page}")
         return object()
 
     async def close(self) -> None:
@@ -47,6 +84,10 @@ class _FakePage:
 
     async def title(self) -> str:
         return "Example Page"
+
+    def on(self, event: str, callback: Any) -> None:
+        self.calls.append(f"page_on:{event}")
+        self.handlers[event] = callback
 
 
 class _BlockingPage(_FakePage):
@@ -78,6 +119,7 @@ class _FakeContext:
         self.calls = calls
         self.page = page or _FakePage(calls)
         self.launch_kwargs: dict[str, Any] | None = None
+        self.handlers: dict[str, Any] = {}
 
     async def new_page(self) -> _FakePage:
         self.calls.append("new_page")
@@ -85,6 +127,10 @@ class _FakeContext:
 
     async def close(self) -> None:
         self.calls.append("context_close")
+
+    def on(self, event: str, callback: Any) -> None:
+        self.calls.append(f"context_on:{event}")
+        self.handlers[event] = callback
 
 
 class _FakeChromium:
@@ -285,6 +331,8 @@ async def test_open_launches_persistent_context_with_profile_dir_and_proxy(
     }
     assert manager._page is context.page
     assert manager._current_page_owned_by_browser_tool is True
+    assert "download" in context.page.handlers
+    assert "page" in context.handlers
 
 
 @pytest.mark.asyncio
@@ -511,3 +559,21 @@ def test_parse_viewport_rejects_invalid_setting(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid browser viewport"):
         manager.parse_viewport()
+
+
+@pytest.mark.asyncio
+async def test_download_recorder_uses_page_download_event(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    await manager.open("https://example.com/")
+
+    assert "page_on:download" in calls
+    assert "context_on:download" not in calls

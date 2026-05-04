@@ -50,6 +50,14 @@ gateway/
 | 附件上传/下载（`POST /attachments` 支持 image / text_file / download，`GET /attachments/{id}`） | [routes/attachments.py](routes/attachments.py) |
 | Session turn 附件（`POST /sessions/{id}/turns` 接受 `attachment_ids`，复用与 `POST /turns` 相同的校验与写入路径） | [routes/sessions.py](routes/sessions.py) |
 
+### Artifact 透传语义
+
+工具返回 `ToolResult.output["artifact"]` 时，Gateway 不改写 artifact 内容：
+
+- 持久化 timeline 时写入 `tool_result.artifact`，由 `GET /api/v1/sessions/{id}` 的 `timeline_items` 原样返回。
+- 实时 SSE 成功事件写入 `tool.executed.artifact`，客户端可用同一个 payload 原地更新工具卡。
+- 附件 artifact 的 `kind` 支持 `image` / `text_file` / `download`；`download` 表示通用下载文件，通过 `download_url` 指向 `GET /api/v1/attachments/{id}`。
+
 ## 子模块
 
 - [routes/](routes/README.md) — HTTP 路由处理层，涵盖认证、会话、消息、SSE、审批、Agent 查询、LLM 配置、调试等端点
