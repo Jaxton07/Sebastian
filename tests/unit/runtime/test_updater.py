@@ -239,7 +239,15 @@ def test_try_restart_daemon_restarts_active_service(
 ) -> None:
     messages: list[str] = []
 
-    monkeypatch.setattr("sebastian.cli.service.is_service_active", lambda: True)
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: service.ServiceState(
+            kind="launchd",
+            installed=True,
+            active=True,
+            status_text="launchd: active",
+        ),
+    )
     restart = MagicMock()
     monkeypatch.setattr("sebastian.cli.service.restart", restart)
 
@@ -257,7 +265,15 @@ def test_try_restart_daemon_reports_service_restart_failure_without_pid_fallback
     def fail_if_pid_fallback_is_attempted(path: Path) -> int | None:
         raise AssertionError(f"legacy PID fallback should not be attempted: {path}")
 
-    monkeypatch.setattr("sebastian.cli.service.is_service_active", lambda: True)
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: service.ServiceState(
+            kind="launchd",
+            installed=True,
+            active=True,
+            status_text="launchd: active",
+        ),
+    )
     monkeypatch.setattr(
         "sebastian.cli.service.restart",
         lambda: (_ for _ in ()).throw(service.ServiceError("boom")),
@@ -276,7 +292,15 @@ def test_try_restart_daemon_falls_back_to_pid_daemon(
 ) -> None:
     messages: list[str] = []
 
-    monkeypatch.setattr("sebastian.cli.service.is_service_active", lambda: False)
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: service.ServiceState(
+            kind="launchd",
+            installed=False,
+            active=False,
+            status_text="launchd: not installed",
+        ),
+    )
     monkeypatch.setattr(
         "sebastian.cli.daemon.pid_path",
         lambda run_dir: tmp_path / "sebastian.pid",
@@ -291,7 +315,13 @@ def test_try_restart_daemon_falls_back_to_pid_daemon(
     updater._try_restart_daemon(messages.append)
 
     stop.assert_called_once()
-    assert run.call_args.args[0][-3:] == ["sebastian", "serve", "--daemon"]
+    assert run.call_args.args[0] == [
+        updater.sys.executable,
+        "-m",
+        "sebastian.main",
+        "serve",
+        "--daemon",
+    ]
 
 
 def test_try_restart_daemon_prints_service_guidance_when_service_installed_but_inactive(
@@ -300,17 +330,51 @@ def test_try_restart_daemon_prints_service_guidance_when_service_installed_but_i
 ) -> None:
     messages: list[str] = []
 
-    monkeypatch.setattr("sebastian.cli.service.is_service_active", lambda: False)
-    monkeypatch.setattr("sebastian.cli.service.is_service_installed", lambda: True)
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: service.ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text="launchd: installed but not loaded",
+        ),
+    )
     monkeypatch.setattr(
         "sebastian.cli.daemon.pid_path",
         lambda run_dir: tmp_path / "sebastian.pid",
     )
-    monkeypatch.setattr("sebastian.cli.daemon.read_pid", lambda path: None)
+    read_pid = MagicMock()
+    monkeypatch.setattr("sebastian.cli.daemon.read_pid", read_pid)
 
     updater._try_restart_daemon(messages.append)
 
+    read_pid.assert_not_called()
     assert any("sebastian service start" in message for message in messages)
+
+
+def test_try_restart_daemon_reports_service_probe_failure_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: (_ for _ in ()).throw(service.ServiceError("probe failed")),
+    )
+    read_pid = MagicMock()
+    run = MagicMock()
+    monkeypatch.setattr("sebastian.cli.daemon.read_pid", read_pid)
+    monkeypatch.setattr(updater.subprocess, "run", run)
+
+    updater._try_restart_daemon(messages.append)
+
+    read_pid.assert_not_called()
+    run.assert_not_called()
+    assert any("系统服务状态检查失败" in message for message in messages)
+    assert any(
+        "sebastian service status" in message or "sebastian service restart" in message
+        for message in messages
+    )
 
 
 def test_run_update_already_latest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
