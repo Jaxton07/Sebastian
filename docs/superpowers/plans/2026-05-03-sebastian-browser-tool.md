@@ -522,7 +522,7 @@ or a narrower boolean such as:
 sebastian_only: bool = False
 ```
 
-If this metadata lives on `ToolSpec`, update `ToolSpec.__slots__`, constructor, and `@tool(...)` decorator arguments together.
+If this metadata lives on `ToolSpec`, update `ToolSpec.__slots__`, constructor, and `@tool(...)` decorator arguments together. `sebastian_only=True` is not supported by the current `@tool` decorator; it is introduced by this task if that boolean design is chosen. If the implementation chooses `visible_to_agent_types` instead, all browser tool declarations in Task 7 must use that final API name consistently.
 
 Visibility requirements:
 
@@ -1199,6 +1199,22 @@ async def test_download_send_binds_attachment_to_session(fake_tool_context, fake
     )
 ```
 
+Test tool metadata and error handling:
+
+```python
+def test_browser_tools_have_display_names():
+    for name in ["browser_open", "browser_observe", "browser_act", "browser_capture", "browser_downloads"]:
+        spec, _ = get_tool(name)
+        assert spec.display_name
+
+async def test_browser_tool_returns_readable_error_on_unexpected_exception(fake_manager):
+    fake_manager.open.side_effect = RuntimeError("driver crashed")
+    result = await browser_open("https://example.com")
+    assert result.ok is False
+    assert "Browser" in result.error
+    assert "Do not retry automatically" in result.error or "try again later" in result.error
+```
+
 - [ ] **Step 5: Run failing tests**
 
 Run:
@@ -1214,20 +1230,33 @@ Expected: FAIL until tools are implemented.
 In `__init__.py`, register:
 
 ```python
-@tool(name="browser_open", description=..., permission_tier=PermissionTier.MODEL_DECIDES, sebastian_only=True)
+@tool(
+    name="browser_open",
+    description=...,
+    permission_tier=PermissionTier.MODEL_DECIDES,
+    display_name="Browser Open",
+    sebastian_only=True,  # or visible_to_agent_types={"sebastian"} if Task 3 chose that API
+)
 async def browser_open(url: str) -> ToolResult: ...
 
 @tool(
     name="browser_observe",
     description=...,
     permission_tier=PermissionTier.MODEL_DECIDES,
+    display_name="Browser Observe",
     review_preflight=browser_observe_review_preflight,
-    sebastian_only=True,
+    sebastian_only=True,  # or visible_to_agent_types={"sebastian"} if Task 3 chose that API
 )
 async def browser_observe(max_chars: int = 4000) -> ToolResult: ...
 ```
 
-Also implement `browser_act`, `browser_capture`, and `browser_downloads` with the same Sebastian-only metadata.
+Also implement `browser_act`, `browser_capture`, and `browser_downloads` with the same Sebastian-only metadata and explicit `display_name` values. Suggested display names:
+
+- `Browser Act`
+- `Browser Capture`
+- `Browser Downloads`
+
+Each public browser tool must catch expected browser/runtime errors and unexpected exceptions at the tool boundary and return `ToolResult(ok=False, error=...)` with a readable message. Deterministic failures must include `Do not retry automatically; ...`, following `sebastian/capabilities/tools/README.md`. Do not allow raw Playwright tracebacks, Python exception reprs, screenshot bytes, downloaded file bytes, password values, or arbitrary local paths to leak into `error`, `display`, or ordinary `output`.
 
 Use `sebastian.gateway.state.browser_manager` as the runtime manager. If missing:
 
@@ -1319,6 +1348,8 @@ Add focused visibility tests at this point with the real browser tool specs regi
 - Sebastian sees `browser_open` when `Sebastian.allowed_tools` includes it.
 - A custom/extension sub-agent with `allowed_tools=None` does not see any `browser_*` specs.
 - A non-Sebastian `ToolCallContext` cannot execute `browser_open` even if it calls the tool name directly.
+- All five browser tool specs have non-empty `display_name` values.
+- Browser tools return readable `ToolResult(ok=False, error=...)` messages for missing manager, missing Chromium/deps, blocked URL/action, timeout, download failure, and unexpected Playwright/runtime exceptions.
 
 - [ ] **Step 12: Update capabilities docs**
 
