@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-05-04
+
 ### Added
 - Sebastian 新增内置浏览器工具，可通过 Playwright Chromium 打开页面、观察页面、执行操作、截图，并把下载结果作为 artifact 返回。
 
