@@ -47,6 +47,41 @@ def _platform_unsupported() -> ServiceError:
     return ServiceError(f"unsupported platform: {sys.platform}")
 
 
+def _service_env_file(data_dir: Path) -> Path:
+    return data_dir.expanduser().resolve() / ".env"
+
+
+def _ensure_service_env_file(data_dir: Path) -> Path:
+    env_file = _service_env_file(data_dir)
+    if env_file.exists():
+        return env_file
+
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    resolved_data_dir = env_file.parent
+    default_data_dir = (Path.home() / ".sebastian").expanduser().resolve()
+    lines = [
+        "# Sebastian user runtime config.",
+        "# This file is loaded by service-managed installs.",
+    ]
+    if resolved_data_dir != default_data_dir:
+        lines.extend(
+            [
+                "# Data root used by this service install:",
+                f"SEBASTIAN_DATA_DIR={resolved_data_dir}",
+            ]
+        )
+    lines.extend(
+        [
+            "# Browser proxy example:",
+            "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:1082",
+            "# SEBASTIAN_BROWSER_DNS_MODE=auto",
+            "",
+        ]
+    )
+    env_file.write_text("\n".join(lines), encoding="utf-8")
+    return env_file
+
+
 # ---------------------------------------------------------------------------
 # core operations (no Typer)
 # ---------------------------------------------------------------------------
@@ -141,7 +176,7 @@ def _install_systemd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     unit.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    env_file = settings.data_dir / ".env"
+    env_file = _ensure_service_env_file(settings.data_dir)
     unit.write_text(
         render_systemd_unit(
             install_bin=install_bin,
@@ -232,7 +267,7 @@ def _install_launchd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     plist.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    env_file = settings.data_dir / ".env"
+    env_file = _ensure_service_env_file(settings.data_dir)
     plist.write_text(
         render_launchd_plist(
             install_bin=install_bin,

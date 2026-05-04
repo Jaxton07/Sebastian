@@ -322,6 +322,47 @@ def test_try_restart_daemon_falls_back_to_pid_daemon(
         "serve",
         "--daemon",
     ]
+    assert any("后台进程已重启" in message for message in messages)
+
+
+def test_try_restart_daemon_falls_back_to_pid_when_service_inactive(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    messages: list[str] = []
+
+    monkeypatch.setattr(
+        "sebastian.cli.service.get_service_state",
+        lambda: service.ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text="launchd: installed but not loaded",
+        ),
+    )
+    monkeypatch.setattr(
+        "sebastian.cli.daemon.pid_path",
+        lambda run_dir: tmp_path / "sebastian.pid",
+    )
+    monkeypatch.setattr("sebastian.cli.daemon.read_pid", lambda path: 123)
+    monkeypatch.setattr("sebastian.cli.daemon.is_running", lambda pid: True)
+    stop = MagicMock()
+    monkeypatch.setattr("sebastian.cli.daemon.stop_process", stop)
+    run = MagicMock(return_value=MagicMock(returncode=0))
+    monkeypatch.setattr(updater.subprocess, "run", run)
+
+    updater._try_restart_daemon(messages.append)
+
+    stop.assert_called_once()
+    assert run.call_args.args[0] == [
+        updater.sys.executable,
+        "-m",
+        "sebastian.main",
+        "serve",
+        "--daemon",
+    ]
+    assert any("后台进程已重启" in message for message in messages)
+    assert not any("sebastian service start" in message for message in messages)
 
 
 def test_try_restart_daemon_prints_service_guidance_when_service_installed_but_inactive(
@@ -348,7 +389,7 @@ def test_try_restart_daemon_prints_service_guidance_when_service_installed_but_i
 
     updater._try_restart_daemon(messages.append)
 
-    read_pid.assert_not_called()
+    read_pid.assert_called_once_with(tmp_path / "sebastian.pid")
     assert any("sebastian service start" in message for message in messages)
 
 

@@ -90,9 +90,12 @@ def test_install_writes_systemd_unit_on_linux(linux_env: Path, tmp_path: Path) -
     unit = linux_env / ".config/systemd/user/sebastian.service"
     assert unit.is_file()
     content = unit.read_text()
+    env_file = data_dir / ".env"
     assert "Sebastian personal AI butler" in content
     assert str(fake_dir / ".venv" / "bin" / "sebastian") in content
-    assert f"EnvironmentFile=-{data_dir / '.env'}" in content
+    assert f"EnvironmentFile=-{env_file}" in content
+    assert env_file.is_file()
+    assert f"SEBASTIAN_DATA_DIR={data_dir}" in env_file.read_text()
     cmds = [call.args[0] for call in run.call_args_list]
     assert ["systemctl", "--user", "daemon-reload"] in cmds
     assert ["systemctl", "--user", "enable", "--now", "sebastian.service"] in cmds
@@ -113,12 +116,38 @@ def test_install_writes_plist_on_macos(macos_env: Path, tmp_path: Path) -> None:
     plist = macos_env / "Library/LaunchAgents/com.sebastian.plist"
     assert plist.is_file()
     content = plist.read_text()
+    env_file = data_dir / ".env"
     assert "com.sebastian" in content
     assert str(fake_dir / ".venv" / "bin" / "sebastian") in content
     assert "<key>SEBASTIAN_ENV_FILE</key>" in content
-    assert f"<string>{data_dir / '.env'}</string>" in content
+    assert f"<string>{env_file}</string>" in content
+    assert env_file.is_file()
+    assert f"SEBASTIAN_DATA_DIR={data_dir}" in env_file.read_text()
     cmds = [call.args[0] for call in run.call_args_list]
     assert ["launchctl", "load", "-w", str(plist)] in cmds
+
+
+def test_install_preserves_existing_service_env_file(linux_env: Path, tmp_path: Path) -> None:
+    from sebastian.cli import service
+
+    fake_dir = _fake_install_dir(tmp_path)
+    data_dir = tmp_path / "data-root"
+    env_file = data_dir / ".env"
+    env_file.parent.mkdir(parents=True)
+    env_file.write_text("SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:1082\n")
+    original = env_file.read_text()
+
+    with (
+        patch.object(service.subprocess, "run", return_value=MagicMock(returncode=0)),
+        patch("sebastian.cli.updater.resolve_install_dir", return_value=fake_dir),
+        patch("sebastian.config.settings.sebastian_data_dir", str(data_dir)),
+    ):
+        service.install()
+
+    unit = linux_env / ".config/systemd/user/sebastian.service"
+    assert unit.is_file()
+    assert f"EnvironmentFile=-{env_file}" in unit.read_text()
+    assert env_file.read_text() == original
 
 
 def test_install_refuses_when_unit_exists(linux_env: Path) -> None:
