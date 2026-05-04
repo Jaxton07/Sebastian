@@ -5,6 +5,7 @@ User-level systemd units (Linux) and launchd LaunchAgents (macOS). No sudo.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import subprocess
 import sys
@@ -19,6 +20,14 @@ app = typer.Typer(name="service", help="作为后台系统服务管理 Sebastian
 
 class ServiceError(RuntimeError):
     """Raised when a service operation fails."""
+
+
+@dataclass(frozen=True)
+class ServiceState:
+    kind: str
+    installed: bool
+    active: bool
+    status_text: str
 
 
 # ---------------------------------------------------------------------------
@@ -80,11 +89,30 @@ def stop() -> None:
 
 
 def status() -> str:
+    return get_service_state().status_text
+
+
+def get_service_state() -> ServiceState:
     if sys.platform.startswith("linux"):
-        return _status_systemd()
+        return _systemd_state()
     if sys.platform == "darwin":
-        return _status_launchd()
+        return _launchd_state()
     raise _platform_unsupported()
+
+
+def is_service_installed() -> bool:
+    try:
+        return get_service_state().installed
+    except ServiceError:
+        return False
+
+
+def is_service_active() -> bool:
+    try:
+        state = get_service_state()
+    except ServiceError:
+        return False
+    return state.installed and state.active
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +155,16 @@ def _uninstall_systemd() -> None:
         _run(["systemctl", "--user", "daemon-reload"])
 
 
-def _status_systemd() -> str:
+def _systemd_state() -> ServiceState:
+    unit = _systemd_unit_path()
+    if not unit.exists():
+        return ServiceState(
+            kind="systemd",
+            installed=False,
+            active=False,
+            status_text="systemd user service: not installed",
+        )
+
     proc = subprocess.run(
         ["systemctl", "--user", "is-active", "sebastian.service"],
         capture_output=True,
@@ -137,9 +174,14 @@ def _status_systemd() -> str:
     state = proc.stdout.strip()
     if not state:
         state = proc.stderr.strip()
-    if state == "not-found":
-        return "systemd user service: not installed"
-    return f"systemd user service: {state}"
+    if not state:
+        state = "unknown"
+    return ServiceState(
+        kind="systemd",
+        installed=True,
+        active=state == "active",
+        status_text=f"systemd user service: {state}",
+    )
 
 
 def _check_linger() -> None:
@@ -194,7 +236,16 @@ def _uninstall_launchd() -> None:
         plist.unlink()
 
 
-def _status_launchd() -> str:
+def _launchd_state() -> ServiceState:
+    plist = _launchd_plist_path()
+    if not plist.exists():
+        return ServiceState(
+            kind="launchd",
+            installed=False,
+            active=False,
+            status_text="launchd: not installed",
+        )
+
     proc = subprocess.run(
         ["launchctl", "list", "com.sebastian"],
         capture_output=True,
@@ -202,8 +253,18 @@ def _status_launchd() -> str:
         check=False,
     )
     if proc.returncode != 0:
-        return "launchd: not loaded"
-    return f"launchd:\n{proc.stdout}"
+        return ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text="launchd: installed but not loaded",
+        )
+    return ServiceState(
+        kind="launchd",
+        installed=True,
+        active=True,
+        status_text=f"launchd:\n{proc.stdout}",
+    )
 
 
 # ---------------------------------------------------------------------------

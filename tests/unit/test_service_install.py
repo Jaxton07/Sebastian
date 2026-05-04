@@ -132,6 +132,54 @@ def test_install_refuses_when_unit_exists(linux_env: Path) -> None:
         service.install()
 
 
+def test_systemd_service_state_reports_installed_and_active(
+    linux_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.cli import service
+
+    unit = linux_env / ".config/systemd/user/sebastian.service"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text("[Unit]\nDescription=Sebastian\n")
+
+    def fake_run(cmd, capture_output=False, text=False, check=False):
+        assert cmd == ["systemctl", "--user", "is-active", "sebastian.service"]
+        return MagicMock(returncode=0, stdout="active\n", stderr="")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    state = service.get_service_state()
+
+    assert state.kind == "systemd"
+    assert state.installed is True
+    assert state.active is True
+    assert state.status_text == "systemd user service: active"
+
+
+def test_launchd_service_state_reports_loaded(
+    macos_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.cli import service
+
+    plist = macos_env / "Library/LaunchAgents/com.sebastian.plist"
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text("<plist/>")
+
+    def fake_run(cmd, capture_output=False, text=False, check=False):
+        assert cmd == ["launchctl", "list", "com.sebastian"]
+        return MagicMock(returncode=0, stdout="123\t0\tcom.sebastian\n", stderr="")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    state = service.get_service_state()
+
+    assert state.kind == "launchd"
+    assert state.installed is True
+    assert state.active is True
+    assert state.status_text.startswith("launchd:")
+
+
 def test_uninstall_removes_unit_on_linux(linux_env: Path) -> None:
     from sebastian.cli import service
 
