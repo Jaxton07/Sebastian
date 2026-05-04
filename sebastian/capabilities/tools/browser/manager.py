@@ -267,6 +267,8 @@ class BrowserSessionManager:
             page = await self.current_page()
             if page is None:
                 raise RuntimeError("No browser-tool-owned page is currently open")
+            if action == "press" and not target:
+                raise ValueError("press requires target")
             metadata = await self._target_metadata_for_page(page, target)
             if is_blocked is not None and is_blocked(metadata):
                 raise BrowserSafetyError(
@@ -286,7 +288,7 @@ class BrowserSessionManager:
             elif action == "press":
                 if not value:
                     raise ValueError("press requires value")
-                await page.press(target or "body", value, timeout=timeout)
+                await page.press(target, value, timeout=timeout)
             elif action == "select":
                 if not target:
                     raise ValueError("select requires target")
@@ -310,6 +312,7 @@ class BrowserSessionManager:
                 await page.reload(timeout=timeout)
             else:
                 raise ValueError(f"Unknown browser action: {action}")
+            await self._validate_page_after_action(page, action)
             downloads = await self._collect_downloads_after_action(
                 previous_tasks,
                 previous_downloads,
@@ -530,6 +533,20 @@ class BrowserSessionManager:
         if not isinstance(data, dict):
             return {"target": target}
         return {str(key): str(value) for key, value in data.items() if value is not None}
+
+    async def _validate_page_after_action(self, page: _GotoPage, action: str) -> None:
+        if action not in {"click", "press", "back", "forward", "reload"}:
+            return
+        try:
+            final = validate_public_http_url(str(getattr(page, "url", "") or ""))
+            await self._dns_resolver.resolve_public(final.hostname)
+        except BrowserSafetyError:
+            async with self.lock:
+                if self._page is page:
+                    self._page = None
+                self._current_page_owned_by_browser_tool = False
+            await self._close_page_after_block(page)
+            raise
 
     async def _close_runtime_resources(self) -> None:
         async with self.lock:

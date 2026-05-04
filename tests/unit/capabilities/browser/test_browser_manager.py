@@ -112,9 +112,23 @@ class _FakePage:
     async def title(self) -> str:
         return "Example Page"
 
+    def locator(self, target: str) -> Any:
+        return _FakeLocator()
+
     def on(self, event: str, callback: Any) -> None:
         self.calls.append(f"page_on:{event}")
         self.handlers[event] = callback
+
+
+class _FakeLocator:
+    async def count(self) -> int:
+        return 1
+
+    def first(self) -> _FakeLocator:
+        return self
+
+    async def evaluate(self, _script: str) -> dict[str, str]:
+        return {"tag": "button", "text": "Open menu"}
 
 
 class _BlockingPage(_FakePage):
@@ -663,3 +677,50 @@ async def test_download_recorder_uses_page_download_event(tmp_path: Path) -> Non
 
     assert "page_on:download" in calls
     assert "context_on:download" not in calls
+
+
+@pytest.mark.asyncio
+async def test_press_requires_target_to_avoid_active_element_submit(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        dns_resolver=_FakeDNSResolver(),
+    )
+    manager._page = cast(Any, _FakePage(calls))
+    manager._current_page_owned_by_browser_tool = True
+
+    with pytest.raises(ValueError, match="press requires target"):
+        await manager.act(action="press", value="Enter")
+
+    assert not any(call.startswith("press:") for call in calls)
+
+
+@pytest.mark.asyncio
+async def test_action_rejects_forbidden_final_url_and_clears_page(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    page = _FakePage(calls, final_url="https://example.com/")
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        dns_resolver=_FakeDNSResolver(blocked_hosts={"evil.test"}),
+    )
+    manager._page = cast(Any, page)
+    manager._current_page_owned_by_browser_tool = True
+    page.url = "https://example.com/"
+
+    async def click_and_navigate(target: str, *, timeout: int) -> object:
+        calls.append(f"click:{target}:{timeout}")
+        page.url = "https://evil.test/private"
+        return object()
+
+    page.click = click_and_navigate  # type: ignore[method-assign]
+
+    with pytest.raises(Exception, match="blocked"):
+        await manager.act(action="click", target="a.bad")
+
+    assert manager._page is None
+    assert manager._current_page_owned_by_browser_tool is False
+    assert page.closed is True

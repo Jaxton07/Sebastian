@@ -27,6 +27,11 @@ class _FakeDownload:
         Path(path).write_bytes(b"%PDF-1.7\nreport")
 
 
+class _FakeDNSResolver:
+    async def resolve_public(self, _host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+
 class _DownloadClickPage:
     url = "https://example.com/download"
 
@@ -114,7 +119,7 @@ def tool_ctx() -> Any:
 
 @pytest.mark.asyncio
 async def test_manager_save_download_sanitizes_name_and_writes_manifest(tmp_path: Path) -> None:
-    manager = BrowserSessionManager(_settings(tmp_path))
+    manager = BrowserSessionManager(_settings(tmp_path), dns_resolver=_FakeDNSResolver())
 
     record = await manager.save_download(_FakeDownload())
 
@@ -166,7 +171,7 @@ async def test_browser_downloads_list_omits_local_paths(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_manager_act_reports_download_triggered_by_action(tmp_path: Path) -> None:
-    manager = BrowserSessionManager(_settings(tmp_path))
+    manager = BrowserSessionManager(_settings(tmp_path), dns_resolver=_FakeDNSResolver())
     manager._page = _DownloadClickPage(manager)  # type: ignore[assignment]
     manager._current_page_owned_by_browser_tool = True
 
