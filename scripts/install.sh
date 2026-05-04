@@ -54,7 +54,33 @@ color_grn "✓ 依赖安装完成"
 
 # 5. 数据目录定位
 DATA_ROOT="${SEBASTIAN_DATA_DIR:-$HOME/.sebastian}"
+case "${DATA_ROOT}" in
+  "~") DATA_ROOT="${HOME}" ;;
+  "~/"*) DATA_ROOT="${HOME}/${DATA_ROOT#~/}" ;;
+esac
+case "${DATA_ROOT}" in
+  /*) ;;
+  *) DATA_ROOT="${PROJECT_ROOT}/${DATA_ROOT}" ;;
+esac
+mkdir -p "${DATA_ROOT}"
+DATA_ROOT="$(cd "${DATA_ROOT}" && pwd)"
 USER_DATA_DIR="${DATA_ROOT}/data"
+ENV_FILE="${DATA_ROOT}/.env"
+if [[ ! -f "${ENV_FILE}" ]]; then
+  {
+    printf "# Sebastian user runtime config.\n"
+    printf "# This file is loaded by service-managed starts.\n"
+    printf "# Uncomment examples only when needed.\n"
+    if [[ "${DATA_ROOT}" != "$HOME/.sebastian" ]]; then
+      printf "SEBASTIAN_DATA_DIR=%s\n" "${DATA_ROOT}"
+    fi
+    printf "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:7890\n"
+    printf "# SEBASTIAN_BROWSER_DNS_MODE=auto\n"
+  } > "${ENV_FILE}"
+  color_grn "✓ 已创建用户配置 ${ENV_FILE}"
+else
+  color_dim "已保留现有用户配置 ${ENV_FILE}"
+fi
 
 # 6. 首启向导（数据库不存在则进）
 if [[ ! -f "${USER_DATA_DIR}/sebastian.db" ]]; then

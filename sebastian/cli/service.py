@@ -1,4 +1,4 @@
-"""``sebastian service`` subcommands — install/uninstall/start/stop/status.
+"""``sebastian service`` subcommands — install/uninstall/start/stop/restart/status.
 
 User-level systemd units (Linux) and launchd LaunchAgents (macOS). No sudo.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -19,6 +20,14 @@ app = typer.Typer(name="service", help="作为后台系统服务管理 Sebastian
 
 class ServiceError(RuntimeError):
     """Raised when a service operation fails."""
+
+
+@dataclass(frozen=True)
+class ServiceState:
+    kind: str
+    installed: bool
+    active: bool
+    status_text: str
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +45,41 @@ def _launchd_plist_path() -> Path:
 
 def _platform_unsupported() -> ServiceError:
     return ServiceError(f"unsupported platform: {sys.platform}")
+
+
+def _service_env_file(data_dir: Path) -> Path:
+    return data_dir.expanduser().resolve() / ".env"
+
+
+def _ensure_service_env_file(data_dir: Path) -> Path:
+    env_file = _service_env_file(data_dir)
+    if env_file.exists():
+        return env_file
+
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    resolved_data_dir = env_file.parent
+    default_data_dir = (Path.home() / ".sebastian").expanduser().resolve()
+    lines = [
+        "# Sebastian user runtime config.",
+        "# This file is loaded by service-managed installs.",
+    ]
+    if resolved_data_dir != default_data_dir:
+        lines.extend(
+            [
+                "# Data root used by this service install:",
+                f"SEBASTIAN_DATA_DIR={resolved_data_dir}",
+            ]
+        )
+    lines.extend(
+        [
+            "# Browser proxy example:",
+            "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:1082",
+            "# SEBASTIAN_BROWSER_DNS_MODE=auto",
+            "",
+        ]
+    )
+    env_file.write_text("\n".join(lines), encoding="utf-8")
+    return env_file
 
 
 # ---------------------------------------------------------------------------
@@ -79,12 +123,41 @@ def stop() -> None:
         raise _platform_unsupported()
 
 
-def status() -> str:
+def restart() -> None:
     if sys.platform.startswith("linux"):
-        return _status_systemd()
+        _run(["systemctl", "--user", "restart", "sebastian.service"])
+    elif sys.platform == "darwin":
+        subprocess.run(["launchctl", "stop", "com.sebastian"], check=False)
+        _run(["launchctl", "start", "com.sebastian"])
+    else:
+        raise _platform_unsupported()
+
+
+def status() -> str:
+    return get_service_state().status_text
+
+
+def get_service_state() -> ServiceState:
+    if sys.platform.startswith("linux"):
+        return _systemd_state()
     if sys.platform == "darwin":
-        return _status_launchd()
+        return _launchd_state()
     raise _platform_unsupported()
+
+
+def is_service_installed() -> bool:
+    try:
+        return get_service_state().installed
+    except ServiceError:
+        return False
+
+
+def is_service_active() -> bool:
+    try:
+        state = get_service_state()
+    except ServiceError:
+        return False
+    return state.installed and state.active
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +176,14 @@ def _install_systemd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     unit.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    unit.write_text(render_systemd_unit(install_bin=install_bin, logs_dir=settings.logs_dir))
+    env_file = _ensure_service_env_file(settings.data_dir)
+    unit.write_text(
+        render_systemd_unit(
+            install_bin=install_bin,
+            logs_dir=settings.logs_dir,
+            env_file=env_file,
+        )
+    )
     _run(["systemctl", "--user", "daemon-reload"])
     _run(["systemctl", "--user", "enable", "--now", "sebastian.service"])
     _check_linger()
@@ -120,7 +200,16 @@ def _uninstall_systemd() -> None:
         _run(["systemctl", "--user", "daemon-reload"])
 
 
-def _status_systemd() -> str:
+def _systemd_state() -> ServiceState:
+    unit = _systemd_unit_path()
+    if not unit.exists():
+        return ServiceState(
+            kind="systemd",
+            installed=False,
+            active=False,
+            status_text="systemd user service: not installed",
+        )
+
     proc = subprocess.run(
         ["systemctl", "--user", "is-active", "sebastian.service"],
         capture_output=True,
@@ -130,9 +219,18 @@ def _status_systemd() -> str:
     state = proc.stdout.strip()
     if not state:
         state = proc.stderr.strip()
-    if state == "not-found":
-        return "systemd user service: not installed"
-    return f"systemd user service: {state}"
+    if not state:
+        state = "unknown"
+    return ServiceState(
+        kind="systemd",
+        installed=True,
+        active=state == "active",
+        status_text=(
+            f"systemd user service: {state}\n"
+            "  status:  systemctl --user status sebastian\n"
+            "  restart: sebastian service restart"
+        ),
+    )
 
 
 def _check_linger() -> None:
@@ -169,7 +267,14 @@ def _install_launchd() -> None:
     settings.logs_dir.mkdir(parents=True, exist_ok=True)
     plist.parent.mkdir(parents=True, exist_ok=True)
     install_bin = resolve_install_dir() / ".venv" / "bin" / "sebastian"
-    plist.write_text(render_launchd_plist(install_bin=install_bin, logs_dir=settings.logs_dir))
+    env_file = _ensure_service_env_file(settings.data_dir)
+    plist.write_text(
+        render_launchd_plist(
+            install_bin=install_bin,
+            logs_dir=settings.logs_dir,
+            env_file=env_file,
+        )
+    )
     _run(["launchctl", "load", "-w", str(plist)])
 
 
@@ -180,7 +285,19 @@ def _uninstall_launchd() -> None:
         plist.unlink()
 
 
-def _status_launchd() -> str:
+def _launchd_state() -> ServiceState:
+    plist = _launchd_plist_path()
+    command_hints = (
+        "\n  status:  launchctl list com.sebastian\n  restart: sebastian service restart"
+    )
+    if not plist.exists():
+        return ServiceState(
+            kind="launchd",
+            installed=False,
+            active=False,
+            status_text="launchd: not installed",
+        )
+
     proc = subprocess.run(
         ["launchctl", "list", "com.sebastian"],
         capture_output=True,
@@ -188,8 +305,27 @@ def _status_launchd() -> str:
         check=False,
     )
     if proc.returncode != 0:
-        return "launchd: not loaded"
-    return f"launchd:\n{proc.stdout}"
+        return ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text=f"launchd: installed but not loaded{command_hints}",
+        )
+    fields = proc.stdout.split(None, 1)
+    first_field = fields[0] if fields else ""
+    if not first_field.isdigit():
+        return ServiceState(
+            kind="launchd",
+            installed=True,
+            active=False,
+            status_text=f"launchd: loaded but not running{command_hints}",
+        )
+    return ServiceState(
+        kind="launchd",
+        installed=True,
+        active=True,
+        status_text=f"launchd: running{command_hints}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +399,17 @@ def cmd_stop() -> None:
     except ServiceError as e:
         typer.echo(f"❌ {e}", err=True)
         raise typer.Exit(code=1) from e
+
+
+@app.command("restart")
+def cmd_restart() -> None:
+    """重启 Sebastian 系统服务。"""
+    try:
+        restart()
+    except ServiceError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=1) from e
+    typer.echo("✓ Sebastian 系统服务已重启")
 
 
 @app.command("status")
