@@ -1,10 +1,124 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+from sebastian.capabilities.tools.browser.proxy import ProxyConfig
 from sebastian.config import Settings
+
+
+class _FakeFilteringProxy:
+    def __init__(self, calls: list[str], *, fail_start: bool = False) -> None:
+        self.calls = calls
+        self.fail_start = fail_start
+        self.config = ProxyConfig(host="127.0.0.1", port=43123)
+
+    async def start(self) -> ProxyConfig:
+        self.calls.append("proxy_start")
+        if self.fail_start:
+            raise RuntimeError("proxy failed")
+        return self.config
+
+    async def aclose(self) -> None:
+        self.calls.append("proxy_close")
+
+    def playwright_proxy_config(self) -> dict[str, str]:
+        return self.config.playwright_proxy_config()
+
+
+class _FakePage:
+    def __init__(self, calls: list[str], *, final_url: str = "https://example.com/") -> None:
+        self.calls = calls
+        self.url = "about:blank"
+        self.final_url = final_url
+        self.closed = False
+
+    async def goto(self, url: str, *, timeout: int) -> object:
+        self.calls.append(f"goto:{url}:{timeout}")
+        self.url = self.final_url
+        return object()
+
+    async def close(self) -> None:
+        self.calls.append("page_close")
+        self.closed = True
+
+    async def title(self) -> str:
+        return "Example Page"
+
+
+class _BlockingPage(_FakePage):
+    def __init__(self, calls: list[str]) -> None:
+        super().__init__(calls)
+        self.first_started = asyncio.Event()
+        self.release_first = asyncio.Event()
+        self.active_gotos = 0
+        self.max_active_gotos = 0
+        self._goto_count = 0
+
+    async def goto(self, url: str, *, timeout: int) -> object:
+        self.active_gotos += 1
+        self.max_active_gotos = max(self.max_active_gotos, self.active_gotos)
+        self._goto_count += 1
+        self.calls.append(f"goto:{url}:{timeout}")
+        try:
+            if self._goto_count == 1:
+                self.first_started.set()
+                await self.release_first.wait()
+            self.url = url
+            return object()
+        finally:
+            self.active_gotos -= 1
+
+
+class _FakeContext:
+    def __init__(self, calls: list[str], page: _FakePage | None = None) -> None:
+        self.calls = calls
+        self.page = page or _FakePage(calls)
+        self.launch_kwargs: dict[str, Any] | None = None
+
+    async def new_page(self) -> _FakePage:
+        self.calls.append("new_page")
+        return self.page
+
+    async def close(self) -> None:
+        self.calls.append("context_close")
+
+
+class _FakeChromium:
+    def __init__(self, calls: list[str], context: _FakeContext) -> None:
+        self.calls = calls
+        self.context = context
+
+    async def launch_persistent_context(self, *args: Any, **kwargs: Any) -> _FakeContext:
+        self.calls.append("launch_persistent_context")
+        self.context.launch_kwargs = {"args": args, **kwargs}
+        return self.context
+
+
+class _FakePlaywright:
+    def __init__(self, calls: list[str], context: _FakeContext) -> None:
+        self.calls = calls
+        self.chromium = _FakeChromium(calls, context)
+
+    async def stop(self) -> None:
+        self.calls.append("playwright_stop")
+
+
+class _FakePlaywrightFactory:
+    def __init__(self, calls: list[str], context: _FakeContext) -> None:
+        self.calls = calls
+        self.playwright = _FakePlaywright(calls, context)
+
+    def __call__(self) -> Any:
+        self.calls.append("playwright_factory")
+        return self
+
+    async def start(self) -> _FakePlaywright:
+        self.calls.append("playwright_start")
+        return self.playwright
 
 
 class _CloseRecorder:
@@ -45,16 +159,16 @@ async def test_aclose_closes_page_context_and_playwright_in_order(tmp_path: Path
 
     calls: list[str] = []
     manager = BrowserSessionManager(_settings(tmp_path))
-    manager.page = _CloseRecorder("page", calls)
-    manager.context = _CloseRecorder("context", calls)
-    manager.playwright = _StopRecorder("playwright", calls)
+    manager._page = cast(Any, _CloseRecorder("page", calls))
+    manager._context = cast(Any, _CloseRecorder("context", calls))
+    manager._playwright = cast(Any, _StopRecorder("playwright", calls))
 
     await manager.aclose()
 
     assert calls == ["page", "context", "playwright"]
-    assert manager.page is None
-    assert manager.context is None
-    assert manager.playwright is None
+    assert manager._page is None
+    assert manager._context is None
+    assert manager._playwright is None
 
 
 @pytest.mark.asyncio
@@ -63,17 +177,17 @@ async def test_aclose_is_idempotent_and_continues_after_close_errors(tmp_path: P
 
     calls: list[str] = []
     manager = BrowserSessionManager(_settings(tmp_path))
-    manager.page = _CloseRecorder("page", calls, fail=True)
-    manager.context = _CloseRecorder("context", calls, fail=True)
-    manager.playwright = _StopRecorder("playwright", calls, fail=True)
+    manager._page = cast(Any, _CloseRecorder("page", calls, fail=True))
+    manager._context = cast(Any, _CloseRecorder("context", calls, fail=True))
+    manager._playwright = cast(Any, _StopRecorder("playwright", calls, fail=True))
 
     await manager.aclose()
     await manager.aclose()
 
     assert calls == ["page", "context", "playwright"]
-    assert manager.page is None
-    assert manager.context is None
-    assert manager.playwright is None
+    assert manager._page is None
+    assert manager._context is None
+    assert manager._playwright is None
 
 
 @pytest.mark.asyncio
@@ -85,7 +199,7 @@ async def test_current_page_metadata_returns_none_without_page(tmp_path: Path) -
     assert await manager.current_page_metadata() is None
 
 
-class _FakePage:
+class _MetadataPage:
     def __init__(self) -> None:
         self.url = "https://example.test/path"
 
@@ -112,7 +226,7 @@ async def test_current_page_metadata_reads_url_and_title(tmp_path: Path) -> None
     from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
 
     manager = BrowserSessionManager(_settings(tmp_path))
-    manager.page = _FakePage()
+    manager._page = cast(Any, _MetadataPage())
 
     metadata = await manager.current_page_metadata()
 
@@ -126,10 +240,274 @@ async def test_current_page_metadata_tolerates_title_errors(tmp_path: Path) -> N
     from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
 
     manager = BrowserSessionManager(_settings(tmp_path))
-    manager.page = _BrokenTitlePage()
+    manager._page = cast(Any, _BrokenTitlePage())
 
     metadata = await manager.current_page_metadata()
 
     assert metadata is not None
     assert metadata.url == "https://example.test/broken"
     assert metadata.title is None
+
+
+@pytest.mark.asyncio
+async def test_open_launches_persistent_context_with_profile_dir_and_proxy(
+    tmp_path: Path,
+) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    settings = _settings(tmp_path)
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=settings,
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    result = await manager.open("https://example.com/")
+
+    assert result.ok is True
+    assert result.url == "https://example.com/"
+    assert calls[:4] == [
+        "proxy_start",
+        "playwright_factory",
+        "playwright_start",
+        "launch_persistent_context",
+    ]
+    assert context.launch_kwargs == {
+        "args": (str(settings.browser_profile_dir),),
+        "headless": settings.sebastian_browser_headless,
+        "viewport": {"width": 1280, "height": 900},
+        "accept_downloads": True,
+        "downloads_path": str(settings.browser_downloads_dir),
+        "timeout": settings.sebastian_browser_timeout_ms,
+        "proxy": {"server": "http://127.0.0.1:43123", "bypass": ""},
+    }
+    assert manager._page is context.page
+    assert manager._current_page_owned_by_browser_tool is True
+
+
+@pytest.mark.asyncio
+async def test_aclose_closes_proxy_after_browser_resources(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+    await manager.open("https://example.com/")
+
+    await manager.aclose()
+    await manager.aclose()
+
+    assert calls[-4:] == ["page_close", "context_close", "proxy_close", "playwright_stop"]
+    assert manager._page is None
+    assert manager._context is None
+    assert manager._playwright is None
+    assert manager._current_page_owned_by_browser_tool is False
+
+
+@pytest.mark.asyncio
+async def test_open_validates_requested_url_before_launch(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    result = await manager.open("http://127.0.0.1:8823/")
+
+    assert result.ok is False
+    assert "blocked" in result.error.lower()
+    assert calls == []
+    assert manager._page is None
+
+
+@pytest.mark.asyncio
+async def test_open_fails_closed_when_proxy_cannot_start(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls, fail_start=True),
+    )
+
+    result = await manager.open("https://example.com/")
+
+    assert result.ok is False
+    assert "refusing direct network fallback" in result.error
+    assert calls == ["proxy_start"]
+    assert manager._context is None
+    assert manager._page is None
+
+
+@pytest.mark.asyncio
+async def test_open_rejects_forbidden_final_url_after_redirect(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    final_page = _FakePage(calls, final_url="http://169.254.169.254/latest/meta-data")
+    context = _FakeContext(calls, page=final_page)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    result = await manager.open("https://example.com/redirect")
+
+    assert result.ok is False
+    assert "blocked" in result.error.lower()
+    assert manager._page is None
+    assert manager._current_page_owned_by_browser_tool is False
+    assert final_page.closed is True
+
+
+@pytest.mark.asyncio
+async def test_concurrent_open_shares_single_context_and_page(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    context = _FakeContext(calls)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    first, second = await asyncio.gather(
+        manager.open("https://example.com/one"),
+        manager.open("https://example.com/two"),
+    )
+
+    assert first.ok is True
+    assert second.ok is True
+    assert calls.count("proxy_start") == 1
+    assert calls.count("playwright_start") == 1
+    assert calls.count("launch_persistent_context") == 1
+    assert calls.count("new_page") == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_open_serializes_navigation_on_shared_page(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    calls: list[str] = []
+    page = _BlockingPage(calls)
+    context = _FakeContext(calls, page=page)
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_FakePlaywrightFactory(calls, context),
+        filtering_proxy=_FakeFilteringProxy(calls),
+    )
+
+    first_task = asyncio.create_task(manager.open("https://example.com/one"))
+    await asyncio.wait_for(page.first_started.wait(), timeout=1)
+    second_task = asyncio.create_task(manager.open("https://example.com/two"))
+    await asyncio.sleep(0)
+    assert page.max_active_gotos == 1
+    page.release_first.set()
+
+    first, second = await asyncio.gather(first_task, second_task)
+
+    assert first.ok is True
+    assert second.ok is True
+    assert page.max_active_gotos == 1
+    assert calls.count("new_page") == 1
+
+
+@pytest.mark.asyncio
+async def test_open_returns_deterministic_missing_browser_message(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    class _MissingBrowserChromium:
+        async def launch_persistent_context(self, *args: Any, **kwargs: Any) -> object:
+            raise RuntimeError("Executable doesn't exist at /ms-playwright/chromium")
+
+    class _MissingBrowserPlaywright:
+        chromium = _MissingBrowserChromium()
+
+        async def stop(self) -> None:
+            return None
+
+    class _MissingBrowserFactory:
+        def __call__(self) -> Any:
+            return self
+
+        async def start(self) -> _MissingBrowserPlaywright:
+            return _MissingBrowserPlaywright()
+
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_MissingBrowserFactory(),
+        filtering_proxy=_FakeFilteringProxy([]),
+    )
+
+    result = await manager.open("https://example.com/")
+
+    assert result.ok is False
+    assert "python -m playwright install chromium" in result.error
+
+
+@pytest.mark.asyncio
+async def test_open_returns_deterministic_missing_deps_message(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    class _MissingDepsChromium:
+        async def launch_persistent_context(self, *args: Any, **kwargs: Any) -> object:
+            raise RuntimeError("Host system is missing dependencies to run browsers.")
+
+    class _MissingDepsPlaywright:
+        chromium = _MissingDepsChromium()
+
+        async def stop(self) -> None:
+            return None
+
+    class _MissingDepsFactory:
+        def __call__(self) -> Any:
+            return self
+
+        async def start(self) -> _MissingDepsPlaywright:
+            return _MissingDepsPlaywright()
+
+    manager = BrowserSessionManager(
+        settings=_settings(tmp_path),
+        playwright_factory=_MissingDepsFactory(),
+        filtering_proxy=_FakeFilteringProxy([]),
+    )
+
+    result = await manager.open("https://example.com/")
+
+    assert result.ok is False
+    assert "python -m playwright install-deps chromium" in result.error
+
+
+def test_parse_viewport_accepts_valid_setting(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    manager = BrowserSessionManager(
+        _settings(tmp_path).model_copy(update={"sebastian_browser_viewport": "375x812"})
+    )
+
+    assert manager.parse_viewport() == {"width": 375, "height": 812}
+
+
+def test_parse_viewport_rejects_invalid_setting(tmp_path: Path) -> None:
+    from sebastian.capabilities.tools.browser.manager import BrowserSessionManager
+
+    manager = BrowserSessionManager(
+        _settings(tmp_path).model_copy(update={"sebastian_browser_viewport": "wide"})
+    )
+
+    with pytest.raises(ValueError, match="Invalid browser viewport"):
+        manager.parse_viewport()

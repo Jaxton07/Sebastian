@@ -16,8 +16,8 @@ tools/
 ├── _path_utils.py           # 统一文件路径解析（相对路径 → workspace_dir，所有工具必须使用）
 ├── _session_lock.py         # Session 级 asyncio.Lock，防止并发 turn 冲突
 ├── _session_permission.py   # stop/resume 操作的 depth 边界权限校验（被 stop_agent/resume_agent 调用）
-├── browser/                 # 浏览器运行时 manager skeleton；当前不含 @tool，不暴露给 Agent
-│   └── manager.py           # BrowserSessionManager / BrowserPageMetadata
+├── browser/                 # 浏览器运行时（当前不含 @tool，不暴露给 Agent）
+│   └── manager.py           # BrowserSessionManager：Playwright 持久化 context + FilteringProxy 生命周期
 │
 │   # ── 能力工具（manifest allowed_tools 白名单管控）────────────────
 ├── bash/                    # Shell 命令执行工具（permission_tier: MODEL_DECIDES）
@@ -69,7 +69,7 @@ tools/
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 新增工具 | 本目录新建子目录 + `__init__.py` + `@tool` 装饰器，重启自动注册 |
-| 修改浏览器运行时 manager skeleton | [browser/manager.py](browser/manager.py) |
+| 修改浏览器运行时 manager | [browser/manager.py](browser/manager.py) |
 | 修改工具自动扫描逻辑 | [_loader.py](_loader.py) |
 | 修改文件读取状态保护 | [_file_state.py](_file_state.py) |
 | 修改路径解析基准（workspace_dir） | [_path_utils.py](_path_utils.py) |
