@@ -8,9 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-JPEG_BYTES = (
-    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
-)
+JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 
 
 @pytest.fixture
@@ -233,12 +231,15 @@ def test_image_attachment_turn_fails_when_provider_resolution_fails(client, monk
 
     # Create a real Sebastian session first. The follow-up endpoint resolves
     # the session before entering attachment validation.
-    with patch(
-        "sebastian.gateway.routes.turns._ensure_llm_ready",
-        new_callable=AsyncMock,
-    ), patch(
-        "sebastian.gateway.state.sebastian.run_streaming",
-        new_callable=AsyncMock,
+    with (
+        patch(
+            "sebastian.gateway.routes.turns._ensure_llm_ready",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "sebastian.gateway.state.sebastian.run_streaming",
+            new_callable=AsyncMock,
+        ),
     ):
         create = http_client.post(
             "/api/v1/turns",

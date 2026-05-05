@@ -1,6 +1,6 @@
 ---
-version: "1.3"
-last_updated: 2026-05-03
+version: "1.4"
+last_updated: 2026-05-05
 status: implemented
 ---
 
@@ -12,7 +12,7 @@ status: implemented
 
 ## 1. 概述
 
-六个对齐 Claude Code 语义的标准工具（Read、Write、Edit、Bash、Glob、Grep），替换原有的 file_ops 和 shell 占位工具。
+六个对齐 Claude Code 语义的标准工具（Read、Write、Edit、Bash、Glob、Grep），以及独立的本地图片视觉观察工具 `vision_observe_image`。Read 仍是文本读取工具，视觉观察通过 runtime-only 模型图片通道实现。
 
 架构原则：
 - 每个工具为独立子目录包
@@ -40,6 +40,8 @@ sebastian/capabilities/tools/
     __init__.py           # Glob 工具
   grep/
     __init__.py           # Grep 工具
+  vision_observe_image/
+    __init__.py           # 本地图片视觉观察工具
   web_search/
     __init__.py           # 保留
 ```
@@ -86,7 +88,7 @@ def invalidate(path: str) -> None:
 | `offset` | `int \| None` | 否 | 起始行号（1-indexed） |
 | `limit` | `int \| None` | 否 | 读取行数，默认最多 2000 行 |
 
-行为：UTF-8 读取（fallback latin-1），按 offset/limit 截取行范围，超 2000 行截断。读取成功后调用 `_file_state.record_read()`。
+行为：UTF-8 读取（fallback latin-1），按 offset/limit 截取行范围，超 2000 行截断。读取成功后调用 `_file_state.record_read()`。即使文件使用图片扩展名，Read 也只按文本解码并返回 `output["content"]`，不会生成 `model_images` 或承担视觉输入职责。
 
 ### 4.2 Write
 
@@ -221,6 +223,23 @@ App 判断 `data.elapsed_seconds` 存在即为进度心跳，展示"执行中 (X
 
 行为：优先使用系统 `rg`（ripgrep），不可用时退回 `grep -rn`。可用性检测结果缓存。
 
+### 4.7 `vision_observe_image`
+
+**权限**：`PermissionTier.LOW`
+
+| 参数 | 类型 | 必须 | 说明 |
+|------|------|------|------|
+| `file_path` | `str` | 是 | 本地图片文件路径 |
+
+行为：通过 `_path_utils.resolve_path()` 解析路径，校验文件存在、非目录、扩展名与 MIME type 属于 AttachmentStore 图片 allowlist（JPEG、PNG、WebP、GIF），并受 `MAX_IMAGE_BYTES` 限制。工具执行前读取 `ToolCallContext.supports_image_input`，当前 provider 不支持图片输入时 fail closed。
+
+返回边界：
+
+- `output` 只包含 filename、MIME type、size、source 等轻量 metadata。
+- `display` 使用短句，例如 `已观察图片 photo.png`。
+- `model_images` 携带本次工具调用的图片 payload，交给 `AgentLoop` 做 provider 投影。
+- 不创建 artifact，不把图片发送给用户，不做 OCR，不写入跨 turn 视觉记忆。
+
 ---
 
 ## 5. 参数类型强制转换
@@ -248,6 +267,7 @@ def _coerce_args(fn: Callable, kwargs: dict[str, Any]) -> dict[str, Any]:
 | Read | LOW | 只读，无副作用 |
 | Glob | LOW | 只读，仅返回路径 |
 | Grep | LOW | 只读，内容搜索 |
+| vision_observe_image | LOW | 只读观察本地图片，图片只进入 runtime-only 模型输入通道 |
 | Write | MODEL_DECIDES | 全量覆盖文件，有副作用 |
 | Edit | MODEL_DECIDES | 修改文件内容，有副作用 |
 | Bash | MODEL_DECIDES | 执行 shell 命令，副作用不确定 |
@@ -256,22 +276,57 @@ def _coerce_args(fn: Callable, kwargs: dict[str, Any]) -> dict[str, Any]:
 
 ## 7. ToolResult 显示与序列化
 
-### 7.1 `ToolResult.display` 字段（`core/types.py`）
+### 7.1 `ToolResult.display` / `model_images` 字段（`core/types.py`）
 
-`ToolResult` 新增可选 `display` 字段，用于人类可读摘要：
+`ToolResult` 的 `display` 字段用于人类可读摘要；`model_images` 是视觉工具专用的 runtime-only 模型输入通道：
 
 ```python
+class ModelImagePayload(BaseModel):
+    media_type: str
+    data_base64: str
+    filename: str | None = None
+
+
 class ToolResult(BaseModel):
     ok: bool
     output: Any = None
     error: str | None = None
     empty_hint: str | None = None
     display: str | None = None   # 人类可读摘要；None → 走通用回退
+    model_images: list[ModelImagePayload] = Field(default_factory=list)
 ```
 
 **设计原则**：宽松模式——不填 `display` 不报错，装饰器不做校验。新工具先跑起来，后续想优化 UI 再加。
 
-### 7.2 模型侧：`_tool_result_content` JSON 规范化（`core/agent_loop.py`）
+`model_images` 不进入普通 `output`、SSE、timeline artifact 或 REST timeline payload。它只在当前工具调用后的下一次模型请求中使用，不能作为跨 turn 视觉记忆保存。
+
+### 7.2 模型侧：`stream_events.ToolResult.model_content/model_images`
+
+`dispatch_tool_call()` 会把工具层 `ToolResult` 重新封装为 `stream_events.ToolResult`，并保留模型侧专用字段：
+
+```python
+@dataclass
+class ToolResult:
+    tool_id: str
+    name: str
+    ok: bool
+    output: Any
+    error: str | None
+    empty_hint: str | None = None
+    model_content: str | None = None
+    model_images: list[ModelImagePayload] = field(default_factory=list)
+```
+
+规则：
+
+- 普通无图工具：`model_content=None`，模型侧文本继续由 `_tool_result_content(output)` 生成。
+- 视觉工具成功：`model_content` 使用轻量 `display`，`model_images` 原样透传给 `AgentLoop`。
+- 工具失败：`model_images=[]`，模型侧文本为错误信息。
+- SSE `tool.executed`、timeline tool block 和 artifact payload 不包含 `model_images` 或 base64。
+
+`AgentLoop` 是唯一 provider 投影点：Anthropic 路径把 `model_images` 转成 tool result content 内的 image block；OpenAI-compatible 路径先追加文本 tool result，再追加 synthetic user image content block。
+
+### 7.3 模型侧：`_tool_result_content` JSON 规范化（`core/agent_loop.py`）
 
 喂回 LLM 的 `tool_result` 内容用 JSON 替换 Python `repr`，提升 LLM 解析稳定性：
 
@@ -296,7 +351,7 @@ def _tool_result_content(result: ToolResult) -> str:
 - dict / list → JSON（`ensure_ascii=False` 保中文可读；`default=str` 兜底 `Path` 等非标准类型）
 - **不截断**——模型需要完整上下文做决策
 
-### 7.3 人类侧：`_format_tool_display`（`core/base_agent.py`）
+### 7.4 人类侧：`_format_tool_display`（`core/base_agent.py`）
 
 从 `ToolResult` 提取人类可读内容，用于 SSE `result_summary` 和持久化 `record["result"]`：
 
@@ -319,7 +374,7 @@ def _format_tool_display(result: ToolResult) -> str:
 
 优先级：`display` → `empty_hint` → `str(output)`，截断上限 4000 字（Android `CollapsibleContent` 会对 >5 行做二次折叠，不会导致 UI 卡顿）。
 
-### 7.4 核心工具 `display` 填充
+### 7.5 核心工具 `display` 填充
 
 | Tool | `display` 值 |
 |------|-------------|
@@ -329,10 +384,11 @@ def _format_tool_display(result: ToolResult) -> str:
 | Glob | `"\n".join(files)`（文件列表） |
 | Write | `f"Wrote {bytes_written} bytes to {file_path}"` |
 | Edit | `f"Replaced {replacements} occurrence(s) in {file_path}"` |
+| vision_observe_image | `已观察图片 {filename}` |
 
 其他内部工具（`ask_parent` / `check_sub_agents` / `inspect_session` / `todo_write` / `spawn_sub_agent` / `resume_agent`）不填 `display`，走回退路径。
 
-### 7.5 ToolSpec.display_name
+### 7.6 ToolSpec.display_name
 
 `ToolSpec` 新增可选 `display_name` 元数据，用于 UI 展示工具调用标题；内部工具名 `name` 保持稳定，继续供模型、权限和前端逻辑判断使用。
 
@@ -378,8 +434,9 @@ async def memory_save(...) -> ToolResult: ...
 | `send_file` | `Send File` |
 | `capture_screenshot_and_send` | `Take Screenshot` |
 | `switch_soul` | `Soul` |
+| `vision_observe_image` | `Look Image` |
 
-### 7.6 SSE 与持久化 display_name
+### 7.7 SSE 与持久化 display_name
 
 `sebastian/core/stream_helpers.py::dispatch_tool_call()` 在发送 tool 事件前解析最终显示名：
 
@@ -427,7 +484,7 @@ record = {
 
 `SessionItemRecord.payload` 透传该字段，REST timeline 历史加载可直接读取；旧记录没有该字段时前端回退到内部 `name`。
 
-### 7.7 Android 消费边界
+### 7.8 Android 消费边界
 
 Android 原生客户端的 `ContentBlock.ToolBlock` 持有：
 
@@ -442,7 +499,7 @@ Android 原生客户端的 `ContentBlock.ToolBlock` 持有：
 
 历史 REST 路径：`TimelineMapper` 从 `payload["display_name"]` 读取，缺失时 fallback 到 `tool_name`。旧的 `ToolDisplayName.kt` 前端映射表已删除。
 
-### 7.8 持久化与兼容性
+### 7.9 持久化与兼容性
 
 - 所有 tool block 写入同一 `record["result"]` 字段，新老数据共用
 - 老 session 回放仍是 Python repr 字符串，新 session 是干净 display，共存无冲突

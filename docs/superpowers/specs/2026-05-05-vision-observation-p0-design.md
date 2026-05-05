@@ -1,3 +1,8 @@
+---
+integrated_to: capabilities/core-tools.md, capabilities/browser-tool.md, core/runtime.md
+integrated_at: 2026-05-05
+---
+
 # Sebastian 视觉观察 P0 设计
 
 ## 背景

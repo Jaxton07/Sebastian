@@ -1,5 +1,5 @@
 ---
-version: "1.0"
+version: "1.1"
 last_updated: 2026-05-05
 status: implemented
 ---
@@ -12,7 +12,7 @@ status: implemented
 
 ## 1. 概述
 
-Sebastian 内置 Browser Tool 为主管家提供一组基于 Playwright Chromium 的浏览器工具，用于打开网页、观察页面、执行低层交互、截图发送和发送下载文件。
+Sebastian 内置 Browser Tool 为主管家提供一组基于 Playwright Chromium 的浏览器工具，用于打开网页、观察页面、视觉观察当前页面、执行低层交互、截图发送和发送下载文件。
 
 设计目标：
 
@@ -26,7 +26,8 @@ Sebastian 内置 Browser Tool 为主管家提供一组基于 Playwright Chromium
 
 - 不提供高层 `browser_task` mini-agent。
 - 不公开多 tab / `page_id` API。
-- 不把截图像素、OCR 或图片 bytes 回灌进 LLM 上下文。
+- `browser_capture` 不把截图像素、OCR 或图片 bytes 回灌进 LLM 上下文；模型视觉观察必须显式使用 `browser_look`。
+- `browser_look` 不做 OCR，不建立跨 turn 视觉记忆。
 - 不提供清空浏览器数据 UI / tool。
 - 不支持上传、PDF 导出、网络日志检查或浏览器 fingerprint 配置。
 - 不向 guest/family 身份暴露共享浏览器 profile；多用户浏览器 profile 需等身份系统进入 tool context 后再设计。
@@ -39,7 +40,7 @@ Browser Tool 作为 Native Tool 子包实现：
 
 ```text
 sebastian/capabilities/tools/browser/
-  __init__.py     # @tool: browser_open / observe / act / capture / downloads
+  __init__.py     # @tool: browser_open / observe / act / capture / downloads / look
   artifacts.py   # 浏览器截图与下载 artifact 上传
   downloads.py   # 下载列表与发送 helper
   manager.py     # BrowserSessionManager：Playwright context / page / downloads / screenshots
@@ -65,6 +66,7 @@ browser_observe
 browser_act
 browser_capture
 browser_downloads
+browser_look
 ```
 
 `allowed_tools` 是唯一的工具可见性与执行边界：
@@ -191,7 +193,30 @@ reload
 }
 ```
 
-### 4.5 `browser_downloads(action="list", filename=None)`
+### 4.5 `browser_look(full_page: bool = false)`
+
+权限：`PermissionTier.MODEL_DECIDES`
+
+`browser_look` 截取当前由 `browser_open` 打开的页面，并把截图作为 runtime-only `model_images` 交给下一轮模型请求。它是模型视觉观察工具，不上传 attachment，不创建 timeline artifact。
+
+执行边界：
+
+- 通过 `review_preflight` 获取当前页面 metadata，必须证明页面由 browser tool 打开；没有页面或页面非 browser-owned 时直接阻断。
+- 工具执行时再次检查当前页面归属，避免 reviewer 后页面状态变化。
+- 使用 `ToolCallContext.supports_image_input` 做 provider 能力门禁；非多模态模型 fail closed。
+- 截图 bytes 受 AttachmentStore 图片大小上限约束，超过上限确定性失败。
+- 成功后删除临时截图文件。
+
+返回给模型的轻量文本来自 `display` / `model_content`；图片 bytes 只存在于 `model_images`，由 `AgentLoop` 按 provider 投影成多模态输入。SSE、timeline、artifact payload 不包含 base64。
+
+与 `browser_capture` 的区别：
+
+- `browser_capture`：向用户发送截图 artifact，模型只收到轻量 artifact metadata。
+- `browser_look`：让模型观察当前页面截图，不上传 artifact，不向用户发送图片。
+
+P0 明确不做 OCR，也不保存跨 turn 视觉记忆。
+
+### 4.6 `browser_downloads(action="list", filename=None)`
 
 权限：`PermissionTier.MODEL_DECIDES`
 
@@ -310,6 +335,8 @@ Browser screenshot 与 downloads 复用 attachment/artifact 窄通道：
 - SSE / timeline payload 透传 `artifact.kind`、`download_url`、filename、MIME type、size。
 - Android 原生客户端将 `kind="download"` 渲染为 `FileBlock`。
 
+`browser_look` 不走此 artifact 链路。它只在工具执行期间把截图 bytes 封装到 `model_images`，随后由运行时投影给模型，并保持 SSE / timeline 不含 base64。
+
 相关测试：
 
 - `tests/unit/store/test_attachments.py`
@@ -332,6 +359,7 @@ Browser screenshot 与 downloads 复用 attachment/artifact 窄通道：
 - URL / DNS / proxy 被阻断：说明阻断类别。
 - target 缺失或歧义：提示先 observe 并选择更具体 target。
 - 下载路径逃逸或 filename 不在列表中：拒绝并要求先 list。
+- `browser_look` 当前模型不支持图片输入、当前页面非 browser-owned 或截图超过图片大小上限：确定性失败。
 
 ---
 
@@ -342,6 +370,8 @@ Browser screenshot 与 downloads 复用 attachment/artifact 窄通道：
 - browser tools 注册元数据、权限档位与 Sebastian-only 可见性。
 - `allowed_tools=None` 无法执行 browser tools；`ALL_TOOLS` 是唯一 unrestricted sentinel。
 - `browser_observe` preflight 注入 sanitized URL/title，并阻断无页面/非 browser-owned 页面。
+- `browser_look` 使用视觉 preflight / 当前页面归属检查，返回 `model_images`，且不上传 artifact。
+- `browser_capture` 仍只产生用户侧 artifact，不返回 `model_images`。
 - `browser_act` action 枚举、敏感 credential / high-impact target 阻断。
 - URL guard、DNS resolver、Fake-IP、DoH、proxy 连接时阻断。
 - manager persistent context、proxy fail closed、final URL redirect 校验、shutdown 清理顺序。
@@ -359,7 +389,7 @@ SEBASTIAN_RUN_PLAYWRIGHT_TESTS=1
 
 ## 10. 验收标准
 
-- Sebastian 能看到并执行五个 browser tools；Sub-Agent 默认看不到也不能执行。
+- Sebastian 能看到并执行六个 browser tools；Sub-Agent 默认看不到也不能执行。
 - 当前单 owner 认证模型下，browser tools 只能通过 authenticated Sebastian owner turn path 触达。
 - headless Ubuntu 部署能打开网页并截图，不依赖物理显示器。
 - Browser profile、downloads 和 screenshots 目录位于 Sebastian data dir 下。
@@ -370,9 +400,12 @@ SEBASTIAN_RUN_PLAYWRIGHT_TESTS=1
 - 下载文件不能逃出 browser downloads 目录。
 - 通用二进制下载能走 backend storage、attachment routes、SSE/timeline 和 Android rendering。
 - `browser_observe` review input 包含 sanitized URL/title；无法证明当前页面归属时阻断。
+- `browser_look` review input 包含 sanitized URL/title，无法证明当前页面归属时阻断；成功时只通过 `model_images` 给模型观察截图，不上传 artifact。
+- `browser_capture` 仍是 user-facing artifact 工具，不偷偷变成模型视觉输入。
+- 浏览器视觉观察不做 OCR、不建立跨 turn 视觉记忆，截图大小受 image byte limit 约束。
 - 页面观察不暴露 password / hidden input values。
 - 临时 browser screenshots 不无界积累。
-- 工具 surface 保持为五个 browser tools。
+- 工具 surface 保持为六个 browser tools。
 
 ---
 

@@ -138,3 +138,18 @@ async def test_read_display_is_content_field(tmp_path) -> None:
     # display 仅包含 content 文本（带 cat -n 前缀），不含 total_lines 等元数据
     assert result.display == result.output["content"]
     assert "total_lines" not in (result.display or "")
+
+
+@pytest.mark.asyncio
+async def test_read_image_file_remains_text_decode_tool(tmp_path) -> None:
+    from sebastian.capabilities.tools.read import read
+
+    path = tmp_path / "photo.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
+
+    result = await read(str(path), limit=5)
+
+    assert result.ok is True
+    assert result.model_images == []
+    assert isinstance(result.output, dict)
+    assert "content" in result.output
