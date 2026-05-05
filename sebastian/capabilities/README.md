@@ -22,7 +22,7 @@ capabilities/
 │   ├── _session_permission.py  # stop/resume 权限校验（depth 边界）
 │   ├── ask_parent/      # 子代理主动暂停并向上级请求指示（状态置 WAITING）
 │   ├── bash/            # Shell 命令执行工具
-│   ├── browser/         # BrowserSessionManager + Sebastian 内置 browser_* 工具
+│   ├── browser/         # BrowserSessionManager + Sebastian 内置 browser_* 工具（文本/视觉观察、截图、下载）
 │   ├── check_sub_agents/  # 查询当前 Sub-Agent 会话状态
 │   ├── delegate_to_agent/ # Sebastian 委派任务给 Sub-Agent（工具调用形式）
 │   ├── edit/            # 文件精准替换工具
@@ -37,6 +37,7 @@ capabilities/
 │   ├── todo_write/      # Session 级 todo 列表覆盖式写入工具
 │   ├── send_file/       # Agent 向用户发送文件/图片工具
 │   ├── screenshot_send/  # Sebastian 截图并发送工具（Sebastian-only）
+│   ├── vision_observe_image/  # 本地图片视觉观察工具
 │   └── write/           # 文件写入工具（含 mtime 保护）
 ├── mcps/                # MCP server 配置目录，每个子目录一个 config.toml，启动时自动连接
 │   ├── __init__.py
@@ -51,7 +52,7 @@ capabilities/
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 新增 Native 工具 | [tools/](tools/README.md) 下新建目录 + `@tool` 装饰器 |
-| 修改 Sebastian 浏览器工具 | [tools/browser/](tools/browser/) 的注册入口、页面观察、下载、截图 artifact helper |
+| 修改 Sebastian 浏览器工具 | [tools/browser/](tools/browser/) 的注册入口、页面文本/视觉观察、下载、截图 artifact helper |
 | 修改工具调用优先级/错误处理 | [registry.py](registry.py) 的 `call()` |
 | 修改工具自动加载逻辑 | [tools/_loader.py](tools/_loader.py) |
 | 新增 MCP Server 连接 | `mcps/<name>/config.toml`，重启自动连接 |

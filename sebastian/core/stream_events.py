@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from sebastian.context.usage import TokenUsage
+from sebastian.core.types import ModelImagePayload
 
 
 @dataclass
@@ -65,6 +66,8 @@ class ToolResult:
     output: Any
     error: str | None
     empty_hint: str | None = None
+    model_content: str | None = None
+    model_images: list[ModelImagePayload] = field(default_factory=list)
 
 
 @dataclass

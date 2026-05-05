@@ -57,3 +57,10 @@ def test_tool_call_context_progress_cb_accepts_callable() -> None:
         progress_cb=fake_cb,
     )
     assert ctx.progress_cb is fake_cb
+
+
+def test_tool_call_context_image_capability_defaults_false() -> None:
+    from sebastian.permissions.types import ToolCallContext
+
+    ctx = ToolCallContext(task_goal="goal", session_id="s1", task_id=None)
+    assert ctx.supports_image_input is False

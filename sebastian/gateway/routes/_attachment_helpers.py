@@ -63,9 +63,12 @@ async def validate_and_write_attachment_turn(
     if has_image:
         try:
             resolved = await state.llm_registry.get_provider(agent_type)
-        except RuntimeError:
-            resolved = None
-        if resolved is not None and not resolved.supports_image_input:
+        except RuntimeError as exc:
+            raise HTTPException(
+                503,
+                "current model could not be resolved for image input",
+            ) from exc
+        if not resolved.supports_image_input:
             raise HTTPException(400, "current model does not support image input")
 
     # Step 5: text token budget

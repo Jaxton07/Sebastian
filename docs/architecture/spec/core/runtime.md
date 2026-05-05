@@ -1,6 +1,6 @@
 ---
-version: "1.2"
-last_updated: 2026-04-16
+version: "1.3"
+last_updated: 2026-05-05
 status: implemented
 ---
 
@@ -124,6 +124,9 @@ class ToolResult:
     ok: bool
     output: Any
     error: str | None
+    empty_hint: str | None = None
+    model_content: str | None = None
+    model_images: list[ModelImagePayload] = field(default_factory=list)
 
 @dataclass
 class TurnDone:
@@ -181,6 +184,17 @@ while True:
         send_val = result
     ...
 ```
+
+**模型输入边界**：
+
+工具执行结果在 `BaseAgent` 调用 `stream_helpers.dispatch_tool_call()` 后会被重封装为 `stream_events.ToolResult`。普通无图工具保持旧语义：`model_content=None`，`AgentLoop` 用 `_tool_result_content(output)` 生成文本 tool result。视觉工具使用两条 runtime-only 字段：
+
+- `model_content`：轻量文本，通常来自 `ToolResult.display`，用于描述这次视觉观察。
+- `model_images`：`ModelImagePayload` 列表，只给下一轮 provider call 使用，不进入普通 `output` / SSE / timeline artifact。
+
+`dispatch_tool_call()` 必须透传成功视觉工具的 `model_images`，同时保持 `tool.executed` payload、timeline tool block 和 artifact payload 不含 base64。失败结果一律清空 `model_images`。
+
+Provider 投影只发生在 `AgentLoop`：Anthropic 路径把 `model_images` 转为 tool result content 内的 image block；OpenAI-compatible 路径先追加文本 tool result，再追加 synthetic user image content block。P0 不做 OCR，也不保存跨 turn 视觉记忆。
 
 **多轮 thinking 回填**：
 

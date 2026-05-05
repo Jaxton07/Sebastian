@@ -17,7 +17,7 @@ tools/
 ├── _session_lock.py         # Session 级 asyncio.Lock，防止并发 turn 冲突
 ├── _session_permission.py   # stop/resume 操作的 depth 边界权限校验（被 stop_agent/resume_agent 调用）
 ├── browser/                 # 浏览器运行时 + Sebastian 内置 browser_* 工具
-│   ├── __init__.py          # @tool: browser_open / observe / act / capture / downloads
+│   ├── __init__.py          # @tool: browser_open / observe / act / capture / downloads / look
 │   ├── artifacts.py         # 浏览器截图 / 下载 artifact 上传与发送
 │   ├── downloads.py         # 下载列表与发送 helper
 │   ├── manager.py           # BrowserSessionManager：Playwright context / 下载 / 截图 / action helper
@@ -42,6 +42,8 @@ tools/
 │   └── __init__.py          # @tool: send_file
 ├── screenshot_send/          # Sebastian 截取后端主机屏幕并发送图片（permission_tier: HIGH_RISK，Sebastian-only）
 │   └── __init__.py          # @tool: capture_screenshot_and_send
+├── vision_observe_image/     # 本地图片视觉观察工具（permission_tier: LOW）
+│   └── __init__.py          # @tool: vision_observe_image
 ├── write/                   # 文件写入工具，含 mtime 保护（permission_tier: MODEL_DECIDES）
 │   └── __init__.py          # @tool: file_write
 ├── memory_save/             # 显式记忆写入工具，仅在用户明确要求时使用（permission_tier: LOW）
@@ -74,6 +76,7 @@ tools/
 |------------|--------|
 | 新增工具 | 本目录新建子目录 + `__init__.py` + `@tool` 装饰器，重启自动注册 |
 | 修改浏览器运行时 manager | [browser/manager.py](browser/manager.py) |
+| 修改浏览器视觉观察工具 | [browser/\_\_init\_\_.py](browser/__init__.py) 的 `browser_look` |
 | 修改工具自动扫描逻辑 | [_loader.py](_loader.py) |
 | 修改文件读取状态保护 | [_file_state.py](_file_state.py) |
 | 修改路径解析基准（workspace_dir） | [_path_utils.py](_path_utils.py) |
@@ -88,6 +91,7 @@ tools/
 | Todo 列表写入工具 | [todo_write/\_\_init\_\_.py](todo_write/__init__.py) |
 | Agent 向用户发送文件/图片工具 | [send_file/\_\_init\_\_.py](send_file/__init__.py) |
 | Sebastian 截图并发送 | [screenshot_send/\_\_init\_\_.py](screenshot_send/__init__.py) |
+| 本地图片视觉观察工具 | [vision_observe_image/\_\_init\_\_.py](vision_observe_image/__init__.py) |
 | 文件写入工具 | [write/\_\_init\_\_.py](write/__init__.py) |
 | 显式记忆写入工具 | [memory_save/\_\_init\_\_.py](memory_save/__init__.py) |
 | 长期记忆检索工具 | [memory_search/\_\_init\_\_.py](memory_search/__init__.py) |
@@ -126,7 +130,11 @@ return ToolResult(
 )
 ```
 
-默认情况下，给模型的 `tool_result` 由完整 `output` 生成；因此工具应避免把不该进入上下文的内容放进普通 `output`。带 `artifact` 的工具结果是例外窄通道：`artifact` 只保留在 timeline payload / SSE 中，实时回灌给 LLM 的 tool result 与历史 `model_content` 都必须使用轻量事实文本（通常来自 `display`）。`send_file` 只负责发送文件，不通过 tool result 把文本文件内容或预览回传给模型。
+默认情况下，给模型的 `tool_result` 由完整 `output` 生成；因此工具应避免把不该进入上下文的内容放进普通 `output`。`display` 始终是 UI-facing 摘要，供 SSE `result_summary`、timeline `record["result"]` 与人类展示使用。
+
+视觉工具可以额外返回 `model_images`。这是 runtime-only 模型输入通道，不进入普通 `output`、SSE、timeline artifact，也不能把 base64 放进用户可见 payload。`dispatch_tool_call()` 会把视觉工具的轻量 `display` 写入 `stream_events.ToolResult.model_content`，并把 `model_images` 原样交给 `AgentLoop`，由 `AgentLoop` 按 provider 投影成 Anthropic / OpenAI-compatible 多模态输入。普通无图工具保持旧语义：模型侧文本仍由 `_tool_result_content(output)` 生成。
+
+带 `artifact` 的工具结果是另一条窄通道：`artifact` 只保留在 timeline payload / SSE 中，实时回灌给 LLM 的 tool result 与历史 `model_content` 都必须使用轻量事实文本（通常来自 `display`）。`send_file` 只负责发送文件，不通过 tool result 把文本文件内容或预览回传给模型。
 
 ## 工具分类：能力工具 vs 协议工具
 
@@ -134,7 +142,7 @@ return ToolResult(
 
 | 类别 | 工具 | 控制方式 | 说明 |
 |------|------|---------|------|
-| **能力工具** | Read / Write / Edit / Bash / Glob / Grep / todo_write / todo_read / send_file / browser_* / capture_screenshot_and_send 等 | manifest `allowed_tools` 白名单 | 决定 Agent 的领域执行范围 |
+| **能力工具** | Read / Write / Edit / Bash / Glob / Grep / todo_write / todo_read / send_file / vision_observe_image / browser_* / capture_screenshot_and_send 等 | manifest `allowed_tools` 白名单 | 决定 Agent 的领域执行范围 |
 | **协议工具** | ask_parent / resume_agent / stop_agent / spawn_sub_agent / check_sub_agents / inspect_session（sub-agent 自动注入）；delegate_to_agent（Sebastian 手工配置） | 按 Agent 层级角色分配 | 决定 Agent 在层级中的通信与监控方式 |
 
 `capture_screenshot_and_send` 与 `browser_*` 当前只加入 `Sebastian.allowed_tools`，不要加入 sub-agent manifest。

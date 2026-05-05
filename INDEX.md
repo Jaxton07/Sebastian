@@ -1,6 +1,6 @@
 # Sebastian
 
-> 指导文档：[CLAUDE.md](CLAUDE.md)
+> 指导文档：[CLAUDE.md](CLAUDE.md)，[AGENTS.md](AGENTS.md)
 
 ## 项目简介
 

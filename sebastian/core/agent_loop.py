@@ -66,6 +66,47 @@ def _artifact_tool_result_content(artifact: dict[str, Any]) -> str:
     return f"已向用户发送{label}"
 
 
+def _tool_result_text(result: ToolResult) -> str:
+    if result.model_content:
+        return result.model_content
+    return _tool_result_content(result)
+
+
+def _anthropic_tool_result_content(result: ToolResult) -> str | list[dict[str, Any]]:
+    text = _tool_result_text(result)
+    if not result.model_images:
+        return text
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
+    for image in result.model_images:
+        blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image.media_type,
+                    "data": image.data_base64,
+                },
+            }
+        )
+    return blocks
+
+
+def _openai_image_user_message(result: ToolResult) -> dict[str, Any] | None:
+    if not result.model_images:
+        return None
+    content: list[dict[str, Any]] = [{"type": "text", "text": _tool_result_text(result)}]
+    for image in result.model_images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image.media_type};base64,{image.data_base64}",
+                },
+            }
+        )
+    return {"role": "user", "content": content}
+
+
 def _validate_injected_tool_result(
     *,
     tool_id: str,
@@ -131,6 +172,7 @@ class AgentLoop:
             text_parts: list[str] = []
             # Anthropic: list of tool_result blocks; OpenAI: list of role:tool messages
             tool_results_for_next: list[dict[str, Any]] = []
+            openai_image_messages_for_next: list[dict[str, Any]] = []
             stop_reason = "end_turn"
 
             async for event in self._provider.stream(
@@ -203,14 +245,17 @@ class AgentLoop:
                             {
                                 "role": "tool",
                                 "tool_call_id": event.tool_id,
-                                "content": _tool_result_content(validated),
+                                "content": _tool_result_text(validated),
                             }
                         )
+                        image_message = _openai_image_user_message(validated)
+                        if image_message is not None:
+                            openai_image_messages_for_next.append(image_message)
                     else:
                         block: dict[str, Any] = {
                             "type": "tool_result",
                             "tool_use_id": event.tool_id,
-                            "content": _tool_result_content(validated),
+                            "content": _anthropic_tool_result_content(validated),
                         }
                         if not validated.ok:
                             block["is_error"] = True
@@ -253,6 +298,7 @@ class AgentLoop:
             # Append tool results in provider-appropriate format
             if is_openai:
                 working.extend(tool_results_for_next)
+                working.extend(openai_image_messages_for_next)
             else:
                 working.append({"role": "user", "content": tool_results_for_next})
 

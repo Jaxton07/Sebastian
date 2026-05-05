@@ -27,3 +27,17 @@ def test_provider_call_end_is_in_llm_stream_event_union() -> None:
 
     e: LLMStreamEvent = ProviderCallEnd(stop_reason="tool_use")
     assert isinstance(e, ProviderCallEnd)
+
+
+def test_stream_tool_result_model_images_defaults_empty() -> None:
+    from sebastian.core.stream_events import ToolResult as StreamToolResult
+
+    result = StreamToolResult(
+        tool_id="toolu_1",
+        name="vision_observe_image",
+        ok=True,
+        output={"filename": "photo.png"},
+        error=None,
+    )
+    assert result.model_images == []
+    assert result.model_content is None
