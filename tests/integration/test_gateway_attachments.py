@@ -9,6 +9,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 
+JPEG_BYTES = (
+    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+)
+
+
 @pytest.fixture
 def client(tmp_path):
     from sebastian.gateway.auth import hash_password
@@ -210,12 +215,9 @@ def test_upload_unsupported_kind_returns_400(client) -> None:
 def test_upload_image_returns_metadata(client) -> None:
     http_client, token = client
 
-    # Minimal valid JPEG header bytes
-    jpeg_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
-
     response = http_client.post(
         "/api/v1/attachments",
-        files={"file": ("photo.jpg", jpeg_bytes, "image/jpeg")},
+        files={"file": ("photo.jpg", JPEG_BYTES, "image/jpeg")},
         data={"kind": "image"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -224,6 +226,59 @@ def test_upload_image_returns_metadata(client) -> None:
     assert body["kind"] == "image"
     assert body["status"] == "uploaded"
     assert body["filename"] == "photo.jpg"
+
+
+def test_image_attachment_turn_fails_when_provider_resolution_fails(client, monkeypatch) -> None:
+    http_client, token = client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Create a real Sebastian session first. The follow-up endpoint resolves
+    # the session before entering attachment validation.
+    with patch(
+        "sebastian.gateway.routes.turns._ensure_llm_ready",
+        new_callable=AsyncMock,
+    ), patch(
+        "sebastian.gateway.state.sebastian.run_streaming",
+        new_callable=AsyncMock,
+    ):
+        create = http_client.post(
+            "/api/v1/turns",
+            json={"content": "initial"},
+            headers=headers,
+        )
+    assert create.status_code == 200, create.text
+    session_id = create.json()["session_id"]
+
+    upload_resp = http_client.post(
+        "/api/v1/attachments",
+        files={"file": ("photo.jpg", JPEG_BYTES, "image/jpeg")},
+        data={"kind": "image"},
+        headers=headers,
+    )
+    assert upload_resp.status_code == 201, upload_resp.text
+    attachment_id = upload_resp.json()["attachment_id"]
+
+    import sebastian.gateway.state as state
+
+    async def fail_get_provider(agent_type: str):
+        raise RuntimeError("no provider configured")
+
+    monkeypatch.setattr(state.llm_registry, "get_provider", fail_get_provider)
+
+    # Keep the route-level readiness check out of the way so the helper under
+    # test observes the provider resolution failure itself.
+    with patch(
+        "sebastian.gateway.routes.turns._ensure_llm_ready",
+        new_callable=AsyncMock,
+    ):
+        turn_resp = http_client.post(
+            f"/api/v1/sessions/{session_id}/turns",
+            json={"content": "看图", "attachment_ids": [attachment_id]},
+            headers=headers,
+        )
+
+    assert turn_resp.status_code == 503
+    assert "current model could not be resolved for image input" in turn_resp.text
 
 
 def test_upload_requires_auth(client) -> None:
