@@ -704,3 +704,34 @@ async def test_base_agent_direct_provider_image_capability_is_explicit(
 
     assert implicit_supports is False
     assert explicit_supports is True
+
+
+@pytest.mark.asyncio
+async def test_base_agent_positional_model_does_not_enable_direct_provider_images(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    _register_supports_image_context_tool(monkeypatch)
+
+    class TestAgent(BaseAgent):
+        name = "test_agent"
+        allowed_tools = [_SUPPORTS_IMAGE_CONTEXT_TOOL]
+
+    sessions_dir = tmp_path / "sessions"
+    session_store = SessionStore(sessions_dir)
+    await session_store.create_session(
+        Session(id="positional-provider-session", agent_type="test_agent", title="Provider")
+    )
+
+    gate = _make_policy_gate()
+    provider = _make_tool_call_provider()
+    agent = TestAgent(gate, session_store, None, provider, "positional-model")
+
+    await agent.run_streaming("check capability", "positional-provider-session")
+
+    assert _extract_tool_result_supports(provider) is False
+    assert agent._loop._model == "positional-model"

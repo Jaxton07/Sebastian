@@ -99,7 +99,6 @@ class BaseAgent(ABC):
         session_store: SessionStore,
         event_bus: EventBus | None = None,
         provider: LLMProvider | None = None,
-        provider_supports_image_input: bool = False,
         model: str | None = None,
         allowed_tools: AgentAllowedTools = None,
         allowed_skills: list[str] | None = None,
@@ -107,6 +106,8 @@ class BaseAgent(ABC):
         db_factory: async_sessionmaker[AsyncSession] | None = None,
         compaction_scheduler: CompactionScheduler | None = None,
         attachment_store: Any | None = None,
+        *,
+        provider_supports_image_input: bool = False,
     ) -> None:
         self._gate = gate
         self._db_factory = db_factory
