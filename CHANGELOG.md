@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+- Sebastian 新增视觉观察能力：可用多模态模型观察本地图片文件，以及视觉观察当前浏览器页面截图。
+
+### Changed
+- 工具结果新增运行时图片输入通道，图片 bytes 不进入普通输出、timeline artifact 或 SSE 展示，`Read`、`send_file`、`browser_capture` 仍保持原有文本读取和用户侧 artifact 语义。
+
+### Fixed
+- 图片附件写入和视觉观察工具在当前模型不支持图片输入或 provider 配置不可解析时会明确失败，避免错误地把图片送入不支持多模态的模型上下文。
+
 ## [0.5.9] - 2026-05-04
 
 ### Added
