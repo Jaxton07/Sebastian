@@ -11,6 +11,7 @@ import pytest
 import sebastian.capabilities.tools.browser  # noqa: F401
 from sebastian.capabilities.registry import CapabilityRegistry
 from sebastian.core.tool import get_tool
+from sebastian.core.tool_context import _current_tool_ctx
 from sebastian.core.types import ToolResult
 from sebastian.orchestrator.sebas import Sebastian
 from sebastian.permissions.gate import PolicyGate
@@ -25,6 +26,7 @@ BROWSER_TOOLS = {
     "browser_observe",
     "browser_act",
     "browser_capture",
+    "browser_look",
     "browser_downloads",
 }
 
@@ -36,19 +38,37 @@ class _Metadata:
     opened_by_browser_tool: bool
 
 
+@dataclass
+class _Capture:
+    path: str
+    url: str
+
+
 class _FakeManager:
     def __init__(self, metadata: _Metadata | None = None) -> None:
         self.metadata = metadata
         self.opened: list[str] = []
         self.acted: list[dict[str, Any]] = []
         self.target_metadata_result: dict[str, str] | None = None
+        self.screenshot_path: Path | None = None
+        self.full_page_calls: list[bool] = []
+        self.metadata_calls = 0
 
     async def open(self, url: str) -> Any:
         self.opened.append(url)
         return MagicMock(ok=True, url="https://example.com/", title=None, error="")
 
     async def current_page_metadata(self) -> _Metadata | None:
+        self.metadata_calls += 1
         return self.metadata
+
+    async def capture_screenshot(self, *, full_page: bool) -> _Capture:
+        self.full_page_calls.append(full_page)
+        path = self.screenshot_path
+        if path is None:
+            raise RuntimeError("No browser-tool-owned page is currently open")
+        path.write_bytes(b"png-bytes")
+        return _Capture(path=str(path), url="https://example.com/path?secret=1")
 
     async def act(
         self,
@@ -67,6 +87,19 @@ class _FakeManager:
         return self.target_metadata_result or {"target": target}
 
 
+def _set_tool_context(*, supports_image_input: bool = True) -> Any:
+    return _current_tool_ctx.set(
+        ToolCallContext(
+            task_goal="inspect browser",
+            session_id="s1",
+            task_id="t1",
+            agent_type="sebastian",
+            allowed_tools=ALL_TOOLS,
+            supports_image_input=supports_image_input,
+        )
+    )
+
+
 def test_browser_tools_register_metadata() -> None:
     specs = {}
     for name in BROWSER_TOOLS:
@@ -81,6 +114,8 @@ def test_browser_tools_register_metadata() -> None:
     assert specs["browser_observe"].review_preflight is not None
     assert specs["browser_act"].permission_tier == PermissionTier.MODEL_DECIDES
     assert specs["browser_capture"].permission_tier == PermissionTier.MODEL_DECIDES
+    assert specs["browser_look"].permission_tier == PermissionTier.MODEL_DECIDES
+    assert specs["browser_look"].review_preflight is not None
     assert specs["browser_downloads"].permission_tier == PermissionTier.MODEL_DECIDES
 
 
@@ -229,6 +264,178 @@ async def test_browser_observe_preflight_blocks_unowned_or_missing_page() -> Non
 
         assert preflight.ok is False
         assert "Do not retry automatically" in (preflight.error or "")
+
+
+@pytest.mark.asyncio
+async def test_browser_look_requires_image_capable_model(monkeypatch) -> None:
+    from sebastian.capabilities.tools.browser import browser_look
+
+    token = _set_tool_context(supports_image_input=False)
+    manager = _FakeManager(_Metadata("https://example.com/", "Home", True))
+    fake_state = MagicMock(browser_manager=manager)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_look()
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is False
+    assert "does not support image input" in (result.error or "")
+    assert manager.metadata_calls == 0
+    assert manager.full_page_calls == []
+
+
+@pytest.mark.asyncio
+async def test_browser_look_requires_browser_manager(monkeypatch) -> None:
+    from sebastian.capabilities.tools.browser import browser_look
+
+    token = _set_tool_context(supports_image_input=True)
+    fake_state = MagicMock(browser_manager=None)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_look()
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is False
+    assert "Browser service is unavailable" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_browser_look_returns_model_image(monkeypatch, tmp_path) -> None:
+    from sebastian.capabilities.tools.browser import browser_look
+
+    token = _set_tool_context(supports_image_input=True)
+    manager = _FakeManager(_Metadata("https://example.com/path?secret=1", "Home", True))
+    manager.screenshot_path = tmp_path / "page.png"
+    fake_state = MagicMock(browser_manager=manager)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_look(full_page=True)
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is True
+    assert result.output["mime_type"] == "image/png"
+    assert result.output["url"] == "https://example.com/path"
+    assert result.output["size_bytes"] == len(b"png-bytes")
+    assert result.output["full_page"] is True
+    assert result.model_images[0].media_type == "image/png"
+    assert result.model_images[0].data_base64
+    assert result.model_images[0].filename == "page.png"
+    assert not (tmp_path / "page.png").exists()
+    assert manager.metadata_calls == 1
+    assert manager.full_page_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_browser_look_deletes_temp_file_on_capture_read_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from sebastian.capabilities.tools.browser import browser_look
+
+    token = _set_tool_context(supports_image_input=True)
+    manager = _FakeManager(_Metadata("https://example.com/path", "Home", True))
+    manager.screenshot_path = tmp_path / "page.png"
+    fake_state = MagicMock(browser_manager=manager)
+    original_read_bytes = Path.read_bytes
+
+    def fail_page_read(path: Path) -> bytes:
+        if path == tmp_path / "page.png":
+            raise OSError("read failed")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_page_read)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_look()
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is False
+    assert "Browser visual observation failed" in (result.error or "")
+    assert not (tmp_path / "page.png").exists()
+    assert manager.full_page_calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_browser_look_uses_observe_preflight(monkeypatch) -> None:
+    registry = CapabilityRegistry()
+    manager = _FakeManager(
+        _Metadata(
+            url="https://example.com/path?token=secret",
+            title="Home",
+            opened_by_browser_tool=True,
+        )
+    )
+    fake_state = MagicMock(browser_manager=manager)
+    context = ToolCallContext(
+        task_goal="inspect current page",
+        session_id="s1",
+        task_id="t1",
+        agent_type="sebastian",
+        allowed_tools=ALL_TOOLS,
+    )
+
+    with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+        preflight = await registry.review_preflight("browser_look", {"full_page": True}, context)
+
+    assert preflight.ok is True
+    assert preflight.review_input == {
+        "max_chars": 4000,
+        "current_url": "https://example.com/path",
+        "title": "Home",
+        "opened_by_browser_tool": True,
+    }
+    assert manager.metadata_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_browser_look_output_has_no_artifact(monkeypatch, tmp_path) -> None:
+    from sebastian.capabilities.tools.browser import browser_look
+
+    token = _set_tool_context(supports_image_input=True)
+    manager = _FakeManager(_Metadata("https://example.com/path", "Home", True))
+    manager.screenshot_path = tmp_path / "page.png"
+    fake_state = MagicMock(browser_manager=manager)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_look()
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is True
+    assert "artifact" not in result.output
+    assert result.model_images
+
+
+@pytest.mark.asyncio
+async def test_browser_capture_has_no_model_images(monkeypatch, tmp_path) -> None:
+    from sebastian.capabilities.tools.browser import browser_capture
+
+    manager = _FakeManager(_Metadata("https://example.com/path", "Home", True))
+    manager.screenshot_path = tmp_path / "page.png"
+    fake_state = MagicMock(browser_manager=manager)
+
+    async def fake_upload_browser_artifact(**kwargs: Any) -> ToolResult:
+        return ToolResult(ok=True, output={"artifact": {"filename": kwargs["filename"]}})
+
+    monkeypatch.setattr(
+        "sebastian.capabilities.tools.browser.upload_browser_artifact",
+        fake_upload_browser_artifact,
+    )
+
+    with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+        capture_result = await browser_capture()
+
+    assert capture_result.model_images == []
+    assert "artifact" in capture_result.output
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import inspect
 import re
 import sys
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -12,7 +14,8 @@ from sebastian.capabilities.tools.browser.downloads import list_downloads, send_
 from sebastian.capabilities.tools.browser.observe import observe_page
 from sebastian.capabilities.tools.browser.safety import BrowserSafetyError
 from sebastian.core.tool import tool
-from sebastian.core.types import ToolResult
+from sebastian.core.tool_context import get_tool_context
+from sebastian.core.types import ModelImagePayload, ToolResult
 from sebastian.permissions.types import PermissionTier, ToolReviewPreflight
 
 _BROWSER_UNAVAILABLE = (
@@ -209,6 +212,79 @@ async def browser_capture(display_name: str | None = None) -> ToolResult:
         result.output["filename"] = _artifact_display_name(display_name, path.name)
         result.output["url"] = _sanitize_url(str(getattr(capture, "url", "") or ""))
     return result
+
+
+@tool(
+    name="browser_look",
+    description="Visually observe the current browser_open page with the current multimodal model.",
+    permission_tier=PermissionTier.MODEL_DECIDES,
+    display_name="Browser Look",
+    review_preflight=lambda inputs, context: _browser_observe_preflight(inputs, context),
+)
+async def browser_look(full_page: bool = False) -> ToolResult:
+    ctx = get_tool_context()
+    if ctx is None or not ctx.supports_image_input:
+        return ToolResult(
+            ok=False,
+            error=(
+                "Current model does not support image input. Do not retry automatically; "
+                "ask the user to switch Sebastian to a multimodal model or run this "
+                "through Sebastian's normal tool path."
+            ),
+        )
+    manager = _browser_manager()
+    if manager is None:
+        return ToolResult(ok=False, error=_BROWSER_UNAVAILABLE)
+    path: Path | None = None
+    try:
+        metadata = await manager.current_page_metadata()
+        if metadata is None or not bool(getattr(metadata, "opened_by_browser_tool", False)):
+            return ToolResult(ok=False, error=_NO_BROWSER_PAGE)
+        capture = await _maybe_await(manager.capture_screenshot(full_page=full_page))
+        path = Path(capture.path)
+        data = path.read_bytes()
+        encoded = base64.b64encode(data).decode("ascii")
+        url = _sanitize_url(str(getattr(capture, "url", "") or ""))
+        display = "已视觉观察当前浏览器页面"
+        return ToolResult(
+            ok=True,
+            output={
+                "url": url,
+                "mime_type": "image/png",
+                "size_bytes": len(data),
+                "full_page": full_page,
+            },
+            display=display,
+            model_images=[
+                ModelImagePayload(
+                    media_type="image/png",
+                    data_base64=encoded,
+                    filename=path.name,
+                )
+            ],
+        )
+    except RuntimeError as exc:
+        if "No browser-tool-owned page" in str(exc):
+            return ToolResult(ok=False, error=_NO_BROWSER_PAGE)
+        return ToolResult(
+            ok=False,
+            error=(
+                "Browser visual observation failed. Do not retry automatically; "
+                "tell the user the current page could not be visually inspected."
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        return ToolResult(
+            ok=False,
+            error=(
+                "Browser visual observation failed. Do not retry automatically; "
+                "tell the user the current page could not be visually inspected."
+            ),
+        )
+    finally:
+        if path is not None:
+            with suppress(OSError):
+                path.unlink()
 
 
 @tool(
