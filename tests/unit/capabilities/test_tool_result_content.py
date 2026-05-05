@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +15,7 @@ from sebastian.core.stream_events import (
     ToolResult,
 )
 from sebastian.core.tool_context import get_tool_context
+from sebastian.core.types import ModelImagePayload
 from sebastian.core.types import ToolResult as CoreToolResult
 from sebastian.permissions.types import PermissionTier
 
@@ -180,12 +182,28 @@ class TestToolResultContent:
 
 
 _SUPPORTS_IMAGE_CONTEXT_TOOL = "__test_supports_image_context"
+_OBSERVE_IMAGE_TOOL = "__test_observe_image"
 
 
 async def _supports_image_context_tool() -> CoreToolResult:
     ctx = get_tool_context()
     assert ctx is not None
     return CoreToolResult(ok=True, output={"supports": ctx.supports_image_input})
+
+
+async def _observe_image_tool() -> CoreToolResult:
+    return CoreToolResult(
+        ok=True,
+        output={"filename": "photo.png", "mime_type": "image/png"},
+        display="已观察图片 photo.png",
+        model_images=[
+            ModelImagePayload(
+                media_type="image/png",
+                data_base64="abc",
+                filename="photo.png",
+            )
+        ],
+    )
 
 
 def _register_supports_image_context_tool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,6 +218,18 @@ def _register_supports_image_context_tool(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setitem(_tools, _SUPPORTS_IMAGE_CONTEXT_TOOL, (spec, _supports_image_context_tool))
 
 
+def _register_observe_image_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sebastian.core.tool import ToolSpec, _tools
+
+    spec = ToolSpec(
+        name=_OBSERVE_IMAGE_TOOL,
+        description="Observe an image and return model image payloads.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        permission_tier=PermissionTier.LOW,
+    )
+    monkeypatch.setitem(_tools, _OBSERVE_IMAGE_TOOL, (spec, _observe_image_tool))
+
+
 def _make_policy_gate() -> Any:
     from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.permissions.gate import PolicyGate
@@ -212,6 +242,19 @@ def _make_policy_gate() -> Any:
 
 async def _noop_publish(*_args: Any, **_kwargs: Any) -> None:
     return None
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _make_observe_image_event() -> ToolCallReady:
+    return ToolCallReady(
+        block_id="blk_image",
+        tool_id="toolu_observe_image",
+        name=_OBSERVE_IMAGE_TOOL,
+        inputs={},
+    )
 
 
 def _make_supports_tool_event() -> ToolCallReady:
@@ -258,6 +301,56 @@ async def test_dispatch_tool_call_passes_provider_image_capability_to_tool_conte
 
     false_result = await call_dispatch(supports_image_input=False)
     assert false_result.output == {"supports": False}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_call_preserves_model_content_and_images_without_persisting_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.stream_helpers import dispatch_tool_call
+    from sebastian.protocol.events.types import EventType
+
+    _register_observe_image_tool(monkeypatch)
+    gate = _make_policy_gate()
+    assistant_blocks: list[dict[str, Any]] = []
+    published: list[tuple[Any, dict[str, Any]]] = []
+
+    async def publish(_session_id: str, event_type: Any, payload: dict[str, Any]) -> None:
+        published.append((event_type, payload))
+
+    result, _ = await dispatch_tool_call(
+        _make_observe_image_event(),
+        session_id="sess-observe-image",
+        task_id=None,
+        agent_context="sebastian",
+        assistant_turn_id="turn-1",
+        assistant_blocks=assistant_blocks,
+        current_pci=0,
+        block_index=0,
+        gate_call=gate.call,
+        update_activity=AsyncMock(),
+        publish=publish,
+        current_task_goals={},
+        current_depth={},
+        allowed_tools=[_OBSERVE_IMAGE_TOOL],
+        pending_blocks={},
+        supports_image_input=True,
+    )
+
+    assert result.model_content == "已观察图片 photo.png"
+    assert result.model_images[0].data_base64 == "abc"
+
+    tool_result_block = assistant_blocks[-1]
+    assert tool_result_block["model_content"] == "已观察图片 photo.png"
+    assert "model_images" not in tool_result_block
+    assert "abc" not in _json_text(tool_result_block)
+
+    executed_payloads = [
+        payload for event_type, payload in published if event_type == EventType.TOOL_EXECUTED
+    ]
+    assert len(executed_payloads) == 1
+    assert "model_images" not in executed_payloads[0]
+    assert "abc" not in _json_text(executed_payloads[0])
 
 
 def _extract_tool_result_supports(provider: Any) -> bool:
@@ -321,6 +414,181 @@ def _make_tool_call_provider() -> Any:
             ProviderCallEnd(stop_reason="end_turn"),
         ],
     )
+
+
+class _ProjectionProvider:
+    def __init__(self, message_format: str, *turns: list[Any]) -> None:
+        self.message_format = message_format
+        self._turns = list(turns)
+        self.messages_by_call: list[list[dict[str, Any]]] = []
+        self.call_count = 0
+
+    async def stream(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        model: str,
+        max_tokens: int,
+        block_id_prefix: str = "",
+        thinking_effort: str | None = None,
+    ) -> AsyncGenerator[Any, None]:
+        del system, tools, model, max_tokens, block_id_prefix, thinking_effort
+        if self.call_count >= len(self._turns):
+            raise RuntimeError("Projection provider has no more turns")
+        self.messages_by_call.append(list(messages))
+        events = self._turns[self.call_count]
+        self.call_count += 1
+        for event in events:
+            yield event
+
+
+def _image_stream_result(
+    *,
+    tool_id: str = "toolu_image",
+    name: str = "observe_image",
+) -> ToolResult:
+    return ToolResult(
+        tool_id=tool_id,
+        name=name,
+        ok=True,
+        output={"filename": "photo.png", "mime_type": "image/png"},
+        error=None,
+        model_content="已观察图片 photo.png",
+        model_images=[
+            ModelImagePayload(
+                media_type="image/png",
+                data_base64="abc",
+                filename="photo.png",
+            )
+        ],
+    )
+
+
+async def _drive_loop_with_injections(
+    provider: _ProjectionProvider,
+    injections: dict[str, ToolResult],
+) -> None:
+    from sebastian.core.agent_loop import AgentLoop
+
+    registry = MagicMock()
+    registry.get_callable_specs = MagicMock(return_value=[])
+    loop = AgentLoop(provider, registry, model="fake", max_tokens=1000)
+    gen = loop.stream(system_prompt="sys", messages=[{"role": "user", "content": "observe"}])
+    send_value: ToolResult | None = None
+    try:
+        while True:
+            event = await gen.asend(send_value)
+            send_value = None
+            if isinstance(event, ToolCallReady):
+                send_value = injections[event.tool_id]
+    except StopAsyncIteration:
+        return
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_projects_model_images_to_anthropic_tool_result_content() -> None:
+    provider = _ProjectionProvider(
+        "anthropic",
+        [
+            ToolCallReady(
+                block_id="b0_0",
+                tool_id="toolu_image",
+                name="observe_image",
+                inputs={},
+            ),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [ProviderCallEnd(stop_reason="end_turn")],
+    )
+
+    await _drive_loop_with_injections(provider, {"toolu_image": _image_stream_result()})
+
+    tool_result = provider.messages_by_call[1][-1]["content"][0]
+    assert tool_result == {
+        "type": "tool_result",
+        "tool_use_id": "toolu_image",
+        "content": [
+            {"type": "text", "text": "已观察图片 photo.png"},
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": "abc"},
+            },
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_projects_openai_images_after_all_tool_messages() -> None:
+    provider = _ProjectionProvider(
+        "openai",
+        [
+            ToolCallReady(
+                block_id="b0_0",
+                tool_id="toolu_image",
+                name="observe_image",
+                inputs={},
+            ),
+            ToolCallReady(
+                block_id="b0_1",
+                tool_id="toolu_text",
+                name="read_text",
+                inputs={},
+            ),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [ProviderCallEnd(stop_reason="end_turn")],
+    )
+    text_result = ToolResult(
+        tool_id="toolu_text",
+        name="read_text",
+        ok=True,
+        output="plain text",
+        error=None,
+    )
+
+    await _drive_loop_with_injections(
+        provider,
+        {
+            "toolu_image": _image_stream_result(),
+            "toolu_text": text_result,
+        },
+    )
+
+    second_messages = provider.messages_by_call[1]
+    assert second_messages[-3:] == [
+        {
+            "role": "tool",
+            "tool_call_id": "toolu_image",
+            "content": "已观察图片 photo.png",
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "toolu_text",
+            "content": "plain text",
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "已观察图片 photo.png"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+            ],
+        },
+    ]
+    tool_indexes = [
+        index for index, message in enumerate(second_messages) if message.get("role") == "tool"
+    ]
+    image_user_indexes = [
+        index
+        for index, message in enumerate(second_messages)
+        if message.get("role") == "user"
+        and isinstance(message.get("content"), list)
+        and any(block.get("type") == "image_url" for block in message["content"])
+    ]
+    assert tool_indexes
+    assert image_user_indexes
+    assert max(tool_indexes) < min(image_user_indexes)
 
 
 @pytest.mark.asyncio

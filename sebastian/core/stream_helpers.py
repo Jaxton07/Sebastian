@@ -81,6 +81,8 @@ def _artifact_model_content(artifact: dict[str, Any], display: str) -> str:
 
 
 def _tool_result_model_content(result: StreamToolResult, display: str) -> str:
+    if result.model_content:
+        return result.model_content
     if isinstance(result.output, dict):
         artifact = result.output.get("artifact")
         if isinstance(artifact, dict):
@@ -256,7 +258,12 @@ async def dispatch_tool_call(
         error = str(exc)
         record["result"] = error
         stream_result = StreamToolResult(
-            tool_id=event.tool_id, name=event.name, ok=False, output=None, error=error
+            tool_id=event.tool_id,
+            name=event.name,
+            ok=False,
+            output=None,
+            error=error,
+            model_content=f"Error: {error}",
         )
         append_tool_result_block(
             assistant_blocks,
@@ -313,6 +320,13 @@ async def dispatch_tool_call(
                 "error": result.error,
             },
         )
+    raw_model_images = getattr(result, "model_images", [])
+    model_images = list(raw_model_images) if isinstance(raw_model_images, list) else []
+    block_display = display if result.ok else (result.error or "")
+    if result.ok:
+        display_content = display if model_images else None
+    else:
+        display_content = f"Error: {result.error}"
     stream_result = StreamToolResult(
         tool_id=event.tool_id,
         name=event.name,
@@ -320,14 +334,15 @@ async def dispatch_tool_call(
         output=result.output,
         error=result.error,
         empty_hint=result.empty_hint,
+        model_content=display_content,
+        model_images=model_images if result.ok else [],
     )
-    display_content = display if result.ok else (result.error or "")
     append_tool_result_block(
         assistant_blocks,
         tool_id=event.tool_id,
         tool_name=event.name,
         result=stream_result,
-        display=display_content,
+        display=block_display,
         assistant_turn_id=assistant_turn_id,
         provider_call_index=current_pci,
         block_index=block_index,
