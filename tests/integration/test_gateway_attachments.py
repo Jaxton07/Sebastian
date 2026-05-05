@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
 JPEG_BYTES = (
     b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 )
