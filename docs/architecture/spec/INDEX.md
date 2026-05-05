@@ -50,6 +50,7 @@ Tools / MCPs / Skills 三层能力注册与实现。
 | [core-tools.md](capabilities/core-tools.md) | 六个核心工具规格、ToolResult.display 人类可读摘要、ToolSpec.display_name 后端展示名协议、模型侧 JSON 序列化、`_file_state.py` mtime 缓存、Bash 静默命令/语义化退出码/进度心跳 |
 | [agent-file-send.md](capabilities/agent-file-send.md) | `todo_read` + `send_file`/`send_file_path`：Agent 向用户发送图片/文件、Tool Result Artifact 持久化、SSE 扩展、工具失败返回规范 |
 | [screenshot-send.md](capabilities/screenshot-send.md) | `capture_screenshot_and_send`：后端主机截图发送、HIGH_RISK 权限、macOS/Linux 平台后端、临时文件管理 |
+| [browser-tool.md](capabilities/browser-tool.md) | Sebastian 内置 Playwright browser_* 工具：headless persistent context、Sebastian-only 白名单、URL/DNS/filtering proxy 安全边界、观察 preflight、截图/下载 artifact 链路 |
 
 ### [infra/](infra/INDEX.md) — 基础设施
 

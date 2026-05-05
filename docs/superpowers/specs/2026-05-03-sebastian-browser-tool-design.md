@@ -1,3 +1,8 @@
+---
+integrated_to: capabilities/browser-tool.md
+integrated_at: 2026-05-05
+---
+
 # Sebastian Browser Tool Design
 
 ## Context

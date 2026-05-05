@@ -118,7 +118,8 @@ async def browser_observe(max_chars: int = 4000) -> ToolResult:
     name="browser_act",
     description=(
         "Perform a small validated browser action on the current browser_open page. "
-        "Supported actions: click, type, press, select."
+        "Supported actions: click, type, press, select, wait_for_text, "
+        "wait_for_selector, back, forward, reload."
     ),
     permission_tier=PermissionTier.MODEL_DECIDES,
     display_name="Browser Act",
