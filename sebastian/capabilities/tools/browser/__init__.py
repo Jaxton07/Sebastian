@@ -17,6 +17,7 @@ from sebastian.core.tool import tool
 from sebastian.core.tool_context import get_tool_context
 from sebastian.core.types import ModelImagePayload, ToolResult
 from sebastian.permissions.types import PermissionTier, ToolReviewPreflight
+from sebastian.store.attachments import MAX_IMAGE_BYTES
 
 _BROWSER_UNAVAILABLE = (
     "Browser service is unavailable. Do not retry automatically; "
@@ -243,6 +244,16 @@ async def browser_look(full_page: bool = False) -> ToolResult:
         capture = await _maybe_await(manager.capture_screenshot(full_page=full_page))
         path = Path(capture.path)
         data = path.read_bytes()
+        data_size = len(data)
+        if data_size > MAX_IMAGE_BYTES:
+            return ToolResult(
+                ok=False,
+                error=(
+                    f"Browser screenshot is too large: {data_size} bytes. "
+                    "Do not retry automatically; ask the user to inspect a smaller "
+                    f"viewport capture or page under {MAX_IMAGE_BYTES} bytes."
+                ),
+            )
         encoded = base64.b64encode(data).decode("ascii")
         url = _sanitize_url(str(getattr(capture, "url", "") or ""))
         display = "已视觉观察当前浏览器页面"
@@ -251,7 +262,7 @@ async def browser_look(full_page: bool = False) -> ToolResult:
             output={
                 "url": url,
                 "mime_type": "image/png",
-                "size_bytes": len(data),
+                "size_bytes": data_size,
                 "full_page": full_page,
             },
             display=display,

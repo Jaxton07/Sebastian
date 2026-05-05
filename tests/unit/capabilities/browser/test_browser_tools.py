@@ -51,6 +51,7 @@ class _FakeManager:
         self.acted: list[dict[str, Any]] = []
         self.target_metadata_result: dict[str, str] | None = None
         self.screenshot_path: Path | None = None
+        self.screenshot_bytes = b"png-bytes"
         self.full_page_calls: list[bool] = []
         self.metadata_calls = 0
 
@@ -67,7 +68,7 @@ class _FakeManager:
         path = self.screenshot_path
         if path is None:
             raise RuntimeError("No browser-tool-owned page is currently open")
-        path.write_bytes(b"png-bytes")
+        path.write_bytes(self.screenshot_bytes)
         return _Capture(path=str(path), url="https://example.com/path?secret=1")
 
     async def act(
@@ -361,6 +362,35 @@ async def test_browser_look_deletes_temp_file_on_capture_read_failure(
     assert "Browser visual observation failed" in (result.error or "")
     assert not (tmp_path / "page.png").exists()
     assert manager.full_page_calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_browser_look_rejects_oversized_screenshot_and_deletes_temp_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from sebastian.capabilities.tools import browser as browser_module
+
+    token = _set_tool_context(supports_image_input=True)
+    manager = _FakeManager(_Metadata("https://example.com/path", "Home", True))
+    manager.screenshot_path = tmp_path / "page.png"
+    manager.screenshot_bytes = b"png-bytes"
+    fake_state = MagicMock(browser_manager=manager)
+
+    monkeypatch.setattr(browser_module, "MAX_IMAGE_BYTES", len(manager.screenshot_bytes) - 1)
+
+    try:
+        with patch.dict("sys.modules", {"sebastian.gateway.state": fake_state}):
+            result = await browser_module.browser_look(full_page=True)
+    finally:
+        _current_tool_ctx.reset(token)
+
+    assert result.ok is False
+    assert "too large" in (result.error or "")
+    assert "Do not retry automatically" in (result.error or "")
+    assert result.model_images == []
+    assert not (tmp_path / "page.png").exists()
+    assert manager.full_page_calls == [True]
 
 
 @pytest.mark.asyncio
