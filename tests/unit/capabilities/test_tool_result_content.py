@@ -183,12 +183,14 @@ class TestToolResultContent:
 
 _SUPPORTS_IMAGE_CONTEXT_TOOL = "__test_supports_image_context"
 _OBSERVE_IMAGE_TOOL = "__test_observe_image"
+_DISPLAY_ONLY_TOOL = "__test_display_only"
 
 
 async def _supports_image_context_tool() -> CoreToolResult:
     ctx = get_tool_context()
     assert ctx is not None
-    return CoreToolResult(ok=True, output={"supports": ctx.supports_image_input})
+    output = {"supports": ctx.supports_image_input}
+    return CoreToolResult(ok=True, output=output, display=json.dumps(output))
 
 
 async def _observe_image_tool() -> CoreToolResult:
@@ -203,6 +205,14 @@ async def _observe_image_tool() -> CoreToolResult:
                 filename="photo.png",
             )
         ],
+    )
+
+
+async def _display_only_tool() -> CoreToolResult:
+    return CoreToolResult(
+        ok=True,
+        output={"value": "internal output"},
+        display="explicit model text",
     )
 
 
@@ -230,6 +240,18 @@ def _register_observe_image_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(_tools, _OBSERVE_IMAGE_TOOL, (spec, _observe_image_tool))
 
 
+def _register_display_only_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sebastian.core.tool import ToolSpec, _tools
+
+    spec = ToolSpec(
+        name=_DISPLAY_ONLY_TOOL,
+        description="Return explicit display text without model images.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        permission_tier=PermissionTier.LOW,
+    )
+    monkeypatch.setitem(_tools, _DISPLAY_ONLY_TOOL, (spec, _display_only_tool))
+
+
 def _make_policy_gate() -> Any:
     from sebastian.capabilities.registry import CapabilityRegistry
     from sebastian.permissions.gate import PolicyGate
@@ -253,6 +275,15 @@ def _make_observe_image_event() -> ToolCallReady:
         block_id="blk_image",
         tool_id="toolu_observe_image",
         name=_OBSERVE_IMAGE_TOOL,
+        inputs={},
+    )
+
+
+def _make_display_only_event() -> ToolCallReady:
+    return ToolCallReady(
+        block_id="blk_display",
+        tool_id="toolu_display_only",
+        name=_DISPLAY_ONLY_TOOL,
         inputs={},
     )
 
@@ -351,6 +382,38 @@ async def test_dispatch_tool_call_preserves_model_content_and_images_without_per
     assert len(executed_payloads) == 1
     assert "model_images" not in executed_payloads[0]
     assert "abc" not in _json_text(executed_payloads[0])
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_call_preserves_success_display_as_model_content_without_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.stream_helpers import dispatch_tool_call
+
+    _register_display_only_tool(monkeypatch)
+    assistant_blocks: list[dict[str, Any]] = []
+
+    result, _ = await dispatch_tool_call(
+        _make_display_only_event(),
+        session_id="sess-display-only",
+        task_id=None,
+        agent_context="sebastian",
+        assistant_turn_id="turn-1",
+        assistant_blocks=assistant_blocks,
+        current_pci=0,
+        block_index=0,
+        gate_call=_make_policy_gate().call,
+        update_activity=AsyncMock(),
+        publish=_noop_publish,
+        current_task_goals={},
+        current_depth={},
+        allowed_tools=[_DISPLAY_ONLY_TOOL],
+        pending_blocks={},
+    )
+
+    assert result.model_content == "explicit model text"
+    assert result.model_images == []
+    assert assistant_blocks[-1]["model_content"] == "explicit model text"
 
 
 def _extract_tool_result_supports(provider: Any) -> bool:
