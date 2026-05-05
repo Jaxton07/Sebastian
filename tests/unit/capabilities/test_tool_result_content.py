@@ -1,7 +1,21 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from sebastian.core.agent_loop import _is_empty_output, _tool_result_content
-from sebastian.core.stream_events import ToolResult
+from sebastian.core.stream_events import (
+    ProviderCallEnd,
+    ToolCallBlockStart,
+    ToolCallReady,
+    ToolResult,
+)
+from sebastian.core.tool_context import get_tool_context
+from sebastian.core.types import ToolResult as CoreToolResult
+from sebastian.permissions.types import PermissionTier
 
 # ---------------------------------------------------------------------------
 # _is_empty_output
@@ -158,3 +172,205 @@ class TestToolResultContent:
         # Python repr 会显示 {'self': {...}}
         assert "self" in content
         assert "..." in content  # Python's repr of circular dict marks the cycle
+
+
+# ---------------------------------------------------------------------------
+# Provider capability in tool context
+# ---------------------------------------------------------------------------
+
+
+_SUPPORTS_IMAGE_CONTEXT_TOOL = "__test_supports_image_context"
+
+
+async def _supports_image_context_tool() -> CoreToolResult:
+    ctx = get_tool_context()
+    assert ctx is not None
+    return CoreToolResult(ok=True, output={"supports": ctx.supports_image_input})
+
+
+def _register_supports_image_context_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sebastian.core.tool import ToolSpec, _tools
+
+    spec = ToolSpec(
+        name=_SUPPORTS_IMAGE_CONTEXT_TOOL,
+        description="Return provider image-input support from the current tool context.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        permission_tier=PermissionTier.LOW,
+    )
+    monkeypatch.setitem(_tools, _SUPPORTS_IMAGE_CONTEXT_TOOL, (spec, _supports_image_context_tool))
+
+
+def _make_policy_gate() -> Any:
+    from sebastian.capabilities.registry import CapabilityRegistry
+    from sebastian.permissions.gate import PolicyGate
+
+    approval_manager = MagicMock()
+    approval_manager.request_approval = AsyncMock(return_value=True)
+    reviewer = MagicMock()
+    return PolicyGate(CapabilityRegistry(), reviewer, approval_manager)
+
+
+async def _noop_publish(*_args: Any, **_kwargs: Any) -> None:
+    return None
+
+
+def _make_supports_tool_event() -> ToolCallReady:
+    return ToolCallReady(
+        block_id="blk_0",
+        tool_id="toolu_supports_image",
+        name=_SUPPORTS_IMAGE_CONTEXT_TOOL,
+        inputs={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_call_passes_provider_image_capability_to_tool_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.stream_helpers import dispatch_tool_call
+
+    _register_supports_image_context_tool(monkeypatch)
+    gate = _make_policy_gate()
+
+    async def call_dispatch(*, supports_image_input: bool) -> ToolResult:
+        result, _ = await dispatch_tool_call(
+            _make_supports_tool_event(),
+            session_id="sess-provider-context",
+            task_id=None,
+            agent_context="sebastian",
+            assistant_turn_id="turn-1",
+            assistant_blocks=[],
+            current_pci=0,
+            block_index=0,
+            gate_call=gate.call,
+            update_activity=AsyncMock(),
+            publish=_noop_publish,
+            current_task_goals={},
+            current_depth={},
+            allowed_tools=[_SUPPORTS_IMAGE_CONTEXT_TOOL],
+            pending_blocks={},
+            supports_image_input=supports_image_input,
+        )
+        return result
+
+    true_result = await call_dispatch(supports_image_input=True)
+    assert true_result.output == {"supports": True}
+
+    false_result = await call_dispatch(supports_image_input=False)
+    assert false_result.output == {"supports": False}
+
+
+def _extract_tool_result_supports(provider: Any) -> bool:
+    tool_result_message = provider.last_messages[-1]
+    content = tool_result_message["content"][0]["content"]
+    return bool(json.loads(content)["supports"])
+
+
+async def _run_agent_with_tool_provider(
+    *,
+    tmp_path: Any,
+    provider: Any | None = None,
+    llm_registry: Any | None = None,
+    provider_supports_image_input: bool = False,
+) -> bool:
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class TestAgent(BaseAgent):
+        name = "test_agent"
+        allowed_tools = [_SUPPORTS_IMAGE_CONTEXT_TOOL]
+
+    sessions_dir = tmp_path / "sessions"
+    store = SessionStore(sessions_dir)
+    await store.create_session(
+        Session(id="provider-capability-session", agent_type="test_agent", title="Provider")
+    )
+
+    gate = _make_policy_gate()
+    agent = TestAgent(
+        gate=gate,
+        session_store=store,
+        provider=provider,
+        llm_registry=llm_registry,
+        provider_supports_image_input=provider_supports_image_input,
+    )
+
+    await agent.run_streaming("check capability", "provider-capability-session")
+
+    active_provider = provider
+    if active_provider is None:
+        active_provider = (await llm_registry.get_provider("test_agent")).provider
+    return _extract_tool_result_supports(active_provider)
+
+
+def _make_tool_call_provider() -> Any:
+    from tests.unit.core.test_agent_loop import MockLLMProvider
+
+    return MockLLMProvider(
+        [
+            ToolCallBlockStart(
+                block_id="b0_0",
+                tool_id="toolu_supports_image",
+                name=_SUPPORTS_IMAGE_CONTEXT_TOOL,
+            ),
+            _make_supports_tool_event(),
+            ProviderCallEnd(stop_reason="tool_use"),
+        ],
+        [
+            ProviderCallEnd(stop_reason="end_turn"),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_base_agent_propagates_registry_provider_image_capability_to_tool_context(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.llm.registry import ResolvedProvider
+
+    _register_supports_image_context_tool(monkeypatch)
+    provider = _make_tool_call_provider()
+    resolved = ResolvedProvider(
+        provider=provider,
+        model="fake",
+        context_window_tokens=200000,
+        thinking_effort=None,
+        capability=None,
+        thinking_format=None,
+        account_id="test-account",
+        model_display_name="Fake",
+        supports_image_input=True,
+    )
+    registry = MagicMock()
+    registry.get_provider = AsyncMock(return_value=resolved)
+
+    supports = await _run_agent_with_tool_provider(tmp_path=tmp_path, llm_registry=registry)
+
+    assert supports is True
+
+
+@pytest.mark.asyncio
+async def test_base_agent_direct_provider_image_capability_is_explicit(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _register_supports_image_context_tool(monkeypatch)
+
+    implicit_provider = _make_tool_call_provider()
+    implicit_provider.supports_image_input = True
+    implicit_supports = await _run_agent_with_tool_provider(
+        tmp_path=tmp_path,
+        provider=implicit_provider,
+    )
+
+    explicit_provider = _make_tool_call_provider()
+    explicit_supports = await _run_agent_with_tool_provider(
+        tmp_path=tmp_path,
+        provider=explicit_provider,
+        provider_supports_image_input=True,
+    )
+
+    assert implicit_supports is False
+    assert explicit_supports is True

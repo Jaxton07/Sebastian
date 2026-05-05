@@ -183,6 +183,7 @@ async def dispatch_tool_call(
     current_depth: dict[str, int],
     allowed_tools: Any,
     pending_blocks: dict[str, list[dict[str, Any]]],
+    supports_image_input: bool = False,
 ) -> tuple[StreamToolResult, int]:
     """Execute one ``ToolCallReady`` event and append result blocks.
 
@@ -244,6 +245,7 @@ async def dispatch_tool_call(
                 if allowed_tools is not None
                 else None
             ),
+            supports_image_input=supports_image_input,
             progress_cb=functools.partial(publish, session_id, EventType.TOOL_RUNNING),
         )
         result = await gate_call(event.name, event.inputs, context)

@@ -99,6 +99,7 @@ class BaseAgent(ABC):
         session_store: SessionStore,
         event_bus: EventBus | None = None,
         provider: LLMProvider | None = None,
+        provider_supports_image_input: bool = False,
         model: str | None = None,
         allowed_tools: AgentAllowedTools = None,
         allowed_skills: list[str] | None = None,
@@ -138,6 +139,7 @@ class BaseAgent(ABC):
 
         resolved_model = model or settings.sebastian_model
         self._provider_injected = provider is not None
+        self._provider_supports_image_input = provider_supports_image_input
 
         self._loop = AgentLoop(
             provider,
@@ -371,12 +373,14 @@ class BaseAgent(ABC):
         self._current_task_goals[session_id] = user_message
 
         thinking_effort_for_llm: str | None = None
+        supports_image_input_for_tools = bool(self._provider_supports_image_input)
         if not self._provider_injected and self._llm_registry is not None:
             resolved = await self._llm_registry.get_provider(self.name)
             provider, model = resolved.provider, resolved.model
             self._loop._provider = provider
             self._loop._model = model
             thinking_effort_for_llm = resolved.thinking_effort
+            supports_image_input_for_tools = bool(resolved.supports_image_input)
             logger.info(
                 "LLM resolved: agent=%s session=%s provider=%s model=%s thinking_effort=%s",
                 self.name,
@@ -463,6 +467,7 @@ class BaseAgent(ABC):
                 task_id=task_id,
                 agent_context=agent_context,
                 thinking_effort=thinking_effort_for_llm,
+                supports_image_input=supports_image_input_for_tools,
                 exchange_id=exchange_id,
                 exchange_index=exchange_index,
             )
@@ -536,6 +541,7 @@ class BaseAgent(ABC):
         task_id: str | None,
         agent_context: str,
         thinking_effort: str | None = None,
+        supports_image_input: bool = False,
         exchange_id: str | None = None,
         exchange_index: int | None = None,
     ) -> str:
@@ -656,6 +662,7 @@ class BaseAgent(ABC):
                         current_depth=self._current_depth,
                         allowed_tools=self.allowed_tools,
                         pending_blocks=self._pending_blocks,
+                        supports_image_input=supports_image_input,
                     )
                     continue
 
