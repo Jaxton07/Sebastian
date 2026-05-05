@@ -37,6 +37,12 @@ class SessionStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ModelImagePayload(BaseModel):
+    media_type: str
+    data_base64: str
+    filename: str | None = None
+
+
 class ToolResult(BaseModel):
     """Result of a tool execution."""
 
@@ -45,6 +51,7 @@ class ToolResult(BaseModel):
     error: str | None = None
     empty_hint: str | None = None
     display: str | None = None
+    model_images: list[ModelImagePayload] = Field(default_factory=list)
 
 
 class Checkpoint(BaseModel):

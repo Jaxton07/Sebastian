@@ -41,6 +41,7 @@ class ToolCallContext:
     agent_type: str = ""
     depth: int = 1
     allowed_tools: ToolAllowlist = None
+    supports_image_input: bool = False
     progress_cb: Callable[[dict[str, Any]], Awaitable[None]] | None = field(
         default=None, repr=False
     )
