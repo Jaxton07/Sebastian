@@ -4,10 +4,34 @@ from pathlib import Path
 
 import pytest
 
+import sebastian.capabilities.tools.vision_observe_image  # noqa: F401
+from sebastian.capabilities.registry import CapabilityRegistry
+from sebastian.core.tool import get_tool
 from sebastian.core.tool_context import _current_tool_ctx
-from sebastian.permissions.types import ToolCallContext
+from sebastian.orchestrator.sebas import Sebastian
+from sebastian.permissions.types import ALL_TOOLS, PermissionTier, ToolCallContext
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 10
+
+
+def test_vision_observe_image_registers_metadata() -> None:
+    entry = get_tool("vision_observe_image")
+
+    assert entry is not None
+    spec = entry[0]
+    assert spec.display_name == "Look Image"
+    assert spec.permission_tier == PermissionTier.LOW
+
+
+def test_vision_observe_image_visible_through_sebastian_allowlist() -> None:
+    assert "vision_observe_image" in Sebastian.allowed_tools
+
+    registry = CapabilityRegistry()
+    no_tools = {spec["name"] for spec in registry.get_callable_specs(None, None)}
+    all_tools = {spec["name"] for spec in registry.get_callable_specs(ALL_TOOLS, None)}
+
+    assert "vision_observe_image" not in no_tools
+    assert "vision_observe_image" in all_tools
 
 
 @pytest.fixture
