@@ -364,7 +364,7 @@ async def test_browser_look_deletes_temp_file_on_capture_read_failure(
 
 
 @pytest.mark.asyncio
-async def test_browser_look_uses_observe_preflight(monkeypatch) -> None:
+async def test_browser_look_preflight_uses_visual_review_input(monkeypatch) -> None:
     registry = CapabilityRegistry()
     manager = _FakeManager(
         _Metadata(
@@ -387,11 +387,13 @@ async def test_browser_look_uses_observe_preflight(monkeypatch) -> None:
 
     assert preflight.ok is True
     assert preflight.review_input == {
-        "max_chars": 4000,
+        "operation": "browser_look",
         "current_url": "https://example.com/path",
         "title": "Home",
         "opened_by_browser_tool": True,
+        "full_page": True,
     }
+    assert "max_chars" not in preflight.review_input
     assert manager.metadata_calls == 1
 
 

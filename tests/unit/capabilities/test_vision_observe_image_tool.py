@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -159,4 +160,96 @@ async def test_vision_observe_image_rejects_unsupported_suffix(
     assert result.ok is False
     assert result.error is not None
     assert "Unsupported image type" in result.error
+    assert "Do not retry automatically" in result.error
+
+
+@pytest.mark.asyncio
+async def test_vision_observe_image_rejects_oversized_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, set_image_ctx
+) -> None:
+    set_image_ctx()
+    file_path = tmp_path / "photo.png"
+    file_path.write_bytes(PNG_BYTES)
+
+    import sebastian.capabilities.tools.vision_observe_image as module
+
+    monkeypatch.setattr(module, "MAX_IMAGE_BYTES", len(PNG_BYTES) - 1)
+
+    result = await module.vision_observe_image(str(file_path))
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "Image is too large" in result.error
+    assert str(len(PNG_BYTES) - 1) in result.error
+    assert "Do not retry automatically" in result.error
+
+
+@pytest.mark.asyncio
+async def test_vision_observe_image_returns_tool_result_when_stat_fails(
+    monkeypatch: pytest.MonkeyPatch, set_image_ctx
+) -> None:
+    set_image_ctx()
+
+    class StatFailPath:
+        name = "photo.png"
+        suffix = ".png"
+
+        def __str__(self) -> str:
+            return "/images/photo.png"
+
+        def exists(self) -> bool:
+            return True
+
+        def is_dir(self) -> bool:
+            return False
+
+        def stat(self) -> SimpleNamespace:
+            raise PermissionError("stat denied")
+
+    import sebastian.capabilities.tools.vision_observe_image as module
+
+    monkeypatch.setattr(module, "resolve_path", lambda _path: StatFailPath())
+
+    result = await module.vision_observe_image("/images/photo.png")
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "Could not inspect image file" in result.error
+    assert "Do not retry automatically" in result.error
+
+
+@pytest.mark.asyncio
+async def test_vision_observe_image_returns_tool_result_when_read_fails(
+    monkeypatch: pytest.MonkeyPatch, set_image_ctx
+) -> None:
+    set_image_ctx()
+
+    class ReadFailPath:
+        name = "photo.png"
+        suffix = ".png"
+
+        def __str__(self) -> str:
+            return "/images/photo.png"
+
+        def exists(self) -> bool:
+            return True
+
+        def is_dir(self) -> bool:
+            return False
+
+        def stat(self) -> SimpleNamespace:
+            return SimpleNamespace(st_size=len(PNG_BYTES))
+
+        def read_bytes(self) -> bytes:
+            raise PermissionError("read denied")
+
+    import sebastian.capabilities.tools.vision_observe_image as module
+
+    monkeypatch.setattr(module, "resolve_path", lambda _path: ReadFailPath())
+
+    result = await module.vision_observe_image("/images/photo.png")
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "Could not read image file" in result.error
     assert "Do not retry automatically" in result.error

@@ -64,7 +64,17 @@ async def vision_observe_image(file_path: str) -> ToolResult:
             ),
         )
 
-    size = path.stat().st_size
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return ToolResult(
+            ok=False,
+            error=(
+                f"Could not inspect image file: {path} ({exc}). "
+                "Do not retry automatically; ask the user to check file permissions "
+                "or provide another image path."
+            ),
+        )
     if size > MAX_IMAGE_BYTES:
         return ToolResult(
             ok=False,
@@ -74,7 +84,17 @@ async def vision_observe_image(file_path: str) -> ToolResult:
             ),
         )
 
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return ToolResult(
+            ok=False,
+            error=(
+                f"Could not read image file: {path} ({exc}). "
+                "Do not retry automatically; ask the user to check file permissions "
+                "or provide another image path."
+            ),
+        )
     encoded = base64.b64encode(data).decode("ascii")
     filename = path.name
     display = f"已观察图片 {filename}"

@@ -219,7 +219,7 @@ async def browser_capture(display_name: str | None = None) -> ToolResult:
     description="Visually observe the current browser_open page with the current multimodal model.",
     permission_tier=PermissionTier.MODEL_DECIDES,
     display_name="Browser Look",
-    review_preflight=lambda inputs, context: _browser_observe_preflight(inputs, context),
+    review_preflight=lambda inputs, context: _browser_look_preflight(inputs, context),
 )
 async def browser_look(full_page: bool = False) -> ToolResult:
     ctx = get_tool_context()
@@ -342,6 +342,28 @@ async def _browser_observe_preflight(
             "current_url": _sanitize_url(str(getattr(metadata, "url", "") or "")),
             "title": getattr(metadata, "title", None),
             "opened_by_browser_tool": bool(getattr(metadata, "opened_by_browser_tool", False)),
+        },
+    )
+
+
+async def _browser_look_preflight(
+    inputs: dict[str, Any],
+    _context: Any,
+) -> ToolReviewPreflight:
+    manager = _browser_manager()
+    if manager is None:
+        return ToolReviewPreflight(ok=False, error=_BROWSER_UNAVAILABLE)
+    metadata = await manager.current_page_metadata()
+    if metadata is None or not bool(getattr(metadata, "opened_by_browser_tool", False)):
+        return ToolReviewPreflight(ok=False, error=_NO_BROWSER_PAGE)
+    return ToolReviewPreflight(
+        ok=True,
+        review_input={
+            "operation": "browser_look",
+            "current_url": _sanitize_url(str(getattr(metadata, "url", "") or "")),
+            "title": getattr(metadata, "title", None),
+            "opened_by_browser_tool": bool(getattr(metadata, "opened_by_browser_tool", False)),
+            "full_page": bool(inputs.get("full_page", False)),
         },
     )
 
