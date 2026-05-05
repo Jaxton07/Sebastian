@@ -185,6 +185,47 @@ async def test_vision_observe_image_rejects_oversized_file(
 
 
 @pytest.mark.asyncio
+async def test_vision_observe_image_rejects_file_that_grows_after_stat(
+    monkeypatch: pytest.MonkeyPatch, set_image_ctx
+) -> None:
+    set_image_ctx()
+    oversized_data = PNG_BYTES + b"x"
+
+    class GrowingPath:
+        name = "photo.png"
+        suffix = ".png"
+
+        def __str__(self) -> str:
+            return "/images/photo.png"
+
+        def exists(self) -> bool:
+            return True
+
+        def is_dir(self) -> bool:
+            return False
+
+        def stat(self) -> SimpleNamespace:
+            return SimpleNamespace(st_size=len(PNG_BYTES))
+
+        def read_bytes(self) -> bytes:
+            return oversized_data
+
+    import sebastian.capabilities.tools.vision_observe_image as module
+
+    monkeypatch.setattr(module, "MAX_IMAGE_BYTES", len(PNG_BYTES))
+    monkeypatch.setattr(module, "resolve_path", lambda _path: GrowingPath())
+
+    result = await module.vision_observe_image("/images/photo.png")
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "Image is too large" in result.error
+    assert str(len(oversized_data)) in result.error
+    assert "Do not retry automatically" in result.error
+    assert result.model_images == []
+
+
+@pytest.mark.asyncio
 async def test_vision_observe_image_returns_tool_result_when_stat_fails(
     monkeypatch: pytest.MonkeyPatch, set_image_ctx
 ) -> None:

@@ -95,6 +95,15 @@ async def vision_observe_image(file_path: str) -> ToolResult:
                 "or provide another image path."
             ),
         )
+    data_size = len(data)
+    if data_size > MAX_IMAGE_BYTES:
+        return ToolResult(
+            ok=False,
+            error=(
+                f"Image is too large: {data_size} bytes. Do not retry automatically; "
+                f"ask the user for an image under {MAX_IMAGE_BYTES} bytes."
+            ),
+        )
     encoded = base64.b64encode(data).decode("ascii")
     filename = path.name
     display = f"已观察图片 {filename}"
@@ -103,7 +112,7 @@ async def vision_observe_image(file_path: str) -> ToolResult:
         output={
             "filename": filename,
             "mime_type": mime_type,
-            "size_bytes": size,
+            "size_bytes": data_size,
             "source": "file_path",
         },
         display=display,
