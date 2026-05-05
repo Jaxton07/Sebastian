@@ -189,8 +189,7 @@ _DISPLAY_ONLY_TOOL = "__test_display_only"
 async def _supports_image_context_tool() -> CoreToolResult:
     ctx = get_tool_context()
     assert ctx is not None
-    output = {"supports": ctx.supports_image_input}
-    return CoreToolResult(ok=True, output=output, display=json.dumps(output))
+    return CoreToolResult(ok=True, output={"supports": ctx.supports_image_input})
 
 
 async def _observe_image_tool() -> CoreToolResult:
@@ -385,7 +384,7 @@ async def test_dispatch_tool_call_preserves_model_content_and_images_without_per
 
 
 @pytest.mark.asyncio
-async def test_dispatch_tool_call_preserves_success_display_as_model_content_without_images(
+async def test_dispatch_tool_call_without_images_uses_output_json_not_display_model_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from sebastian.core.stream_helpers import dispatch_tool_call
@@ -411,9 +410,9 @@ async def test_dispatch_tool_call_preserves_success_display_as_model_content_wit
         pending_blocks={},
     )
 
-    assert result.model_content == "explicit model text"
+    assert result.model_content is None
     assert result.model_images == []
-    assert assistant_blocks[-1]["model_content"] == "explicit model text"
+    assert assistant_blocks[-1]["model_content"] == '{"value": "internal output"}'
 
 
 def _extract_tool_result_supports(provider: Any) -> bool:

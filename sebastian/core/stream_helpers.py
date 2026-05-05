@@ -324,7 +324,7 @@ async def dispatch_tool_call(
     model_images = list(raw_model_images) if isinstance(raw_model_images, list) else []
     block_display = display if result.ok else (result.error or "")
     if result.ok:
-        display_content = display
+        display_content = display if model_images else None
     else:
         display_content = f"Error: {result.error}"
     stream_result = StreamToolResult(
