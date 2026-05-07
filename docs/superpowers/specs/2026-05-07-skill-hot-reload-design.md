@@ -67,10 +67,15 @@ When a change is detected:
 
 1. Reload skill specs from built-in and user extension directories.
 2. Replace the registry's current skill specs atomically.
-3. Rebuild only the current agent's `system_prompt`.
-4. Continue the turn using the updated prompt and callable skill specs.
+3. Advance a monotonic skill registry version.
+4. Rebuild only the current agent type singleton's `system_prompt`.
+5. Continue the turn using the updated prompt and callable skill specs.
 
 The reloader is not exposed to the model. It is runtime infrastructure, not a tool.
+
+Even when no reload occurs, the current agent still compares its prompt's skill version
+against the reloader's current version. If another agent reloaded skills earlier, this
+new-session check catches the current agent up before its provider request starts.
 
 ## Components
 
@@ -84,13 +89,24 @@ State:
 - `extra_dirs: list[Path]`
 - `registry: CapabilityRegistry`
 - `_fingerprint: SkillFingerprint | None`
+- `_version: int`
 - `_lock: asyncio.Lock`
 
 Public method:
 
 ```python
-async def maybe_reload(self) -> bool:
-    """Return True if skill specs changed and registry was replaced."""
+async def maybe_reload(self) -> SkillReloadResult:
+    """Reload changed skills and return the current skill registry version."""
+```
+
+Result shape:
+
+```python
+@dataclass(frozen=True)
+class SkillReloadResult:
+    changed: bool
+    version: int
+    fingerprint: SkillFingerprint
 ```
 
 Fingerprint input:
@@ -102,13 +118,38 @@ Fingerprint input:
 This is intentionally narrow. Editing `scripts/search_flights.py` does not trigger reload;
 the script is executed fresh each time by `Bash`.
 
-The first call after startup establishes the fingerprint. Since startup already loads skills,
-the first call should normally return `False` unless files changed after startup.
+The reloader must be constructed and seeded during gateway lifespan immediately after the
+startup skill load. Startup and hot reload therefore share the same directories and initial
+fingerprint. This avoids missing changes made after startup but before the first new session:
+the first `maybe_reload()` compares against the startup fingerprint, not against a fresh
+baseline captured at first use.
+
+Version rules:
+
+- Startup seed version is `0`.
+- Each successful registry replacement increments `_version`.
+- Agents use this version to decide whether their cached prompt reflects the latest skill
+  registry state.
 
 ### `CapabilityRegistry.replace_skill_specs()`
 
-Current `register_skill_specs()` appends or overwrites skill entries, but it does not remove
-deleted skills. Hot reload needs replacement semantics.
+Current `register_skill_specs()` stores skills and MCP tools in the same internal dictionary,
+using `_skill_names` as the discriminator. Hot reload needs replacement semantics and
+deterministic collision behavior.
+
+First implementation should split skill storage from MCP storage:
+
+```python
+class CapabilityRegistry:
+    _mcp_tools: dict[str, tuple[dict[str, Any], McpToolFn]]
+    _skill_tools: dict[str, tuple[dict[str, Any], ToolFn]]
+```
+
+`get_tool_specs()` reads native + MCP tools. `get_skill_specs()` reads only `_skill_tools`.
+This removes skill/MCP collision ambiguity and makes replacement a pure skill operation.
+
+If a broader refactor is deferred, `replace_skill_specs()` must still explicitly preserve
+non-skill MCP entries and include collision tests.
 
 Add:
 
@@ -119,9 +160,9 @@ def replace_skill_specs(self, specs: list[dict[str, Any]]) -> None:
 
 Behavior:
 
-1. Remove all entries whose names are in `_skill_names`.
-2. Clear `_skill_names`.
-3. Register the new specs using the same skill function behavior as existing registration.
+1. Clear the skill-only storage.
+2. Register the new specs using the same skill function behavior as existing registration.
+3. Leave native and MCP tool registrations untouched.
 
 This keeps deleted skills from lingering in the registry.
 
@@ -134,6 +175,15 @@ def rebuild_system_prompt(self) -> None:
     self.system_prompt = self.build_system_prompt(self._gate)
 ```
 
+Also add an agent-local prompt version marker:
+
+```python
+_skill_prompt_version: int = 0
+
+def mark_skill_prompt_version(self, version: int) -> None:
+    self._skill_prompt_version = version
+```
+
 `Sebastian` already has a specialized `rebuild_system_prompt()` because its prompt includes
 the agent registry. It should keep that override:
 
@@ -142,8 +192,12 @@ def rebuild_system_prompt(self) -> None:
     self.system_prompt = self.build_system_prompt(self._gate, self._agent_registry)
 ```
 
-Only the current agent instance is rebuilt after a skill reload. Other already-created
-agents keep their prompt until their own lifecycle path triggers a rebuild.
+Agents are singleton instances per agent type, not per session. "Current agent" therefore
+means the current agent type singleton handling this turn. Rebuilding it updates future
+sessions for the same agent type, but it does not rebuild other agent type singletons.
+
+Concurrent turns already running on the same singleton continue with the effective prompt
+they assembled before their provider request. A rebuild affects later turns only.
 
 ### New-Session Trigger
 
@@ -174,9 +228,10 @@ Pseudo-flow:
 worker_session = await session_store.get_session_for_agent_type(session_id, agent_context)
 
 if self._should_check_skills_for_new_session(worker_session, session_id, agent_context):
-    changed = await state.skill_hot_reloader.maybe_reload()
-    if changed:
+    result = await state.skill_hot_reloader.maybe_reload()
+    if self._skill_prompt_version != result.version:
         self.rebuild_system_prompt()
+        self.mark_skill_prompt_version(result.version)
 ```
 
 The call must complete before the provider request starts.
@@ -195,7 +250,7 @@ BaseAgent.run_streaming resolves worker session
         ▼
 SkillHotReloader fingerprints SKILL.md files
         │
-        ├── unchanged → continue with existing prompt
+        ├── unchanged → compare current agent prompt version
         │
         └── changed
               │
@@ -206,7 +261,10 @@ SkillHotReloader fingerprints SKILL.md files
         CapabilityRegistry.replace_skill_specs()
               │
               ▼
-        current_agent.rebuild_system_prompt()
+        advance skill registry version
+              │
+              ▼
+        current agent type singleton rebuilds prompt if its prompt version is stale
               │
               ▼
         AgentLoop.stream() fetches callable specs from registry
@@ -224,8 +282,9 @@ Inside the lock:
 
 1. Compute latest fingerprint.
 2. Compare with cached fingerprint.
-3. If unchanged, return `False`.
-4. If changed, load and replace skill specs, update cached fingerprint, return `True`.
+3. If unchanged, return the current version with `changed=False`.
+4. If changed, load and replace skill specs, update cached fingerprint, increment version,
+   and return the new version with `changed=True`.
 
 Readers should not observe a partially updated skill registry because replacement happens
 inside one synchronous registry method.
@@ -237,6 +296,8 @@ If reload fails:
 - Do not clear existing skill specs.
 - Log a warning with enough path/error detail for debugging.
 - Continue the current turn using the last known good registry and prompt.
+- Return the last known good version so agents do not mark prompts as refreshed against a
+  failed registry update.
 
 Invalid individual skills should follow existing `load_skills()` behavior. This spec does
 not add validation beyond the current loader rules.
@@ -245,19 +306,25 @@ not add validation beyond the current loader rules.
 
 Unit coverage:
 
-- `SkillHotReloader` returns `False` when fingerprint is unchanged.
-- Adding a `SKILL.md` returns `True` and registers the new skill.
-- Editing `SKILL.md` returns `True` and updates the skill description/instructions.
-- Deleting a skill returns `True` and removes the old skill from registry specs.
+- `SkillHotReloader` returns `SkillReloadResult(changed=False, version=current)` when
+  fingerprint is unchanged.
+- Adding a `SKILL.md` returns `changed=True` and registers the new skill.
+- Editing `SKILL.md` returns `changed=True` and updates the skill description/instructions.
+- Deleting a skill returns `changed=True` and removes the old skill from registry specs.
 - Editing a script file under `scripts/` does not trigger reload.
 - Concurrent `maybe_reload()` calls do not produce duplicate or partial registry state.
 - `CapabilityRegistry.replace_skill_specs()` removes deleted skills and preserves non-skill MCP/native entries.
+- Skill/MCP name collisions are deterministic and do not delete or misclassify MCP tools.
+- Startup seeds the initial fingerprint, so changes made after gateway startup but before
+  the first new session are detected.
 
 Agent-level coverage:
 
 - New session first turn invokes hot reload check.
 - Existing session subsequent turn does not invoke hot reload check.
-- When reload changes specs, only the current agent's prompt is rebuilt.
+- When reload changes specs, only the current agent type singleton's prompt is rebuilt.
+- If another agent type already advanced the skill version, a later new session on this
+  agent type rebuilds its prompt even when `maybe_reload()` returns `changed=False`.
 - Sebastian's prompt rebuild keeps its sub-agent section.
 
 ## Future Work
