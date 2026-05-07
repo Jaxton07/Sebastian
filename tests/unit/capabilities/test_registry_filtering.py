@@ -120,15 +120,11 @@ def test_replace_skill_specs_removes_deleted_skills() -> None:
         ]
     )
 
-    reg.replace_skill_specs(
-        [{"name": "skill_b", "description": "B2", "input_schema": {}}]
-    )
+    reg.replace_skill_specs([{"name": "skill_b", "description": "B2", "input_schema": {}}])
 
     names = {s["name"] for s in reg.get_skill_specs()}
     assert names == {"skill_b"}
-    assert next(s for s in reg.get_skill_specs() if s["name"] == "skill_b")[
-        "description"
-    ] == "B2"
+    assert next(s for s in reg.get_skill_specs() if s["name"] == "skill_b")["description"] == "B2"
 
 
 def test_skill_name_collision_hides_skill_spec_and_preserves_mcp_tool() -> None:

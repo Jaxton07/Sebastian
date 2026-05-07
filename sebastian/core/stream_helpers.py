@@ -248,9 +248,7 @@ async def dispatch_tool_call(
                 if allowed_tools is not None
                 else None
             ),
-            allowed_skills=(
-                frozenset(allowed_skills) if allowed_skills is not None else None
-            ),
+            allowed_skills=(frozenset(allowed_skills) if allowed_skills is not None else None),
             supports_image_input=supports_image_input,
             progress_cb=functools.partial(publish, session_id, EventType.TOOL_RUNNING),
         )
