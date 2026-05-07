@@ -127,7 +127,7 @@ class PolicyGate:
         specs: list[dict[str, Any]] = []
         for spec_dict in self._registry.get_callable_specs(allowed_tools, allowed_skills):
             tool_name = spec_dict["name"]
-            if self._registry.is_skill(tool_name):
+            if self._is_skill(tool_name):
                 specs.append(spec_dict)
                 continue
 
@@ -160,7 +160,7 @@ class PolicyGate:
         # Stage 0: agent 身份白名单校验
         # 防止 LLM 幻觉工具名绕过 LLM 可见性层的过滤。
         skill_snapshot = _skill_snapshot(tool_name, context)
-        if skill_snapshot is not None or self._registry.is_skill(tool_name):
+        if skill_snapshot is not None or self._is_skill(tool_name):
             if not _skill_allowed(tool_name, context.allowed_skills):
                 return ToolResult(
                     ok=False,
@@ -218,6 +218,9 @@ class PolicyGate:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _is_skill(self, tool_name: str) -> bool:
+        return self._registry.is_skill(tool_name) is True
 
     async def _check_workspace_boundary(
         self,
