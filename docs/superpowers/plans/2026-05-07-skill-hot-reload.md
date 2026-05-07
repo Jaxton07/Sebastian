@@ -35,8 +35,13 @@
   - Add `rebuild_system_prompt()` and `mark_skill_prompt_version()`.
   - Add first-session skill reload check using per-session locks and an in-memory
     `(agent_context, session_id)` completed set.
-  - Capture a `system_prompt_snapshot` after hot reload and pass it into `_stream_inner()`.
+  - Capture `system_prompt_snapshot` and `tool_specs_snapshot` after hot reload and pass
+    them into `_stream_inner()`.
   - Pass `allowed_skills` into tool dispatch.
+
+- Modify `sebastian/core/agent_loop.py`
+  - Accept optional `tools_snapshot` in `AgentLoop.stream()`.
+  - Use the snapshot instead of querying the registry when provided.
 
 - Modify `sebastian/core/stream_helpers.py`
   - Accept `allowed_skills` in `dispatch_tool_call()`.
@@ -61,7 +66,10 @@
   - New tests for fingerprinting, changed/unchanged reloads, deletion, scripts ignored, startup seed, concurrency.
 
 - Test `tests/unit/core/test_base_agent.py` or `tests/unit/core/test_prompt_builder.py`
-  - Add agent lifecycle tests for new-session check, stale version catch-up, subsequent-turn skip, current-agent-only rebuild, prompt snapshot, and same-session concurrency.
+  - Add agent lifecycle tests for new-session check, stale version catch-up, subsequent-turn skip, current-agent-only rebuild, prompt/tool snapshot, and same-session concurrency.
+
+- Test `tests/unit/core/test_agent_loop.py`
+  - Add coverage that `tools_snapshot` prevents registry re-query.
 
 - Test `tests/unit/core/test_stream_helpers.py`
   - Add coverage that `allowed_skills` is copied into `ToolCallContext`.
@@ -650,6 +658,16 @@ git commit -m "feat(gateway): 启动时初始化 Skill 热加载器" -m "Co-Auth
 
 In `tests/unit/identity/test_policy_gate.py`, add:
 
+Before adding new skill-specific tests, update existing tests that use `registry = MagicMock()`
+so ordinary tool tests do not accidentally treat every name as a skill. For each existing
+mock registry used with `PolicyGate.call()`, set:
+
+```python
+registry.is_skill = MagicMock(return_value=False)
+```
+
+Skill-specific tests should set `registry.is_skill.return_value = True`.
+
 ```python
 @pytest.mark.asyncio
 async def test_call_allows_skill_from_allowed_skills() -> None:
@@ -817,8 +835,10 @@ git commit -m "feat(permissions): 打通 Skill 执行白名单" -m "Co-Authored-
 ## Task 5: Add Agent Prompt Versioning and New-Session Check
 
 **Files:**
+- Modify: `sebastian/core/agent_loop.py`
 - Modify: `sebastian/core/base_agent.py`
 - Modify: `sebastian/orchestrator/sebas.py`
+- Test: `tests/unit/core/test_agent_loop.py`
 - Test: `tests/unit/core/test_base_agent.py`
 - Test: `tests/unit/core/test_prompt_builder.py`
 
@@ -967,14 +987,31 @@ assert "## Available Sub-Agents" in obj.system_prompt
 assert "- forge:" in obj.system_prompt
 ```
 
-Add test: running turn uses prompt snapshot captured before async memory/todo waits.
+Add test: `AgentLoop.stream()` uses `tools_snapshot` when provided.
+
+In `tests/unit/core/test_agent_loop.py`, create a loop with a registry mock whose
+`get_callable_specs()` would fail or return a different value. Call:
+
+```python
+gen = loop.stream(
+    system_prompt="sys",
+    messages=[{"role": "user", "content": "hi"}],
+    tools_snapshot=[{"name": "skill__old", "description": "old", "input_schema": {}}],
+)
+```
+
+Assert the provider received `skill__old` and the registry was not queried.
+
+Add test: running turn uses prompt and tool snapshots captured before async memory/todo waits.
 
 Use a fake `_stream_inner()` or captured `_loop.stream` call. Arrange:
 
 1. `agent.system_prompt = "old prompt"`.
-2. `run_streaming()` performs the hot reload check and captures snapshot.
-3. During a later awaited memory/todo hook, mutate `agent.system_prompt = "new prompt"`.
-4. Assert the provider receives `"old prompt"` in the effective system prompt.
+2. Registry callable specs contain `skill__old`.
+3. `run_streaming()` performs the hot reload check and captures snapshots.
+4. During a later awaited memory/todo hook, mutate `agent.system_prompt = "new prompt"` and
+   registry callable specs to `skill__new`.
+5. Assert the provider receives `"old prompt"` and `skill__old`.
 
 Add test: concurrent first turns for the same `(agent_context, session_id)` do not skip the
 reload check while the first one is in flight.
@@ -1019,6 +1056,7 @@ async def _maybe_refresh_skills_for_new_session(
 
         if result.error is None:
             self._skill_reload_checked_sessions.add(key)
+    self._skill_reload_locks.pop(key, None)
 ```
 
 If `maybe_reload()` fails, it returns the last-known-good version without advancing. The
@@ -1029,17 +1067,53 @@ In `run_streaming()`, after `worker_session` is resolved and before `TURN_RECEIV
 ```python
 await self._maybe_refresh_skills_for_new_session(session_id, agent_context)
 system_prompt_snapshot = self.system_prompt
+tool_specs_snapshot = self._gate.get_callable_specs(
+    _normalize_allowed_tools(self.allowed_tools),
+    set(self.allowed_skills) if self.allowed_skills is not None else None,
+)
 ```
 
 Prefer before `TURN_RECEIVED` so the turn's entire execution sees a settled capability state.
 
-Then pass `system_prompt_snapshot` into `_stream_inner()` and change `_stream_inner()` to use:
+Then pass `system_prompt_snapshot` and `tool_specs_snapshot` into `_stream_inner()` and
+change `_stream_inner()` to use:
 
 ```python
 sections = [system_prompt_snapshot]
 ```
 
 Do not read `self.system_prompt` inside `_stream_inner()` after awaits.
+
+Pass `tool_specs_snapshot` into `AgentLoop.stream()`:
+
+```python
+gen = self._loop.stream(
+    effective_system_prompt,
+    messages,
+    task_id=task_id,
+    thinking_effort=thinking_effort,
+    tools_snapshot=tool_specs_snapshot,
+)
+```
+
+In `AgentLoop.stream()`, add an optional keyword-only argument:
+
+```python
+tools_snapshot: list[dict[str, Any]] | None = None
+```
+
+Then compute tools as:
+
+```python
+tools = (
+    tools_snapshot
+    if tools_snapshot is not None
+    else self._registry.get_callable_specs(
+        allowed_tools=self._allowed_tools,
+        allowed_skills=self._allowed_skills,
+    )
+)
+```
 
 - [ ] **Step 6: Run focused core tests**
 
@@ -1054,7 +1128,7 @@ Expected: pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add sebastian/core/base_agent.py sebastian/orchestrator/sebas.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
+git add sebastian/core/agent_loop.py sebastian/core/base_agent.py sebastian/orchestrator/sebas.py tests/unit/core/test_agent_loop.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
 git commit -m "feat(core): 新会话首轮刷新 Skill prompt" -m "Co-Authored-By: gpt 5.5 <noreply@openai.com>"
 ```
 
@@ -1101,7 +1175,7 @@ Expected: pass.
 Run:
 
 ```bash
-ruff check sebastian/capabilities/registry.py sebastian/capabilities/skills/hot_reload.py sebastian/gateway/state.py sebastian/gateway/app.py sebastian/core/base_agent.py sebastian/core/stream_helpers.py sebastian/orchestrator/sebas.py sebastian/permissions/types.py sebastian/permissions/gate.py tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
+ruff check sebastian/capabilities/registry.py sebastian/capabilities/skills/hot_reload.py sebastian/gateway/state.py sebastian/gateway/app.py sebastian/core/agent_loop.py sebastian/core/base_agent.py sebastian/core/stream_helpers.py sebastian/orchestrator/sebas.py sebastian/permissions/types.py sebastian/permissions/gate.py tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_agent_loop.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
 ```
 
 Expected: pass.
@@ -1111,7 +1185,7 @@ Expected: pass.
 Run:
 
 ```bash
-ruff format --check sebastian/capabilities/registry.py sebastian/capabilities/skills/hot_reload.py sebastian/gateway/state.py sebastian/gateway/app.py sebastian/core/base_agent.py sebastian/core/stream_helpers.py sebastian/orchestrator/sebas.py sebastian/permissions/types.py sebastian/permissions/gate.py tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
+ruff format --check sebastian/capabilities/registry.py sebastian/capabilities/skills/hot_reload.py sebastian/gateway/state.py sebastian/gateway/app.py sebastian/core/agent_loop.py sebastian/core/base_agent.py sebastian/core/stream_helpers.py sebastian/orchestrator/sebas.py sebastian/permissions/types.py sebastian/permissions/gate.py tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_agent_loop.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_base_agent.py tests/unit/core/test_prompt_builder.py
 ```
 
 Expected: pass. If it fails, run the same command without `--check`, then re-run tests.

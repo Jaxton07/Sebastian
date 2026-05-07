@@ -224,26 +224,51 @@ sessions for the same agent type, but it does not rebuild other agent type singl
 Concurrent turns already running on the same singleton continue with the effective prompt
 they assembled before their provider request. A rebuild affects later turns only.
 
-To make that true, `BaseAgent.run_streaming()` must capture a `system_prompt_snapshot`
-immediately after the new-session hot reload check and before scheduling `_stream_inner()`.
-`_stream_inner()` must accept that immutable snapshot and build the effective prompt from
-it. It must not read `self.system_prompt` after awaiting todo, resident memory, or dynamic
-memory retrieval, because another session may rebuild the singleton prompt during those
-awaits.
+To make that true, `BaseAgent.run_streaming()` must capture both a `system_prompt_snapshot`
+and a `tool_specs_snapshot` immediately after the new-session hot reload check and before
+scheduling `_stream_inner()`. `_stream_inner()` must accept those immutable snapshots and
+build the effective prompt from them. It must not read `self.system_prompt` after awaiting
+todo, resident memory, or dynamic memory retrieval, because another session may rebuild the
+singleton prompt during those awaits.
+
+The same applies to tool specs. `AgentLoop.stream()` currently asks the registry for
+callable specs at stream start. If `_stream_inner()` awaits memory/todo sections before
+calling `AgentLoop.stream()`, another session can reload skills in the meantime. That would
+produce an old prompt with new tool specs. Therefore `AgentLoop.stream()` must accept an
+optional `tools_snapshot`. When provided, it uses that snapshot and does not query the
+registry for callable specs.
 
 Pseudo-flow:
 
 ```python
 await self._maybe_refresh_skills_for_new_session(session_id, agent_context)
 system_prompt_snapshot = self.system_prompt
+tool_specs_snapshot = self._gate.get_callable_specs(
+    _normalize_allowed_tools(self.allowed_tools),
+    set(self.allowed_skills) if self.allowed_skills is not None else None,
+)
 ...
-await self._stream_inner(..., system_prompt_snapshot=system_prompt_snapshot)
+await self._stream_inner(
+    ...,
+    system_prompt_snapshot=system_prompt_snapshot,
+    tool_specs_snapshot=tool_specs_snapshot,
+)
 ```
 
 Inside `_stream_inner()`:
 
 ```python
 sections = [system_prompt_snapshot]
+```
+
+Inside `AgentLoop.stream()`:
+
+```python
+tools = (
+    tools_snapshot
+    if tools_snapshot is not None
+    else self._registry.get_callable_specs(...)
+)
 ```
 
 ### Skill Execution Allowlist
@@ -314,6 +339,10 @@ Inside the lock, re-check whether the key has already completed. Only add the ke
 `_skill_reload_checked_sessions` after `maybe_reload()` and any required prompt rebuild
 finish. If `maybe_reload()` fails and returns the last known version, keep the key unchecked
 so a later attempt can retry.
+
+After the per-key check completes, remove the lock entry with `pop(key, None)`. The
+completed set is enough to remember sessions that no longer need reload checks, and the lock
+dictionary should not grow with every session forever.
 
 Pseudo-flow:
 
@@ -427,6 +456,8 @@ Agent-level coverage:
   agent type rebuilds its prompt even when `maybe_reload()` returns `changed=False`.
 - A running turn uses the `system_prompt_snapshot` captured before `_stream_inner()` awaits
   memory/todo sections, even if another session rebuilds the singleton prompt.
+- A running turn uses the `tool_specs_snapshot` captured with the prompt snapshot, even if
+  another session reloads skills before `AgentLoop.stream()` starts.
 - Sebastian's prompt rebuild keeps its sub-agent section.
 - A skill visible through `allowed_skills` can execute through `PolicyGate.call()`.
 - A skill not in `allowed_skills` is rejected even if it is not governed by `allowed_tools`.
