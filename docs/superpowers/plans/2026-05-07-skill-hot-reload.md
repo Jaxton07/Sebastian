@@ -54,6 +54,45 @@
 
 ---
 
+## Task 0: Prepare Feature Branch
+
+**Files:**
+- No code files
+
+- [ ] **Step 1: Confirm clean worktree**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: no output.
+
+- [ ] **Step 2: Start from latest main**
+
+Run:
+
+```bash
+git checkout main
+git pull
+git checkout -b feat/skill-hot-reload
+```
+
+Expected: branch switches to `feat/skill-hot-reload`.
+
+- [ ] **Step 3: Confirm branch**
+
+Run:
+
+```bash
+git branch --show-current
+```
+
+Expected: `feat/skill-hot-reload`.
+
+---
+
 ## Task 1: Split Skill Storage From MCP Storage
 
 **Files:**
@@ -85,10 +124,10 @@ def test_replace_skill_specs_removes_deleted_skills() -> None:
     ] == "B2"
 ```
 
-Add a collision test:
+Add collision tests:
 
 ```python
-def test_replace_skill_specs_preserves_mcp_tool_with_same_name() -> None:
+def test_skill_name_collision_hides_skill_spec_and_preserves_mcp_tool() -> None:
     reg = CapabilityRegistry()
 
     async def mcp_fn(**kwargs):  # type: ignore[no-untyped-def]
@@ -102,12 +141,36 @@ def test_replace_skill_specs_preserves_mcp_tool_with_same_name() -> None:
     reg.register_skill_specs(
         [{"name": "skill__travel", "description": "skill travel", "input_schema": {}}]
     )
-    reg.replace_skill_specs([])
 
-    tool_names = {s["name"] for s in reg.get_tool_specs(allowed=ALL_TOOLS)}
+    callable_names = [s["name"] for s in reg.get_callable_specs(ALL_TOOLS, None)]
+    tool_names = {s["name"] for s in reg.get_tool_specs(ALL_TOOLS)}
     skill_names = {s["name"] for s in reg.get_skill_specs()}
+
+    assert callable_names.count("skill__travel") == 1
     assert "skill__travel" in tool_names
     assert "skill__travel" not in skill_names
+```
+
+```python
+def test_replace_skill_specs_does_not_delete_colliding_mcp_tool() -> None:
+    reg = CapabilityRegistry()
+
+    async def mcp_fn(**kwargs):  # type: ignore[no-untyped-def]
+        return ToolResult(ok=True, output="mcp")
+
+    reg.register_mcp_tool(
+        "skill__travel",
+        {"name": "skill__travel", "description": "mcp travel", "input_schema": {}},
+        mcp_fn,
+    )
+    reg.register_skill_specs(
+        [{"name": "skill__travel", "description": "skill travel", "input_schema": {}}]
+    )
+
+    reg.replace_skill_specs([])
+
+    assert "skill__travel" in {s["name"] for s in reg.get_tool_specs(ALL_TOOLS)}
+    assert "skill__travel" not in {s["name"] for s in reg.get_skill_specs()}
 ```
 
 - [ ] **Step 2: Run tests and verify they fail**
@@ -132,7 +195,10 @@ self._skill_tools: dict[str, tuple[dict[str, Any], ToolFn]] = {}
 Update:
 
 - `get_tool_specs()` reads `_mcp_tools`.
-- `get_skill_specs()` reads `_skill_tools`.
+- `get_skill_specs()` reads `_skill_tools`, but hides any skill whose name collides with
+  native or MCP tool names.
+- `get_callable_specs()` must never return duplicate names. Native/MCP tools win over
+  skills on collision.
 - `call()` checks native, then `_mcp_tools`, then `_skill_tools`.
 - `register_skill_specs()` writes `_skill_tools`.
 - Remove or stop using `_skill_names`.
@@ -143,6 +209,21 @@ Add:
 def replace_skill_specs(self, specs: list[dict[str, Any]]) -> None:
     self._skill_tools.clear()
     self.register_skill_specs(specs)
+```
+
+Add a helper:
+
+```python
+def _name_collides_with_tool(self, name: str) -> bool:
+    return get_tool(name) is not None or name in self._mcp_tools
+```
+
+Use it in `get_skill_specs()`:
+
+```python
+if self._name_collides_with_tool(name):
+    logger.warning("Skill %r hidden because a native/MCP tool has the same name", name)
+    continue
 ```
 
 Keep the existing `_skill_fn()` behavior:
@@ -231,12 +312,16 @@ async def test_edit_skill_md_reloads_and_increments_version(tmp_path: Path) -> N
     reg.replace_skill_specs(load_skills(builtin_dir=tmp_path, extra_dirs=[]))
     reloader = SkillHotReloader.seeded(registry=reg, builtin_dir=tmp_path, extra_dirs=[])
 
-    write_skill(tmp_path, "travel", "---\nname: travel\ndescription: New\n---\nNew.")
+    write_skill(
+        tmp_path,
+        "travel",
+        "---\nname: travel\ndescription: New and longer\n---\nNew body with more bytes.",
+    )
     result = await reloader.maybe_reload()
 
     assert result.changed is True
     assert result.version == 1
-    assert "New" in reg.get_skill_specs()[0]["description"]
+    assert "New and longer" in reg.get_skill_specs()[0]["description"]
 ```
 
 - [ ] **Step 2: Run tests and verify they fail**
@@ -299,7 +384,12 @@ def compute_skill_fingerprint(
     for base in _skill_dirs(builtin_dir, extra_dirs or []):
         if not base.exists():
             continue
-        for skill_md in sorted(base.glob("*/SKILL.md")):
+        for entry in sorted(base.iterdir()):
+            if not entry.is_dir() or entry.name.startswith("_"):
+                continue
+            skill_md = entry / "SKILL.md"
+            if not skill_md.exists():
+                continue
             stat = skill_md.stat()
             try:
                 rel = str(skill_md.relative_to(base))
@@ -386,6 +476,7 @@ Add tests for:
 
 - deleting a `SKILL.md`
 - adding a `scripts/search_flights.py` without editing `SKILL.md`
+- adding or editing `_ignored/SKILL.md` does not trigger reload
 - concurrent `maybe_reload()` calls
 - startup seed catches edits made after seed but before first `maybe_reload()`
 
@@ -614,6 +705,32 @@ reloader.version = 2
 await agent.run_streaming("hello", "new-session")
 agent.rebuild_system_prompt.assert_called_once()
 assert agent._skill_prompt_version == 2
+```
+
+Add test: only the current agent type singleton rebuilds.
+
+Create two agent instances sharing the same fake reloader. Invoke `run_streaming()` on only
+one instance, then assert only that instance's `rebuild_system_prompt()` spy was called.
+
+```python
+agent_a.rebuild_system_prompt = MagicMock(wraps=agent_a.rebuild_system_prompt)
+agent_b.rebuild_system_prompt = MagicMock(wraps=agent_b.rebuild_system_prompt)
+
+await agent_a.run_streaming("hello", "session-a")
+
+agent_a.rebuild_system_prompt.assert_called_once()
+agent_b.rebuild_system_prompt.assert_not_called()
+```
+
+Add test: Sebastian's rebuild keeps sub-agent section.
+
+Use `Sebastian.__new__(Sebastian)` as in existing
+`test_sebastian_agents_section_renders_agent_type_only`, set `_gate` and `_agent_registry`
+manually, call `rebuild_system_prompt()`, and assert:
+
+```python
+assert "## Available Sub-Agents" in obj.system_prompt
+assert "- forge:" in obj.system_prompt
 ```
 
 - [ ] **Step 5: Implement `_maybe_refresh_skills_for_new_session()`**
