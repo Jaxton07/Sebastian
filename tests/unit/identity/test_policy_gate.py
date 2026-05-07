@@ -605,6 +605,32 @@ def test_get_callable_specs_injects_reason_for_model_decides() -> None:
     assert "reason" in schema["required"]
 
 
+def test_get_callable_specs_does_not_inject_reason_for_skills() -> None:
+    """Skill spec 不应被注入工具审查用的 reason 参数。"""
+    specs = [
+        {
+            "name": "skill__flight_search",
+            "description": "search flights",
+            "input_schema": {
+                "properties": {"instructions": {"type": "string"}},
+                "required": [],
+            },
+        },
+    ]
+    gate = _make_gate_with_specs(specs)
+    gate._registry.is_skill.return_value = True
+
+    result = gate.get_callable_specs(
+        allowed_tools=ALL_TOOLS,
+        allowed_skills={"skill__flight_search"},
+    )
+
+    assert len(result) == 1
+    schema = result[0]["input_schema"]
+    assert "reason" not in schema["properties"]
+    assert "reason" not in schema["required"]
+
+
 def test_get_all_tool_specs_still_works_as_shim() -> None:
     """get_all_tool_specs() uses the explicit all-tools sentinel."""
     specs = [

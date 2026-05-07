@@ -127,6 +127,10 @@ class PolicyGate:
         specs: list[dict[str, Any]] = []
         for spec_dict in self._registry.get_callable_specs(allowed_tools, allowed_skills):
             tool_name = spec_dict["name"]
+            if self._registry.is_skill(tool_name):
+                specs.append(spec_dict)
+                continue
+
             native = get_tool(tool_name)
             tier = native[0].permission_tier if native else PermissionTier.MODEL_DECIDES
 
