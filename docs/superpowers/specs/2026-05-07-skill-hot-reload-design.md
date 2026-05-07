@@ -389,7 +389,7 @@ SkillHotReloader fingerprints SKILL.md files
         current agent type singleton rebuilds prompt if its prompt version is stale
               │
               ▼
-        AgentLoop.stream() fetches callable specs from registry
+        AgentLoop.stream() uses captured callable specs snapshot
 ```
 
 The prompt's `## Available Skills` section and the LLM tool specs are therefore derived from

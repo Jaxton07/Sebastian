@@ -1120,7 +1120,7 @@ tools = (
 Run:
 
 ```bash
-pytest tests/unit/core/test_prompt_builder.py tests/unit/core/test_base_agent.py -q
+pytest tests/unit/core/test_agent_loop.py tests/unit/core/test_prompt_builder.py tests/unit/core/test_base_agent.py -q
 ```
 
 Expected: pass.
@@ -1165,7 +1165,7 @@ instead of implying skills are only startup-scanned.
 Run:
 
 ```bash
-pytest tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skills_loader.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_prompt_builder.py tests/unit/core/test_base_agent.py -q
+pytest tests/unit/capabilities/test_registry_filtering.py tests/unit/capabilities/test_skills_loader.py tests/unit/capabilities/test_skill_hot_reload.py tests/unit/identity/test_policy_gate.py tests/unit/core/test_agent_loop.py tests/unit/core/test_stream_helpers.py tests/unit/core/test_prompt_builder.py tests/unit/core/test_base_agent.py -q
 ```
 
 Expected: pass.
@@ -1239,5 +1239,5 @@ Summarize:
 - Existing sessions do not scan every turn.
 - No model-visible refresh tool was added.
 - Skill visibility and execution use the same `allowed_skills` full-name allowlist.
-- Running turns use a prompt snapshot and cannot observe another session's later prompt rebuild.
+- Running turns use prompt/tool snapshots and cannot observe another session's later prompt or skill-spec rebuild.
 - Script files remain naturally hot because `Bash` executes them fresh.
