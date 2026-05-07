@@ -4,14 +4,15 @@
 
 ## 目录职责
 
-管理 Skill（复合能力）的动态加载与注册。启动时自动扫描本目录及用户自定义目录下的各 Skill 子目录，读取 `SKILL.md` 描述文件，将 Skill 包装为 `skill__<name>` 格式的工具并注入 `CapabilityRegistry`，**无需修改任何核心代码**即可扩展新能力。
+管理 Skill（复合能力）的动态加载与注册。Gateway 启动时会扫描本目录及用户自定义目录下的各 Skill 子目录，读取 `SKILL.md` 描述文件，将 Skill 包装为 `skill__<name>` 格式的工具并注入 `CapabilityRegistry`。新会话的首轮 turn 会在模型请求前检查 `SKILL.md` 指纹变化并刷新当前 Agent 的 prompt / tool snapshot，**无需修改核心代码或重启服务**即可让新会话看到新增或修改后的 Skill。
 
 ## 目录结构
 
 ```
 skills/
 ├── __init__.py        # 包入口（空）
-└── _loader.py         # 扫描 SKILL.md、解析 frontmatter、生成工具 spec
+├── _loader.py         # 扫描 SKILL.md、解析 frontmatter、生成工具 spec
+└── hot_reload.py      # 计算 SKILL.md 指纹，新会话首轮触发 Skill 热加载
 ```
 
 ## Skill 定义格式
@@ -41,6 +42,15 @@ description: 这个 Skill 的简短描述
 - 工具名统一前缀为 `skill__<name>`
 - 后加载的目录可覆盖同名 Skill（支持用户自定义覆盖内置 Skill）
 - 目录名以 `_` 开头的子目录跳过（如 `_loader.py` 所在位置）
+- `allowed_skills` 必须使用完整注册名，例如 `skill__flight_search`，不要写裸名 `flight_search`
+
+## 热加载生命周期
+
+- Gateway 启动时完成一次全量 Skill 加载，并记录当前 `SKILL.md` 指纹。
+- 每个新会话的首轮 turn 在组装 prompt 和 LLM tool specs 前检查一次指纹；同一会话后续 turn 不重复扫描。
+- 只有各 Skill 根目录下的 `SKILL.md` 参与热加载指纹。新增、删除或修改 `SKILL.md` 会刷新 Skill registry；修改 `scripts/` 等辅助文件不会触发 prompt/tool spec 重建。
+- `scripts/` 下的脚本由 `Bash` 等工具在执行时读取文件，因此脚本内容天然是最新版本，不需要把脚本文件纳入 prompt 热加载指纹。
+- 已经运行中的 turn 使用启动时捕获的 prompt/tool snapshot，不会在执行过程中看到另一个新会话触发的 Skill 更新。
 
 ## 修改导航
 
@@ -49,6 +59,7 @@ description: 这个 Skill 的简短描述
 | 新增 Skill | 在本目录下创建 `<name>/SKILL.md`（无需改代码） |
 | frontmatter 解析规则 | [_loader.py](_loader.py) — `_parse_frontmatter()` |
 | 扫描目录逻辑、工具 spec 生成 | [_loader.py](_loader.py) — `load_skills()` |
+| 修改新会话热加载逻辑 | [hot_reload.py](hot_reload.py) — `SkillHotReloader` |
 
 ---
 

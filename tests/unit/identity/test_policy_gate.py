@@ -24,6 +24,12 @@ def _make_context(task_goal: str = "test goal") -> ToolCallContext:
     )
 
 
+def _make_registry_mock() -> MagicMock:
+    registry = MagicMock()
+    registry.is_skill = MagicMock(return_value=False)
+    return registry
+
+
 @pytest.mark.asyncio
 async def test_low_tier_bypasses_reviewer_and_approval(tmp_path) -> None:
     """LOW tier workspace 内路径 → 直接执行，不走 reviewer 和 approval_manager。"""
@@ -33,7 +39,7 @@ async def test_low_tier_bypasses_reviewer_and_approval(tmp_path) -> None:
 
     inside_path = tmp_path / "notes.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="result"))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -62,7 +68,7 @@ async def test_low_tier_bypasses_reviewer_and_approval(tmp_path) -> None:
 async def test_model_decides_proceed_no_approval() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     reviewer = MagicMock()
     reviewer.review = AsyncMock(return_value=ReviewDecision(decision="proceed", explanation=""))
@@ -92,7 +98,7 @@ async def test_model_decides_proceed_no_approval() -> None:
 async def test_model_decides_escalate_user_grants() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="deleted"))
     reviewer = MagicMock()
     reviewer.review = AsyncMock(
@@ -124,7 +130,7 @@ async def test_model_decides_escalate_user_grants() -> None:
 async def test_model_decides_escalate_user_denies() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="done"))
     reviewer = MagicMock()
     reviewer.review = AsyncMock(
@@ -155,7 +161,7 @@ async def test_model_decides_escalate_user_denies() -> None:
 async def test_high_risk_always_requests_approval() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="done"))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -179,7 +185,7 @@ async def test_high_risk_always_requests_approval() -> None:
 async def test_high_risk_denied_returns_error() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     reviewer = MagicMock()
     approval_manager = MagicMock()
     approval_manager.request_approval = AsyncMock(return_value=False)
@@ -200,7 +206,7 @@ async def test_high_risk_denied_returns_error() -> None:
 def test_get_all_tool_specs_injects_reason_for_model_decides() -> None:
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.get_callable_specs.return_value = [
         {
             "name": "shell",
@@ -256,7 +262,7 @@ async def test_low_tier_sets_and_resets_tool_context() -> None:
         captured.append(_current_tool_ctx.get())
         return ToolResult(ok=True, output="ok")
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = _capturing_call
 
     gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
@@ -279,7 +285,7 @@ def test_get_all_tool_specs_unknown_tool_defaults_to_model_decides() -> None:
     """MCP tools not in native registry default to MODEL_DECIDES."""
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.get_callable_specs.return_value = [
         {
             "name": "mcp_tool",
@@ -312,7 +318,7 @@ async def test_model_decides_file_path_outside_workspace_skips_reviewer(tmp_path
 
     outside_path = "/tmp/evil_output.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="written"))
     reviewer = MagicMock()
     reviewer.review = AsyncMock()
@@ -353,7 +359,7 @@ async def test_model_decides_file_path_outside_workspace_user_denies(tmp_path) -
 
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock()
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -391,7 +397,7 @@ async def test_model_decides_file_path_inside_workspace_uses_reviewer(tmp_path) 
 
     inside_path = tmp_path / "output.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     reviewer = MagicMock()
     reviewer.review = AsyncMock(return_value=ReviewDecision(decision="proceed", explanation=""))
@@ -430,7 +436,7 @@ async def test_low_tier_file_path_outside_workspace_requests_approval(tmp_path) 
 
     outside_path = "/etc/hosts"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="content"))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -469,7 +475,7 @@ async def test_low_tier_path_param_outside_workspace_requests_approval(tmp_path)
 
     outside_path = "/tmp/search_root"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output={"files": []}))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -507,7 +513,7 @@ async def test_low_tier_file_path_inside_workspace_no_approval(tmp_path) -> None
 
     inside_path = tmp_path / "notes.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="content"))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -539,7 +545,7 @@ def _make_gate_with_specs(
     native_specs: list[dict],
 ) -> PolicyGate:
     """构造一个 PolicyGate，注入 registry 返回指定 native_specs。"""
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.get_callable_specs = MagicMock(
         side_effect=lambda allowed_tools, allowed_skills: [
             spec
@@ -599,6 +605,32 @@ def test_get_callable_specs_injects_reason_for_model_decides() -> None:
     assert "reason" in schema["required"]
 
 
+def test_get_callable_specs_does_not_inject_reason_for_skills() -> None:
+    """Skill spec 不应被注入工具审查用的 reason 参数。"""
+    specs = [
+        {
+            "name": "skill__flight_search",
+            "description": "search flights",
+            "input_schema": {
+                "properties": {"instructions": {"type": "string"}},
+                "required": [],
+            },
+        },
+    ]
+    gate = _make_gate_with_specs(specs)
+    gate._registry.is_skill.return_value = True
+
+    result = gate.get_callable_specs(
+        allowed_tools=ALL_TOOLS,
+        allowed_skills={"skill__flight_search"},
+    )
+
+    assert len(result) == 1
+    schema = result[0]["input_schema"]
+    assert "reason" not in schema["properties"]
+    assert "reason" not in schema["required"]
+
+
 def test_get_all_tool_specs_still_works_as_shim() -> None:
     """get_all_tool_specs() uses the explicit all-tools sentinel."""
     specs = [
@@ -620,7 +652,7 @@ def test_get_callable_specs_forwards_allowed_skills() -> None:
     """PolicyGate.get_callable_specs 应把 allowed_skills 如实转发给 registry。"""
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.get_callable_specs = MagicMock(return_value=[])
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -640,7 +672,7 @@ async def test_call_rejects_tool_outside_allowed_tools() -> None:
     """context.allowed_tools 限制外的工具应被 Stage 0 拒绝，不到 registry。"""
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock()
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -671,7 +703,7 @@ async def test_call_allows_tool_inside_allowed_tools(tmp_path) -> None:
 
     inside_path = tmp_path / "notes.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     reviewer = MagicMock()
     approval_manager = MagicMock()
@@ -708,7 +740,7 @@ async def test_call_none_allowed_tools_rejects_capability_tool() -> None:
     """context.allowed_tools=None means no capability tools are executable."""
     from sebastian.permissions.gate import PolicyGate
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock()
     gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
 
@@ -731,7 +763,7 @@ async def test_call_none_allowed_tools_rejects_capability_tool() -> None:
 @pytest.mark.asyncio
 async def test_call_empty_allowed_tools_rejects_capability_tool() -> None:
     """context.allowed_tools=frozenset() also means no capability tools."""
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock()
     gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
 
@@ -756,7 +788,7 @@ async def test_call_all_tools_sentinel_allows_any_tool(tmp_path) -> None:
     """Only ALL_TOOLS gives unrestricted capability tool execution."""
     inside_path = tmp_path / "notes.txt"
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
 
@@ -786,9 +818,114 @@ async def test_call_all_tools_sentinel_allows_any_tool(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_call_allows_skill_from_allowed_skills() -> None:
+    registry = _make_registry_mock()
+    registry.is_skill.return_value = True
+    registry.call = AsyncMock(return_value=ToolResult(ok=True, output="skill"))
+    gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
+
+    context = ToolCallContext(
+        task_goal="",
+        session_id="s1",
+        task_id=None,
+        agent_type="sebastian",
+        allowed_tools=None,
+        allowed_skills=frozenset({"skill__flight_search"}),
+    )
+
+    result = await gate.call("skill__flight_search", {}, context)
+
+    assert result.ok is True
+    registry.call.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_call_uses_skill_snapshot_before_live_registry() -> None:
+    registry = _make_registry_mock()
+    registry.is_skill.return_value = True
+    registry.call = AsyncMock(return_value=ToolResult(ok=True, output="new live skill"))
+    gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
+
+    context = ToolCallContext(
+        task_goal="",
+        session_id="s1",
+        task_id=None,
+        agent_type="sebastian",
+        allowed_tools=None,
+        allowed_skills=frozenset({"skill__flight_search"}),
+        skill_specs_snapshot={
+            "skill__flight_search": {
+                "name": "skill__flight_search",
+                "description": "old snapshot skill",
+                "input_schema": {},
+            }
+        },
+    )
+
+    result = await gate.call("skill__flight_search", {"ignored": "input"}, context)
+
+    assert result.ok is True
+    assert result.output == "old snapshot skill"
+    registry.call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_call_allows_snapshot_skill_removed_from_live_registry() -> None:
+    registry = _make_registry_mock()
+    registry.is_skill.return_value = False
+    registry.call = AsyncMock(return_value=ToolResult(ok=False, error="Unknown tool"))
+    gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
+
+    context = ToolCallContext(
+        task_goal="",
+        session_id="s1",
+        task_id=None,
+        agent_type="sebastian",
+        allowed_tools=None,
+        allowed_skills=frozenset({"skill__flight_search"}),
+        skill_specs_snapshot={
+            "skill__flight_search": {
+                "name": "skill__flight_search",
+                "description": "old snapshot skill",
+                "input_schema": {},
+            }
+        },
+    )
+
+    result = await gate.call("skill__flight_search", {}, context)
+
+    assert result.ok is True
+    assert result.output == "old snapshot skill"
+    registry.call.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_call_rejects_skill_outside_allowed_skills() -> None:
+    registry = _make_registry_mock()
+    registry.is_skill.return_value = True
+    registry.call = AsyncMock()
+    gate = PolicyGate(registry=registry, reviewer=MagicMock(), approval_manager=MagicMock())
+
+    context = ToolCallContext(
+        task_goal="",
+        session_id="s1",
+        task_id=None,
+        agent_type="sebastian",
+        allowed_tools=ALL_TOOLS,
+        allowed_skills=frozenset(),
+    )
+
+    result = await gate.call("skill__flight_search", {}, context)
+
+    assert result.ok is False
+    assert "allowed_skills" in (result.error or "")
+    registry.call.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_model_decides_preflight_enriches_reviewer_input() -> None:
     """review_preflight can provide enriched input only for reviewer review."""
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     registry.review_preflight = AsyncMock(
         return_value=MagicMock(ok=True, review_input={"command": "ls", "risk": "readonly"})
@@ -826,7 +963,7 @@ async def test_model_decides_preflight_enriches_reviewer_input() -> None:
 @pytest.mark.asyncio
 async def test_model_decides_preflight_block_stops_before_reviewer() -> None:
     """A blocking preflight stops before reviewer and before tool execution."""
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock()
     registry.review_preflight = AsyncMock(return_value=MagicMock(ok=False, error="blocked"))
     reviewer = MagicMock()
@@ -858,7 +995,7 @@ async def test_model_decides_preflight_block_stops_before_reviewer() -> None:
 @pytest.mark.asyncio
 async def test_model_decides_preflight_metadata_does_not_reach_tool_call() -> None:
     """Only original execution input reaches the real tool call."""
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     registry.review_preflight = AsyncMock(
         return_value=MagicMock(
@@ -898,7 +1035,7 @@ async def test_model_decides_preflight_nested_mutation_does_not_reach_tool_call(
         inputs["options"]["flags"].append("preflight")
         return MagicMock(ok=True, review_input=inputs)
 
-    registry = MagicMock()
+    registry = _make_registry_mock()
     registry.call = AsyncMock(return_value=ToolResult(ok=True, output="ok"))
     registry.review_preflight = AsyncMock(side_effect=mutate_preflight)
     reviewer = MagicMock()

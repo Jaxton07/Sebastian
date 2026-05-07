@@ -42,9 +42,10 @@ capabilities/
 ├── mcps/                # MCP server 配置目录，每个子目录一个 config.toml，启动时自动连接
 │   ├── __init__.py
 │   └── _loader.py       # 扫描 mcps/ 子目录，自动连接各 MCP server
-└── skills/              # Skill 复合能力目录（Phase 2+，当前占位）
+└── skills/              # Skill 复合能力目录，启动加载 + 新会话首轮热刷新
     ├── __init__.py
-    └── _loader.py       # Skill 自动加载（占位）
+    ├── _loader.py       # 扫描 SKILL.md、解析 frontmatter、生成工具 spec
+    └── hot_reload.py    # 新会话首轮检查 SKILL.md 指纹并刷新 Skill registry
 ```
 
 ## 修改导航
@@ -57,6 +58,7 @@ capabilities/
 | 修改工具自动加载逻辑 | [tools/_loader.py](tools/_loader.py) |
 | 新增 MCP Server 连接 | `mcps/<name>/config.toml`，重启自动连接 |
 | 修改 MCP 连接方式 | [mcp_client.py](mcp_client.py) |
+| 修改 Skill 加载 / 热加载逻辑 | [skills/](skills/README.md) 的 `_loader.py` / `hot_reload.py` |
 | 查看所有已注册工具 | 运行时调用 `registry.get_all_tool_specs()`，或搜索 `@tool` 装饰器 |
 
 ## 公开接口
@@ -105,6 +107,8 @@ async def my_tool(param: str) -> ToolResult:
 > - `HIGH_RISK`：高危操作，始终请求用户确认
 
 **新增 MCP Server**：在 `capabilities/mcps/<name>/` 下创建 `config.toml`，重启后自动连接。
+
+**新增 Skill**：在 `capabilities/skills/<name>/SKILL.md` 或用户扩展目录下创建 `SKILL.md`。Gateway 启动时加载一次；服务运行中新增、删除或修改 `SKILL.md` 后，新会话首轮 turn 会在模型请求前刷新 Skill registry 与当前 Agent prompt/tool snapshot。`allowed_skills` 白名单使用完整注册名，例如 `skill__flight_search`。
 
 ## 子模块
 

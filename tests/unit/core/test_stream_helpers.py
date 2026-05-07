@@ -238,6 +238,68 @@ async def test_dispatch_tool_call_publishes_artifact_on_tool_executed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_tool_call_passes_allowed_skills_to_tool_context() -> None:
+    from sebastian.core.stream_helpers import dispatch_tool_call
+    from sebastian.permissions.types import ToolCallContext
+    from sebastian.protocol.events.types import EventType
+
+    captured_context: ToolCallContext | None = None
+
+    async def gate_call(
+        tool_name: str,
+        inputs: dict,
+        context: ToolCallContext,
+    ) -> MagicMock:
+        nonlocal captured_context
+        captured_context = context
+        return MagicMock(
+            ok=True,
+            output="done",
+            error=None,
+            empty_hint=None,
+            display=None,
+        )
+
+    update_activity = AsyncMock()
+
+    async def publish(session_id: str, event_type: EventType, data: object) -> None:
+        return None
+
+    blocks: list = []
+    skill_specs_snapshot = {
+        "skill__flight_search": {
+            "name": "skill__flight_search",
+            "description": "Flight search",
+            "input_schema": {},
+        }
+    }
+    with patch("sebastian.core.stream_helpers.get_tool", return_value=None):
+        await dispatch_tool_call(
+            _make_event(),
+            session_id="sess-1",
+            task_id=None,
+            agent_context="sebastian",
+            assistant_turn_id="turn-1",
+            assistant_blocks=blocks,
+            current_pci=0,
+            block_index=1,
+            gate_call=gate_call,
+            update_activity=update_activity,
+            publish=publish,
+            current_task_goals={},
+            current_depth={},
+            allowed_tools=None,
+            allowed_skills=["skill__flight_search"],
+            skill_specs_snapshot=skill_specs_snapshot,
+            pending_blocks={},
+        )
+
+    assert captured_context is not None
+    assert captured_context.allowed_skills == frozenset({"skill__flight_search"})
+    assert captured_context.skill_specs_snapshot == skill_specs_snapshot
+
+
+@pytest.mark.asyncio
 async def test_dispatch_tool_call_publishes_download_artifact_unchanged() -> None:
     from sebastian.core.stream_helpers import dispatch_tool_call
     from sebastian.protocol.events.types import EventType
