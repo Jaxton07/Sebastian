@@ -50,6 +50,14 @@ cli/
 环境变量 `SEBASTIAN_SKIP_PATH_SETUP=1` 仅跳过 shell rc 文件更新，不会跳过
 shim 生成，确保服务和工具调用仍可使用稳定入口。
 
+写入的 managed block 为：
+
+```sh
+# >>> sebastian PATH >>>
+export PATH="$HOME/.sebastian/bin:$PATH"
+# <<< sebastian PATH <<<
+```
+
 ### `updater.py`
 
 自升级逻辑，实现 `sebastian update` 命令的完整流程：
@@ -77,6 +85,16 @@ Skill package manager 的 CLI 外壳，负责调用 registry client 与 installe
 - `inspect`：展示 registry 中 Skill 的 slug、name、version、security、download、sha256 等信息。
 - `install` / `update` / `remove`：安装、更新、移除 package-managed Skill，并在非默认 registry、强制覆盖、允许 runtime name 变更、移除等高影响操作前要求显式确认。
 - `list`：展示当前 runtime Skill extensions 目录下的 managed / unmanaged Skill。
+
+默认 registry 为 `https://clawhub.ai`。网络命令按 `--registry` →
+`SEBASTIAN_SKILLS_REGISTRY_URL` → 默认 registry 的顺序解析。安装目标是
+`~/.sebastian/data/extensions/skills`（即
+`settings.skills_extensions_dir`），写入 `.sebastian-skills.lock.json` 与
+每个 Skill 目录内的 `.sebastian-origin.json`。
+
+安装、更新或移除后不会刷新当前正在运行的 session；新 Sebastian session
+首轮 turn 会通过 Skill hot reload 生命周期读取新的 `SKILL.md` 快照。
+`sebastian skills update --all` 当前未实现，需按 slug 更新。
 
 ## CLI 命令一览
 

@@ -141,6 +141,12 @@ sebastian status             # Check process/service status
 sebastian service status     # Check system service diagnostics
 sebastian update             # Update to latest release (auto-rollback on failure)
 sebastian update --check     # Check for updates without installing
+sebastian skills search flight     # Search the Skill registry
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills update flight-search
+sebastian skills remove flight-search
 ```
 
 Typical deployment operations:
@@ -155,11 +161,46 @@ sebastian update
 For service-managed installs, `sebastian update` automatically restarts an
 active systemd/launchd service after the update completes.
 
+Sebastian creates a stable CLI shim at `~/.sebastian/bin/sebastian` during
+install and update. The installer writes this managed shell block to supported
+zsh/bash rc files unless `SEBASTIAN_SKIP_PATH_SETUP=1` is set:
+
+```sh
+# >>> sebastian PATH >>>
+export PATH="$HOME/.sebastian/bin:$PATH"
+# <<< sebastian PATH <<<
+```
+
 Installed runtime config lives at `~/.sebastian/.env`. If
 `SEBASTIAN_DATA_DIR` is customized, runtime config lives at
 `<SEBASTIAN_DATA_DIR>/.env`. Edit that file for settings used by the service,
 such as `SEBASTIAN_BROWSER_UPSTREAM_PROXY`. Repository `.env` remains for local
 source-tree development only.
+
+## 🧩 Skill Packages
+
+Sebastian can install third-party Skills from a ClawHub-compatible registry:
+
+```bash
+sebastian skills search "flight"
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills update flight-search
+sebastian skills remove flight-search
+```
+
+The default registry is `https://clawhub.ai`. Networked commands accept
+`--registry <url>`, and `SEBASTIAN_SKILLS_REGISTRY_URL` can set a default
+override. Installed packages live under
+`~/.sebastian/data/extensions/skills`; installs, updates, and removals apply to
+new Sebastian sessions because each new session refreshes the Skill snapshot
+before its first model request.
+
+The builtin `skill_installer` Skill lets Sebastian help with this flow safely:
+it searches and inspects candidates through `~/.sebastian/bin/sebastian`, asks
+for explicit confirmation before install/update/remove, and does not run
+third-party scripts or bypass unsafe registry status.
 
 ## 🖥️ Running as a System Service
 

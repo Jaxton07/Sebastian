@@ -13,6 +13,7 @@
 - FastAPI gateway 与 SSE 实时推送
 - Session / Task / Event 持久化
 - Memory、Sandbox、Protocol 等基础能力
+- `sebastian` CLI、自升级、服务化启动与 Skill 包管理
 
 如果你刚进入仓库，建议先配合阅读：
 
@@ -151,11 +152,20 @@ Sub-Agent 插件目录。当前已有：
 - `registry.py`：能力注册表
 - `mcp_client.py`：MCP client 接入
 
+用户安装的 Skill package 默认写入
+`~/.sebastian/data/extensions/skills`。`sebastian skills` 命令使用默认
+registry `https://clawhub.ai`，也可通过 `--registry` 或
+`SEBASTIAN_SKILLS_REGISTRY_URL` 指向兼容 registry。变更会在新 Sebastian
+session 首轮热加载时进入 prompt/tool snapshot；已有 session 保持原快照。
+内置 `skill_installer` Skill 让 Sebastian 通过 CLI 搜索、检查并在用户确认后安装、
+更新或移除 Skill。
+
 适合在以下场景进入：
 
 - 新增工具或 Skill
 - 调整能力发现与注册机制
 - 排查工具暴露范围与权限问题
+- 调整 Skill 包安装生命周期或内置 `skill_installer` 说明
 
 ### `memory/`
 
@@ -181,12 +191,17 @@ Typer CLI 子命令与进程守护工具。
 - `main.py`：Typer CLI 入口；`serve/status/update/version` 顶层命令；挂载 `service` 子命令。
 - `cli/service.py`：systemd/launchd 服务安装、状态、重启。
 - `updater.py`：自升级逻辑（`sebastian update`），含 SHA256 校验、原子替换、失败回滚
+- `skills.py`：`sebastian skills search/inspect/install/list/update/remove`，从
+  ClawHub-compatible registry 管理用户 Skill 包。
+- `path_setup.py`：安装/升级时刷新 `~/.sebastian/bin/sebastian` shim，并按需写入
+  zsh/bash PATH block。
 
 适合在以下场景进入：
 
 - 修改 CLI 命令或参数
 - 修改自升级/回滚策略
 - 修改守护进程管理逻辑
+- 修改 Skill 包管理、registry override 或 CLI PATH 行为
 
 ### `log/`
 
@@ -238,6 +253,7 @@ Typer CLI 子命令与进程守护工具。
 | 修改权限审查或 workspace 边界 | [permissions/README.md](permissions/README.md) |
 | 修改 A2A 协议或事件总线 | [protocol/README.md](protocol/README.md) |
 | 修改沙箱执行策略 | [sandbox/README.md](sandbox/README.md) |
+| 修改 CLI Skill 包管理 | [cli/README.md](cli/README.md) → `skills.py` |
 | 修改全局配置解析 | [config/README.md](config/README.md) |
 | 修改 CLI 命令或自升级逻辑 | [cli/README.md](cli/README.md) |
 

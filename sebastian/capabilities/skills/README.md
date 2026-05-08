@@ -6,6 +6,12 @@
 
 管理 Skill（复合能力）的动态加载与注册。Gateway 启动时会扫描本目录及用户自定义目录下的各 Skill 子目录，读取 `SKILL.md` 描述文件，将 Skill 包装为 `skill__<name>` 格式的工具并注入 `CapabilityRegistry`。新会话的首轮 turn 会在模型请求前检查 `SKILL.md` 指纹变化并刷新当前 Agent 的 prompt / tool snapshot，**无需修改核心代码或重启服务**即可让新会话看到新增或修改后的 Skill。
 
+用户通过 `sebastian skills install` 安装的 package-managed Skill 默认落在
+`~/.sebastian/data/extensions/skills`，与手工添加的用户 Skill 使用同一套
+新会话热加载生命周期。`sebastian skills search/inspect/install/list/update/remove`
+默认访问 `https://clawhub.ai`，也可通过 `--registry` 或
+`SEBASTIAN_SKILLS_REGISTRY_URL` 指向兼容 registry。
+
 ## 目录结构
 
 ```
@@ -17,6 +23,22 @@ skills/
 └── skill_installer/   # 内置 Skill：通过 Sebastian CLI 管理 Skill 包
     └── SKILL.md
 ```
+
+## Package Manager 生命周期
+
+- `sebastian skills search <query>` / `inspect <slug>` 只读取 registry 元数据。
+- `install <slug>` / `update <slug>` 会下载 registry zip、校验 sha256、安全解压、
+  写入 lockfile/origin metadata，并把 Skill 放入用户扩展目录。
+- `list` 同时展示 package-managed 与本地 unmanaged Skill。
+- `remove <slug>` 只移除 package-managed Skill，并更新 lockfile。
+- 安装、更新、移除后，变化对新的 Sebastian session 生效；当前运行中的 session
+  继续使用已有 prompt/tool snapshot。
+
+内置 `skill_installer` Skill 负责安全的 agent-assisted install flow：它会使用
+`~/.sebastian/bin/sebastian` shim 搜索和检查 Skill，向用户总结 registry、版本、
+注册名、安全状态和警告，并在用户确认后才执行 install/update/remove。该 Skill
+不会运行下载包中的脚本，不使用 `curl | bash`，也不会自动使用 `--force`、`--yes`
+或非默认 registry。
 
 ## Skill 定义格式
 
@@ -67,6 +89,7 @@ description: 这个 Skill 的简短描述
 | frontmatter 解析与 Skill 名校验规则 | [metadata.py](metadata.py) — `parse_skill_metadata()` / `validate_skill_name()` |
 | 扫描目录逻辑、工具 spec 生成 | [_loader.py](_loader.py) — `load_skills()` |
 | 修改新会话热加载逻辑 | [hot_reload.py](hot_reload.py) — `SkillHotReloader` |
+| 修改 Skill package install/update/remove 实现 | ../../skills_registry/ 与 ../../cli/skills.py |
 
 ---
 
