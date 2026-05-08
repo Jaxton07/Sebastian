@@ -715,6 +715,85 @@ def test_install_skill_uses_registry_download_digest_and_transaction(
     assert (result.path / ".sebastian-origin.json").is_file()
 
 
+def test_update_skill_current_version_noops_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.skills_registry import installer
+
+    destination = tmp_path / "flight"
+    _write_skill(destination, name="flight")
+    SkillPackageLock(tmp_path).save(
+        {"flight": _entry("flight", fingerprint=compute_package_fingerprint(destination))}
+    )
+
+    def fail_install_from_detail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("current-version update should not download or replace")
+
+    monkeypatch.setattr(installer, "RegistryClient", _FakeClient)
+    monkeypatch.setattr(installer, "_install_from_detail", fail_install_from_detail)
+
+    result = installer.update_skill(
+        "flight",
+        version=None,
+        registry=None,
+        force=False,
+        allow_rename=False,
+        skills_root=tmp_path,
+    )
+
+    assert result.slug == "flight"
+    assert result.registered_name == "skill__flight"
+    assert result.version == "1.0.0"
+    assert result.path == destination
+
+
+def test_update_skill_current_version_force_still_replaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.skills_registry import installer
+
+    destination = tmp_path / "flight"
+    _write_skill(destination, name="flight")
+    SkillPackageLock(tmp_path).save(
+        {"flight": _entry("flight", fingerprint=compute_package_fingerprint(destination))}
+    )
+    calls: list[bool] = []
+
+    def fake_install_from_detail(
+        *,
+        client: object,
+        detail: object,
+        requested_slug: str,
+        skills_root: Path,
+        force: bool,
+        allow_rename: bool,
+        require_existing: bool,
+    ) -> object:
+        calls.append(force)
+        return installer.InstallResult(
+            slug=requested_slug,
+            registered_name="skill__flight",
+            version="1.0.0",
+            path=skills_root / requested_slug,
+        )
+
+    monkeypatch.setattr(installer, "RegistryClient", _FakeClient)
+    monkeypatch.setattr(installer, "_install_from_detail", fake_install_from_detail)
+
+    installer.update_skill(
+        "flight",
+        version=None,
+        registry=None,
+        force=True,
+        allow_rename=False,
+        skills_root=tmp_path,
+    )
+
+    assert calls == [True]
+
+
 def test_install_skill_without_registry_digest_records_local_archive_hash(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

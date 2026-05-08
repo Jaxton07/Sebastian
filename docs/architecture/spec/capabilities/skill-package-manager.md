@@ -122,6 +122,8 @@ Skill name 解析复用 runtime loader 的 `parse_skill_metadata()` /
 修改，默认拒绝，显式 `--force` 才会覆盖。若新版 `SKILL.md` 改变 runtime 注册名，默认拒绝，
 显式 `--allow-rename` 才允许。模型辅助调用 CLI 时不得传 `--allow-rename`，除非用户在当前
 对话中明确批准该 registered-name 变更。
+当 registry 解析出的 version 与 lockfile 中已安装 version 相同且未传 `--force` 时，
+`update` 直接 no-op，不下载或重写本地目录。
 
 `remove` 只移除 package-managed Skill。交互式 CLI 默认要求确认；命令执行时删除目录并移除
 lockfile entry。已有 session 不受影响，新 session 不再看到该 Skill。

@@ -114,6 +114,14 @@ def update_skill(
 
     client = RegistryClient(registry or existing.registry)
     detail = client.inspect(slug, version=version)
+    detail_version = getattr(detail, "version", None)
+    if not force and isinstance(detail_version, str) and detail_version == existing.version:
+        return InstallResult(
+            slug=slug,
+            registered_name=existing.registered_name,
+            version=existing.version,
+            path=root / slug,
+        )
     return _install_from_detail(
         client=client,
         detail=detail,
