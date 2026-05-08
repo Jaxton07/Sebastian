@@ -725,6 +725,22 @@ def test_show_local_skill_ambiguous_lookup_reports_candidate_slugs(
         show_local_skill("weather", tmp_path, builtin_dir=builtin_root)
 
 
+def test_show_local_skill_duplicate_frontmatter_names_are_ambiguous(
+    tmp_path: Path,
+) -> None:
+    from sebastian.skills_registry.installer import SkillInstallError, show_local_skill
+
+    builtin_root = tmp_path / "builtin"
+    _write_skill(tmp_path / "weather-one", name="weather")
+    _write_skill(tmp_path / "weather-two", name="weather")
+
+    with pytest.raises(
+        SkillInstallError,
+        match=r"ambiguous.*weather-one.*weather-two",
+    ):
+        show_local_skill("weather", tmp_path, builtin_dir=builtin_root)
+
+
 def test_read_local_skill_file_reads_visible_file(tmp_path: Path) -> None:
     from sebastian.skills_registry.installer import read_local_skill_file
 
@@ -743,6 +759,28 @@ def test_read_local_skill_file_reads_visible_file(tmp_path: Path) -> None:
     )
 
     assert content == "rain notes"
+
+
+def test_read_local_skill_file_rejects_visible_symlink_to_hidden_metadata(
+    tmp_path: Path,
+) -> None:
+    from sebastian.skills_registry.installer import SkillInstallError, read_local_skill_file
+
+    builtin_root = tmp_path / "builtin"
+    skill_root = tmp_path / "weather"
+    _write_skill_with_local_files(skill_root)
+    (skill_root / "visible-origin").symlink_to(skill_root / ".sebastian-origin.json")
+    SkillPackageLock(tmp_path).save(
+        {"weather": _entry("weather", fingerprint=compute_package_fingerprint(skill_root))}
+    )
+
+    with pytest.raises(SkillInstallError, match="not readable"):
+        read_local_skill_file(
+            "weather",
+            "visible-origin",
+            tmp_path,
+            builtin_dir=builtin_root,
+        )
 
 
 @pytest.mark.parametrize(

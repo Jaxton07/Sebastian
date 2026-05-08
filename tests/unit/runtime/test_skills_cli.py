@@ -39,6 +39,7 @@ def test_search_defaults_to_local_without_registry_call(monkeypatch, tmp_path: P
                 managed=True,
                 path=tmp_path / "weather",
                 source="managed",
+                description="Weather helper",
             ),
             InstalledSkill(
                 slug="flight",
@@ -48,6 +49,7 @@ def test_search_defaults_to_local_without_registry_call(monkeypatch, tmp_path: P
                 managed=False,
                 path=tmp_path / "flight",
                 source="unmanaged",
+                description="Flight helper",
             ),
         ],
     )
@@ -57,7 +59,7 @@ def test_search_defaults_to_local_without_registry_call(monkeypatch, tmp_path: P
     assert result.exit_code == 0
     assert registry_calls == []
     assert "LOCAL" in result.output
-    assert "weather\tskill__weather\t1.0.0\tmanaged" in result.output
+    assert "weather\tmanaged\tskill__weather\tWeather helper" in result.output
     assert "flight" not in result.output
 
 
@@ -80,6 +82,7 @@ def test_search_explicit_local_does_not_call_registry(monkeypatch, tmp_path: Pat
                 managed=True,
                 path=tmp_path / "weather",
                 source="managed",
+                description="Weather helper",
             )
         ],
     )
@@ -98,9 +101,12 @@ def test_search_explicit_local_does_not_call_registry(monkeypatch, tmp_path: Pat
 def test_search_registry_source_calls_registry(monkeypatch) -> None:
     calls: list[tuple[str, str | None]] = []
 
-    def fake_search(query: str, registry: str | None = None) -> list[tuple[str, str]]:
+    def fake_search(
+        query: str,
+        registry: str | None = None,
+    ) -> list[tuple[str, str | None, str | None, str]]:
         calls.append((query, registry))
-        return [("weather", "Weather helper")]
+        return [("weather", "1.2.3", "reviewed", "Weather helper")]
 
     monkeypatch.setattr(skills, "search_registry", fake_search)
 
@@ -112,7 +118,7 @@ def test_search_registry_source_calls_registry(monkeypatch) -> None:
     assert result.exit_code == 0
     assert calls == [("weather", None)]
     assert "REGISTRY" in result.output
-    assert "weather\tWeather helper" in result.output
+    assert "weather\t1.2.3/reviewed\tWeather helper" in result.output
 
 
 def test_search_all_prints_local_and_registry(monkeypatch, tmp_path: Path) -> None:
@@ -128,22 +134,25 @@ def test_search_all_prints_local_and_registry(monkeypatch, tmp_path: Path) -> No
                 managed=True,
                 path=tmp_path / "weather",
                 source="managed",
+                description="Weather helper",
             )
         ],
     )
     monkeypatch.setattr(
         skills,
         "search_registry",
-        lambda query, registry=None: [("weather-pro", "Advanced weather")],
+        lambda query, registry=None: [
+            ("weather-pro", "2.0.0", "reviewed", "Advanced weather")
+        ],
     )
 
     result = runner.invoke(app, ["skills", "search", "weather", "--source", "all"])
 
     assert result.exit_code == 0
     assert "LOCAL" in result.output
-    assert "weather\tskill__weather\t1.0.0\tmanaged" in result.output
+    assert "weather\tmanaged\tskill__weather\tWeather helper" in result.output
     assert "REGISTRY" in result.output
-    assert "weather-pro\tAdvanced weather" in result.output
+    assert "weather-pro\t2.0.0/reviewed\tAdvanced weather" in result.output
 
 
 def test_search_registry_option_does_not_imply_network_for_default_local(
@@ -168,6 +177,7 @@ def test_search_registry_option_does_not_imply_network_for_default_local(
                 managed=False,
                 path=tmp_path / "weather",
                 source="unmanaged",
+                description="Weather helper",
             )
         ],
     )
@@ -204,6 +214,7 @@ def test_search_registry_option_does_not_imply_network_for_explicit_local(
                 managed=False,
                 path=tmp_path / "weather",
                 source="unmanaged",
+                description="Weather helper",
             )
         ],
     )
@@ -226,8 +237,35 @@ def test_search_registry_option_does_not_imply_network_for_explicit_local(
     assert "LOCAL" in result.output
 
 
+def test_search_local_matches_description(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        skills,
+        "list_installed",
+        lambda: [
+            InstalledSkill(
+                slug="weather",
+                registered_name="skill__weather",
+                version=None,
+                registry=None,
+                managed=False,
+                path=tmp_path / "weather",
+                source="unmanaged",
+                description="Rain forecast helper",
+            )
+        ],
+    )
+
+    result = runner.invoke(app, ["skills", "search", "forecast"])
+
+    assert result.exit_code == 0
+    assert "weather\tunmanaged\tskill__weather\tRain forecast helper" in result.output
+
+
 def test_search_registry_http_error_prints_clean_cli_error(monkeypatch) -> None:
-    def fail_search(query: str, registry: str | None = None) -> list[tuple[str, str]]:
+    def fail_search(
+        query: str,
+        registry: str | None = None,
+    ) -> list[tuple[str, str | None, str | None, str]]:
         raise httpx.ConnectError("network down")
 
     monkeypatch.setattr(skills, "search_registry", fail_search)

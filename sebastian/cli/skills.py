@@ -44,9 +44,20 @@ class SearchSource(StrEnum):
     ALL = "all"
 
 
-def search_registry(query: str, registry: str | None = None) -> list[tuple[str, str]]:
+def search_registry(
+    query: str,
+    registry: str | None = None,
+) -> list[tuple[str, str | None, str | None, str]]:
     """Search the configured Skill registry and return printable rows."""
-    return [(result.slug, result.description) for result in RegistryClient(registry).search(query)]
+    return [
+        (
+            result.slug,
+            result.latest_version,
+            result.security_status,
+            result.description,
+        )
+        for result in RegistryClient(registry).search(query)
+    ]
 
 
 def list_installed() -> list[InstalledSkill]:
@@ -113,6 +124,7 @@ def _matches_local_skill(skill: InstalledSkill, query: str) -> bool:
     fields = (
         skill.slug,
         skill.registered_name,
+        skill.description,
     )
     return any(normalized_query in field.casefold() for field in fields)
 
@@ -124,14 +136,17 @@ def _search_local(query: str) -> list[InstalledSkill]:
 def _print_local_search_rows(rows: list[InstalledSkill]) -> None:
     typer.echo("LOCAL")
     for skill in rows:
-        version = _format_optional(skill.version)
-        typer.echo(f"{skill.slug}\t{skill.registered_name}\t{version}\t{skill.source}")
+        description = _format_optional(skill.description)
+        typer.echo(f"{skill.slug}\t{skill.source}\t{skill.registered_name}\t{description}")
 
 
-def _print_registry_search_rows(rows: list[tuple[str, str]]) -> None:
+def _print_registry_search_rows(
+    rows: list[tuple[str, str | None, str | None, str]],
+) -> None:
     typer.echo("REGISTRY")
-    for slug, description in rows:
-        typer.echo(f"{slug}\t{description}")
+    for slug, version, security_status, description in rows:
+        version_security = f"{_format_optional(version)}/{_format_optional(security_status)}"
+        typer.echo(f"{slug}\t{version_security}\t{description}")
 
 
 def _print_local_detail(detail: LocalSkillDetail, include_body: bool) -> None:

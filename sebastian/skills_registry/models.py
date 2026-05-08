@@ -38,6 +38,7 @@ class InstalledSkill:
     managed: bool
     path: Path
     source: str = "managed"
+    description: str = ""
 
 
 @dataclass(frozen=True)
