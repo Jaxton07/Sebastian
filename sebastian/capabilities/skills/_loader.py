@@ -1,30 +1,15 @@
 from __future__ import annotations
 
-import re
+import logging
 from pathlib import Path
 from typing import Any
 
+from sebastian.capabilities.skills.metadata import (
+    SkillMetadataError,
+    parse_skill_metadata,
+)
 
-def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
-    """Parse YAML-style frontmatter from SKILL.md content.
-
-    Returns (metadata_dict, body_without_frontmatter).
-    Only supports simple key: value lines (no nested YAML).
-    """
-    meta: dict[str, str] = {}
-    body = content
-
-    if content.startswith("---"):
-        end = content.find("\n---", 3)
-        if end != -1:
-            fm_block = content[3:end].strip()
-            body = content[end + 4 :].strip()
-            for line in fm_block.splitlines():
-                m = re.match(r"^(\w+)\s*:\s*(.+)$", line.strip())
-                if m:
-                    meta[m.group(1)] = m.group(2).strip()
-
-    return meta, body
+logger = logging.getLogger(__name__)
 
 
 def load_skills(
@@ -55,15 +40,20 @@ def load_skills(
                 continue
 
             content = skill_md.read_text(encoding="utf-8")
-            meta, body = _parse_frontmatter(content)
+            try:
+                metadata = parse_skill_metadata(content, fallback_name=entry.name)
+            except SkillMetadataError as exc:
+                logger.warning("Skipping invalid Skill %s: %s", skill_md, exc)
+                continue
 
-            skill_name = meta.get("name", entry.name)
-            description = meta.get("description", "")
-            full_instructions = f"{description}\n\n{body}".strip() if body else description
+            full_instructions = (
+                f"{metadata.description}\n\n{metadata.body}".strip()
+                if metadata.body
+                else metadata.description
+            )
 
-            tool_name = f"skill__{skill_name}"
-            skills[skill_name] = {
-                "name": tool_name,
+            skills[metadata.name] = {
+                "name": metadata.registered_name,
                 "description": full_instructions,
                 "input_schema": {
                     "type": "object",

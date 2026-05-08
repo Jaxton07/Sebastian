@@ -11,7 +11,8 @@
 ```
 skills/
 ├── __init__.py        # 包入口（空）
-├── _loader.py         # 扫描 SKILL.md、解析 frontmatter、生成工具 spec
+├── _loader.py         # 扫描 SKILL.md、生成工具 spec
+├── metadata.py        # 解析 SKILL.md frontmatter、校验 Skill 注册名
 └── hot_reload.py      # 计算 SKILL.md 指纹，新会话首轮触发 Skill 热加载
 ```
 
@@ -39,9 +40,12 @@ description: 这个 Skill 的简短描述
 ```
 
 加载规则：
-- 工具名统一前缀为 `skill__<name>`
+- `name` 只能包含英文字母、数字、下划线和短横线，不能包含路径分隔、空格或点号
+- `name` 必须写裸 Skill 名，不能包含 `skill__` 前缀
+- 工具名统一注册为 `skill__<name>`
 - 后加载的目录可覆盖同名 Skill（支持用户自定义覆盖内置 Skill）
 - 目录名以 `_` 开头的子目录跳过（如 `_loader.py` 所在位置）
+- 不合法的 Skill 会被跳过并记录 warning，不注入 `CapabilityRegistry`
 - `allowed_skills` 必须使用完整注册名，例如 `skill__flight_search`，不要写裸名 `flight_search`
 
 ## 热加载生命周期
@@ -57,7 +61,7 @@ description: 这个 Skill 的简短描述
 | 如果要修改… | 看这里 |
 |------------|--------|
 | 新增 Skill | 在本目录下创建 `<name>/SKILL.md`（无需改代码） |
-| frontmatter 解析规则 | [_loader.py](_loader.py) — `_parse_frontmatter()` |
+| frontmatter 解析与 Skill 名校验规则 | [metadata.py](metadata.py) — `parse_skill_metadata()` / `validate_skill_name()` |
 | 扫描目录逻辑、工具 spec 生成 | [_loader.py](_loader.py) — `load_skills()` |
 | 修改新会话热加载逻辑 | [hot_reload.py](hot_reload.py) — `SkillHotReloader` |
 

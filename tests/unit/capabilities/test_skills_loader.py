@@ -50,3 +50,13 @@ def test_skill_loader_user_dir_overrides_builtin(tmp_path: Path) -> None:
     skills = load_skills(builtin_dir=builtin_dir, extra_dirs=[user_dir])
     greet = next(s for s in skills if s["name"] == "skill__greet")
     assert "user" in greet["description"]
+
+
+def test_skill_loader_skips_invalid_skill_name(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "bad"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("---\nname: bad name\ndescription: Bad\n---\n")
+
+    from sebastian.capabilities.skills._loader import load_skills
+
+    assert load_skills(builtin_dir=tmp_path) == []
