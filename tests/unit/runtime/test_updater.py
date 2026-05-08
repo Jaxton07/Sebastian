@@ -464,6 +464,8 @@ def test_run_update_full_flow(
 
     monkeypatch.setattr(updater, "_download", fake_download)
     monkeypatch.setattr(updater, "reinstall_editable", lambda install_dir: None)
+    path_setup = MagicMock()
+    monkeypatch.setattr("sebastian.cli.path_setup.ensure_cli_path", path_setup)
 
     out: list[str] = []
     rc = updater.run_update(assume_yes=True, printer=out.append)
@@ -473,6 +475,7 @@ def test_run_update_full_flow(
     # Backup cleaned up after success
     backup_root = _patch_backup_parent
     assert not list(backup_root.glob("sebastian.bak.*"))
+    path_setup.assert_called_once_with(install_dir=inst)
 
 
 def test_run_update_refreshes_cli_path(
