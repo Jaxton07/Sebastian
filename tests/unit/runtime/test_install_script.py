@@ -15,6 +15,11 @@ def test_install_script_repairs_incomplete_venv(tmp_path: Path) -> None:
 
     # Simulate a previous failed install that left only the directory behind.
     (project / ".venv").mkdir()
+    old_install = tmp_path / "home" / ".sebastian" / "app"
+    (old_install / "sebastian").mkdir(parents=True)
+    (old_install / "pyproject.toml").write_text("[project]\nname = 'old-sebastian'\n")
+    (old_install / ".venv" / "bin").mkdir(parents=True)
+    (old_install / ".venv" / "bin" / "sebastian").write_text("#!/bin/sh\n")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -45,8 +50,17 @@ SEBASTIAN
   exit 0
 fi
 if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  install_dir="${SEBASTIAN_INSTALL_DIR:-}"
+  if [[ -z "$install_dir" ]] \
+    && [[ -f "$HOME/.sebastian/app/pyproject.toml" ]] \
+    && [[ -d "$HOME/.sebastian/app/sebastian" ]]; then
+    install_dir="$HOME/.sebastian/app"
+  fi
+  if [[ -z "$install_dir" ]]; then
+    install_dir="$PWD"
+  fi
   mkdir -p "$HOME/.sebastian/bin"
-  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$PWD" \
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$install_dir" \
     > "$HOME/.sebastian/bin/sebastian"
   chmod +x "$HOME/.sebastian/bin/sebastian"
   exit 0
@@ -126,8 +140,17 @@ SEBASTIAN
   exit 0
 fi
 if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  install_dir="${SEBASTIAN_INSTALL_DIR:-}"
+  if [[ -z "$install_dir" ]] \
+    && [[ -f "$HOME/.sebastian/app/pyproject.toml" ]] \
+    && [[ -d "$HOME/.sebastian/app/sebastian" ]]; then
+    install_dir="$HOME/.sebastian/app"
+  fi
+  if [[ -z "$install_dir" ]]; then
+    install_dir="$PWD"
+  fi
   mkdir -p "$HOME/.sebastian/bin"
-  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$PWD" \
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$install_dir" \
     > "$HOME/.sebastian/bin/sebastian"
   chmod +x "$HOME/.sebastian/bin/sebastian"
   exit 0

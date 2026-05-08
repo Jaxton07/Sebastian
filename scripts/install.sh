@@ -53,7 +53,7 @@ pip install -e .
 color_grn "✓ 依赖安装完成"
 
 color_ylw "→ 配置 sebastian 命令入口"
-python3 -m sebastian.cli.path_setup >/dev/null || {
+SEBASTIAN_INSTALL_DIR="$PROJECT_ROOT" python3 -m sebastian.cli.path_setup >/dev/null || {
   color_red "❌ 配置 sebastian 命令入口失败"
   exit 1
 }
