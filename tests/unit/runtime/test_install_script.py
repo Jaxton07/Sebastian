@@ -44,6 +44,13 @@ SEBASTIAN
   chmod +x .venv/bin/sebastian
   exit 0
 fi
+if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  mkdir -p "$HOME/.sebastian/bin"
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$PWD" \
+    > "$HOME/.sebastian/bin/sebastian"
+  chmod +x "$HOME/.sebastian/bin/sebastian"
+  exit 0
+fi
 exit 1
 """
     )
@@ -77,6 +84,9 @@ exit 1
     assert f"SEBASTIAN_DATA_DIR={data_root}" in env_content
     assert "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:7890" in env_content
     assert "# SEBASTIAN_BROWSER_DNS_MODE=auto" in env_content
+    shim = tmp_path / "home" / ".sebastian" / "bin" / "sebastian"
+    assert shim.is_file()
+    assert str(project / ".venv" / "bin" / "sebastian") in shim.read_text()
 
 
 def test_install_script_writes_absolute_env_for_relative_custom_data_root(
@@ -113,6 +123,13 @@ PIP
 printf "sebastian %s\\n" "$*" >> "$CALLS_LOG"
 SEBASTIAN
   chmod +x .venv/bin/sebastian
+  exit 0
+fi
+if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  mkdir -p "$HOME/.sebastian/bin"
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$PWD" \
+    > "$HOME/.sebastian/bin/sebastian"
+  chmod +x "$HOME/.sebastian/bin/sebastian"
   exit 0
 fi
 exit 1

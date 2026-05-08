@@ -17,7 +17,8 @@ Flow:
 7. Re-run ``pip install -e .`` inside the same interpreter so dependency
    changes take effect.
 8. Roll back on any failure; on success delete the backup.
-9. Auto-restart daemon if it was running.
+9. Refresh the stable ``~/.sebastian/bin/sebastian`` CLI shim.
+10. Auto-restart daemon if it was running.
 """
 
 from __future__ import annotations
@@ -379,6 +380,14 @@ def run_update(
 
     printer("")
     printer(f"✓ 升级完成：{cur} → {latest}")
+
+    try:
+        from sebastian.cli.path_setup import ensure_cli_path
+
+        ensure_cli_path(install_dir=install_dir)
+        printer("✓ sebastian 命令入口已刷新")
+    except Exception as e:  # noqa: BLE001
+        printer(f"⚠ sebastian 命令入口刷新失败：{e}")
 
     # Auto-restart daemon if it was running
     _try_restart_daemon(printer)

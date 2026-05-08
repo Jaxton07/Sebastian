@@ -52,6 +52,14 @@ pip install --upgrade pip >/dev/null
 pip install -e .
 color_grn "✓ 依赖安装完成"
 
+color_ylw "→ 配置 sebastian 命令入口"
+python3 -m sebastian.cli.path_setup >/dev/null || {
+  color_red "❌ 配置 sebastian 命令入口失败"
+  exit 1
+}
+export PATH="$HOME/.sebastian/bin:$PATH"
+color_grn "✓ sebastian 命令入口已配置"
+
 # 5. 数据目录定位
 DATA_ROOT="${SEBASTIAN_DATA_DIR:-$HOME/.sebastian}"
 case "${DATA_ROOT}" in

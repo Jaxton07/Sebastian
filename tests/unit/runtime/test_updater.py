@@ -475,6 +475,35 @@ def test_run_update_full_flow(
     assert not list(backup_root.glob("sebastian.bak.*"))
 
 
+def test_run_update_refreshes_cli_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    _patch_backup_parent: Path,
+) -> None:
+    inst = _make_install_dir(tmp_path)
+    tar = _build_release_tarball(tmp_path, version="9.9.9")
+    sums = tmp_path / "SHA256SUMS"
+    sums.write_text(f"{hashlib.sha256(tar.read_bytes()).hexdigest()}  {tar.name}\n")
+    monkeypatch.setenv("SEBASTIAN_INSTALL_DIR", str(inst))
+    monkeypatch.setattr(updater, "current_version", lambda install_dir: "0.0.1")
+    monkeypatch.setattr(updater, "fetch_latest_tag", lambda: "v9.9.9")
+    monkeypatch.setattr(
+        updater,
+        "_download",
+        lambda url, dest: dest.write_bytes(
+            tar.read_bytes() if dest.name.endswith(".tar.gz") else sums.read_bytes()
+        ),
+    )
+    monkeypatch.setattr(updater, "reinstall_editable", lambda install_dir: None)
+    monkeypatch.setattr(updater, "_try_restart_daemon", lambda printer: None)
+    path_setup = MagicMock()
+    monkeypatch.setattr("sebastian.cli.path_setup.ensure_cli_path", path_setup)
+
+    assert updater.run_update(assume_yes=True) == 0
+
+    path_setup.assert_called_once_with(install_dir=inst)
+
+
 def test_run_update_pip_failure_rolls_back(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patch_backup_parent: Path
 ) -> None:

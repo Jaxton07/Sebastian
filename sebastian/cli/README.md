@@ -11,6 +11,7 @@ cli/
 ├── __init__.py       # 包定义
 ├── daemon.py         # PID 文件管理与进程生命周期
 ├── init_wizard.py    # 无头初始化向导（sebastian init --headless）
+├── path_setup.py     # 稳定 CLI shim 与 shell PATH 配置
 ├── service.py        # systemd/launchd 服务安装、状态、重启
 ├── service_templates.py # systemd unit / launchd plist 模板渲染
 └── updater.py        # 自升级逻辑（sebastian update）
@@ -39,6 +40,15 @@ cli/
 
 密码要求：至少 8 字符，需二次确认。
 
+### `path_setup.py`
+
+安装与升级后的 CLI 入口配置工具。它会创建
+`~/.sebastian/bin/sebastian` shim，稳定转发到当前安装目录的
+`.venv/bin/sebastian`，并按当前 shell 写入幂等的 PATH block。
+
+环境变量 `SEBASTIAN_SKIP_PATH_SETUP=1` 仅跳过 shell rc 文件更新，不会跳过
+shim 生成，确保服务和工具调用仍可使用稳定入口。
+
 ### `updater.py`
 
 自升级逻辑，实现 `sebastian update` 命令的完整流程：
@@ -51,7 +61,8 @@ cli/
 6. 解压到 staging 目录，原子交换 `MANAGED_ENTRIES`（sebastian/、pyproject.toml、scripts/ 等）
 7. `pip install -e .` 更新依赖
 8. 失败自动回滚到备份，成功后清理旧备份
-9. 若检测到 active systemd/launchd 服务，优先自动重启服务；其次重启 legacy PID daemon；否则打印精确的手动启动指引
+9. 刷新 `~/.sebastian/bin/sebastian` CLI shim
+10. 若检测到 active systemd/launchd 服务，优先自动重启服务；其次重启 legacy PID daemon；否则打印精确的手动启动指引
 
 关键常量：
 - `MANAGED_ENTRIES`：更新时替换的顶层条目，`.venv`/`.env`/`secret.key` 等不会被触碰
@@ -78,6 +89,7 @@ cli/
 | 修改 CLI 命令注册或参数 | `main.py`（Typer app 定义） |
 | 修改进程守护/PID 逻辑 | `daemon.py` |
 | 修改无头初始化流程 | `init_wizard.py` |
+| 修改 CLI shim 或 PATH 写入逻辑 | `path_setup.py` |
 | 修改自升级逻辑 | `updater.py` |
 
 ---
