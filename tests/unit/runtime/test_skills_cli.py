@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from sebastian.cli import skills
 from sebastian.main import app
 from sebastian.skills_registry.installer import SkillInstallError
+from sebastian.skills_registry.lockfile import LockfileError
 from sebastian.skills_registry.models import (
     InstalledSkill,
     InstallResult,
@@ -417,6 +418,18 @@ def test_list_prints_managed_and_unmanaged_rows(monkeypatch, tmp_path: Path) -> 
     assert result.exit_code == 0
     assert "managed\tmanaged_tool\t1.0.0\tmanaged" in result.output
     assert "manual\tmanual_tool\t-\tunmanaged" in result.output
+
+
+def test_list_lockfile_error_prints_clean_cli_error(monkeypatch) -> None:
+    def fail_list() -> list[InstalledSkill]:
+        raise LockfileError("bad lock")
+
+    monkeypatch.setattr(skills, "list_installed", fail_list)
+
+    result = runner.invoke(app, ["skills", "list"])
+
+    assert result.exit_code == 1
+    assert "❌ bad lock" in result.stderr
 
 
 def test_install_errors_print_to_stderr(monkeypatch) -> None:

@@ -20,6 +20,7 @@ from sebastian.skills_registry.installer import (
 from sebastian.skills_registry.installer import (
     list_installed as _list_installed,
 )
+from sebastian.skills_registry.lockfile import LockfileError
 from sebastian.skills_registry.models import (
     InstalledSkill,
     SkillDetail,
@@ -45,7 +46,7 @@ def list_installed() -> list[InstalledSkill]:
 def _run_or_exit[T](action: Callable[[], T]) -> T:
     try:
         return action()
-    except (SkillRegistryError, SkillInstallError, httpx.HTTPError) as exc:
+    except (SkillRegistryError, SkillInstallError, LockfileError, httpx.HTTPError) as exc:
         typer.echo(f"❌ {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
