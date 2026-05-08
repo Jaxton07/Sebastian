@@ -6,9 +6,7 @@ from pathlib import Path
 from sebastian.cli.path_setup import ensure_cli_path
 
 
-def test_ensure_cli_path_creates_shim_for_default_install(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ensure_cli_path_creates_shim_for_default_install(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     install_dir = home / ".sebastian" / "app"
     target = install_dir / ".venv" / "bin" / "sebastian"
@@ -27,11 +25,9 @@ def test_ensure_cli_path_creates_shim_for_default_install(
     assert result.shim_path == shim
 
 
-def test_ensure_cli_path_shell_quotes_shim_target(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ensure_cli_path_shell_quotes_shim_target(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
-    install_dir = home / '.sebastian' / 'app "quoted"'
+    install_dir = home / ".sebastian" / 'app "quoted"'
     target = install_dir / ".venv" / "bin" / "sebastian"
     target.parent.mkdir(parents=True)
     target.write_text("#!/bin/sh\n")
@@ -47,9 +43,7 @@ def test_ensure_cli_path_shell_quotes_shim_target(
     assert shlex.split(exec_line) == ["exec", str(target), "$@"]
 
 
-def test_ensure_cli_path_updates_zshrc_once(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ensure_cli_path_updates_zshrc_once(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
     install_dir = home / ".sebastian" / "app"
@@ -67,9 +61,7 @@ def test_ensure_cli_path_updates_zshrc_once(
     assert 'export PATH="$HOME/.sebastian/bin:$PATH"' in content
 
 
-def test_skip_path_setup_skips_rc_but_not_shim(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_skip_path_setup_skips_rc_but_not_shim(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     install_dir = home / ".sebastian" / "app"
     (install_dir / ".venv" / "bin").mkdir(parents=True)

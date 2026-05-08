@@ -63,12 +63,7 @@ def _target_rc_files(home: Path) -> list[Path]:
 
 
 def _shell_double_quote_escape(value: str) -> str:
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("$", "\\$")
-        .replace("`", "\\`")
-    )
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
 
 
 def _upsert_path_block(path: Path) -> None:

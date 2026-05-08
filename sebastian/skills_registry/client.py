@@ -140,7 +140,7 @@ class RegistryClient:
             download_url=download_url,
             sha256=sha256,
             security_status=security_status,
-            raw=dict(data),
+            raw={key: value for key, value in data.items() if isinstance(key, str)},
         )
 
     @staticmethod
