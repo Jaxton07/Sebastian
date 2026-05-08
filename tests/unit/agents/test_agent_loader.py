@@ -110,6 +110,20 @@ def test_load_agents_rejects_allowed_skills(tmp_path: Path) -> None:
         load_agents(extra_dirs=[tmp_path])
 
 
+def test_load_agents_rejects_allowed_skills_before_importing_agent(tmp_path: Path) -> None:
+    from sebastian.agents._loader import load_agents
+
+    agent_dir = tmp_path / "broken"
+    agent_dir.mkdir()
+    (agent_dir / "manifest.toml").write_text(
+        '[agent]\nclass_name = "MissingAgent"\ndescription = "broken"\n'
+        "allowed_skills = []\n"
+    )
+
+    with pytest.raises(ValueError, match="allowed_skills is no longer supported"):
+        load_agents(extra_dirs=[tmp_path])
+
+
 def test_load_agents_reads_stalled_threshold_from_manifest(tmp_path: Path) -> None:
     agent_dir = tmp_path / "myagent3"
     agent_dir.mkdir()

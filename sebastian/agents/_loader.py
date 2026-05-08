@@ -69,6 +69,12 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
             agent_type = entry.name
             class_name: str = agent_section.get("class_name", "")
 
+            if "allowed_skills" in agent_section:
+                raise ValueError(
+                    f"{manifest_path}: allowed_skills is no longer supported; "
+                    "Skill access is via Bash + sebastian skills CLI"
+                )
+
             if is_builtin:
                 module_path = f"sebastian.agents.{agent_type}"
             else:
@@ -82,12 +88,6 @@ def load_agents(extra_dirs: list[Path] | None = None) -> list[AgentConfig]:
             except (ImportError, AttributeError) as exc:
                 logging.getLogger(__name__).warning("Failed to load agent %r: %s", agent_type, exc)
                 continue
-
-            if "allowed_skills" in agent_section:
-                raise ValueError(
-                    f"{manifest_path}: allowed_skills is no longer supported; "
-                    "Skill access is via Bash + sebastian skills CLI"
-                )
 
             # allowed_tools: missing tools mean protocol-only.
             raw_tools = agent_section.get("allowed_tools")
