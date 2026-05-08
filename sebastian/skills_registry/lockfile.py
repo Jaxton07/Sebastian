@@ -12,6 +12,14 @@ from pathlib import Path
 LOCKFILE_NAME = ".sebastian-skills.lock.json"
 MUTEX_NAME = ".sebastian-skills.lock"
 LOCKFILE_VERSION = 1
+REQUIRED_STRING_FIELDS = (
+    "slug",
+    "registered_name",
+    "registry",
+    "fingerprint",
+    "installed_at",
+)
+OPTIONAL_STRING_FIELDS = ("version", "tag", "sha256")
 
 
 class LockfileError(RuntimeError):
@@ -73,6 +81,7 @@ class SkillPackageLock:
                 raise LockfileError("Skill package lockfile skill slugs must be strings")
             if not isinstance(raw_entry, dict):
                 raise LockfileError(f"Malformed lockfile entry for skill {slug!r}")
+            _validate_lockfile_entry_fields(slug, raw_entry)
             try:
                 entries[slug] = LockfileEntry(**raw_entry)
             except TypeError as exc:
@@ -103,6 +112,19 @@ def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
         os.fsync(file.fileno())
     os.replace(temp_path, path)
     _fsync_directory(path.parent)
+
+
+def _validate_lockfile_entry_fields(slug: str, raw_entry: dict[object, object]) -> None:
+    for field in REQUIRED_STRING_FIELDS:
+        value = raw_entry.get(field)
+        if not isinstance(value, str):
+            raise LockfileError(f"Malformed lockfile entry for skill {slug!r}")
+    for field in OPTIONAL_STRING_FIELDS:
+        if field not in raw_entry:
+            raise LockfileError(f"Malformed lockfile entry for skill {slug!r}")
+        value = raw_entry[field]
+        if value is not None and not isinstance(value, str):
+            raise LockfileError(f"Malformed lockfile entry for skill {slug!r}")
 
 
 def _fsync_directory(path: Path) -> None:
