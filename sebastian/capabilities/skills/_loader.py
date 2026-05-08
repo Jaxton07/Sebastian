@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sebastian.capabilities.skills.metadata import (
     SkillMetadataError,
@@ -12,22 +12,32 @@ from sebastian.capabilities.skills.metadata import (
 logger = logging.getLogger(__name__)
 
 
-def load_skills(
+@dataclass(frozen=True)
+class SkillCatalogEntry:
+    slug: str
+    name: str
+    registered_name: str
+    description: str
+    path: Path
+    source: str
+
+
+def load_skill_catalog(
     builtin_dir: Path | None = None,
     extra_dirs: list[Path] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[SkillCatalogEntry]:
     """Scan dirs for skill subdirectories containing SKILL.md.
 
-    Returns a list of tool spec dicts suitable for CapabilityRegistry.
-    Tool names are prefixed with "skill__".
-    Later dirs override earlier ones for the same skill name.
+    Returns catalog metadata only. Skill instructions are read on demand through
+    the `sebastian skills show/read` CLI, not injected as provider tool specs.
+    Later dirs override earlier ones for the same Skill name.
     """
     if builtin_dir is None:
         builtin_dir = Path(__file__).parent
 
     dirs: list[Path] = [builtin_dir, *(extra_dirs or [])]
 
-    skills: dict[str, dict[str, Any]] = {}
+    skills: dict[str, SkillCatalogEntry] = {}
 
     for base_dir in dirs:
         if not base_dir.exists():
@@ -46,28 +56,14 @@ def load_skills(
                 logger.warning("Skipping invalid Skill %s: %s", skill_md, exc)
                 continue
 
-            full_instructions = (
-                f"{metadata.description}\n\n{metadata.body}".strip()
-                if metadata.body
-                else metadata.description
+            source = "builtin" if base_dir == builtin_dir else "local"
+            skills[metadata.name] = SkillCatalogEntry(
+                slug=entry.name,
+                name=metadata.name,
+                registered_name=metadata.registered_name,
+                description=metadata.description,
+                path=entry,
+                source=source,
             )
-
-            skills[metadata.name] = {
-                "name": metadata.registered_name,
-                "description": full_instructions,
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "instructions": {
-                            "type": "string",
-                            "description": (
-                                "Additional context or specific instructions"
-                                " for this skill invocation."
-                            ),
-                        }
-                    },
-                    "required": [],
-                },
-            }
 
     return list(skills.values())

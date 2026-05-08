@@ -350,7 +350,7 @@ def test_install_transaction_rolls_back_when_lockfile_write_fails(
 
 
 def test_install_transaction_success_is_loader_visible(tmp_path: Path) -> None:
-    from sebastian.capabilities.skills._loader import load_skills
+    from sebastian.capabilities.skills._loader import load_skill_catalog
     from sebastian.skills_registry.installer import _run_install_transaction
 
     staging = tmp_path / "staging"
@@ -368,7 +368,9 @@ def test_install_transaction_success_is_loader_visible(tmp_path: Path) -> None:
 
     assert result.path == tmp_path / "flight"
     assert (tmp_path / "flight" / "SKILL.md").is_file()
-    assert "skill__flight" in {skill["name"] for skill in load_skills(builtin_dir=tmp_path)}
+    assert "skill__flight" in {
+        skill.registered_name for skill in load_skill_catalog(builtin_dir=tmp_path)
+    }
 
 
 def test_install_existing_managed_slug_requires_force(tmp_path: Path) -> None:

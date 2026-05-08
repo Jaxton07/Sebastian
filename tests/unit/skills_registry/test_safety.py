@@ -58,7 +58,7 @@ def test_safe_extract_zip_accepts_single_root_skill_md(tmp_path: Path) -> None:
 def test_safe_extract_zip_single_root_is_visible_to_skill_loader(
     tmp_path: Path,
 ) -> None:
-    from sebastian.capabilities.skills._loader import load_skills
+    from sebastian.capabilities.skills._loader import load_skill_catalog
 
     skills_root = tmp_path / "skills"
     archive = _zip(
@@ -72,7 +72,9 @@ def test_safe_extract_zip_single_root_is_visible_to_skill_loader(
 
     assert root == skills_root / "flight"
     assert (skills_root / "flight" / "SKILL.md").is_file()
-    assert "skill__flight" in {skill["name"] for skill in load_skills(builtin_dir=skills_root)}
+    assert "skill__flight" in {
+        skill.registered_name for skill in load_skill_catalog(builtin_dir=skills_root)
+    }
 
 
 def test_safe_extract_zip_requires_root_level_or_single_root_skill_md(
