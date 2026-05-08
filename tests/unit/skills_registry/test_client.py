@@ -86,6 +86,46 @@ def test_search_creates_scoped_http_client(monkeypatch) -> None:
     ]
 
 
+def test_search_parses_clawhub_results_payload(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "results": [
+                    {
+                        "slug": "juhe-flight-query",
+                        "displayName": "航班查询 - 聚合数据",
+                        "summary": "航班查询。",
+                        "version": None,
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, *, trust_env: bool, timeout: int) -> None:
+            pass
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+        def get(self, url: str, *, params: dict[str, object]) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(registry_client_module.httpx, "Client", FakeClient)
+
+    result = RegistryClient("https://clawhub.ai").search("juhe-flight-query")
+
+    assert len(result) == 1
+    assert result[0].slug == "juhe-flight-query"
+    assert result[0].name == "航班查询 - 聚合数据"
+    assert result[0].description == "航班查询。"
+
+
 def test_inspect_creates_scoped_http_client(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 
@@ -176,6 +216,33 @@ def test_parse_search_item_uses_aliases_and_stringifies_values() -> None:
     assert result.description == "456"
     assert result.latest_version == "7"
     assert result.security_status == "42"
+
+
+def test_parse_detail_supports_clawhub_nested_payload() -> None:
+    client = RegistryClient("https://clawhub.ai")
+
+    result = client._parse_detail(
+        {
+            "skill": {
+                "slug": "juhe-flight-query",
+                "displayName": "航班查询 - 聚合数据",
+                "summary": "航班查询。",
+            },
+            "latestVersion": {
+                "version": "1.0.0",
+            },
+            "moderation": {
+                "status": "approved",
+            },
+        }
+    )
+
+    assert result.slug == "juhe-flight-query"
+    assert result.name == "航班查询 - 聚合数据"
+    assert result.description == "航班查询。"
+    assert result.version == "1.0.0"
+    assert result.security_status == "approved"
+    assert result.raw["skill"]["slug"] == "juhe-flight-query"
 
 
 def test_parse_detail_uses_aliases_and_stringifies_values() -> None:

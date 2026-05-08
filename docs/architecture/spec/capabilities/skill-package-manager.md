@@ -81,9 +81,11 @@ registry client 读取 ClawHub-compatible endpoint：
 - `GET /api/v1/skills/<slug>`
 - `GET /api/v1/download?slug=<slug>[&version=<version>]`
 
-client 只解析 Sebastian 需要的字段：slug、name、description/summary、version、
-download URL、sha256/digest 与 security/moderation status。若 detail 未提供 direct
-download URL，client 使用同源 `/api/v1/download` fallback，并携带 slug/version 查询参数。
+client 只解析 Sebastian 需要的字段：slug、name/displayName、description/summary、
+version、download URL、sha256/digest 与 security/moderation status。search 兼容
+`items` 与 ClawHub `results`；inspect 兼容扁平 detail 与 ClawHub
+`skill` / `latestVersion` / `moderation` 包装层。若 detail 未提供 direct download URL，
+client 使用同源 `/api/v1/download` fallback，并携带 slug/version 查询参数。
 当用户显式请求 `--version` 而 registry detail 未回显 version 时，fallback URL 仍使用该
 requested version，避免误下载默认版本。
 direct 下载 URL 必须是 HTTPS 且与 registry 同源；HTTP client 遵循标准 proxy 环境变量。

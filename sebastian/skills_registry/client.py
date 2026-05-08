@@ -53,7 +53,10 @@ class RegistryClient:
         if isinstance(payload, list):
             items = payload
         elif isinstance(payload, dict):
-            items = payload.get("items", [])
+            raw_items = payload.get("items")
+            if not isinstance(raw_items, list):
+                raw_items = payload.get("results", [])
+            items = raw_items if isinstance(raw_items, list) else []
         else:
             items = []
         return [self._parse_search_item(item) for item in items if isinstance(item, dict)]
@@ -103,7 +106,9 @@ class RegistryClient:
         slug = self._maybe_str(item.get("slug"))
         if slug is None:
             slug = self._maybe_str(item.get("id")) or ""
-        name = self._maybe_str(item.get("name")) or slug
+        name = self._maybe_str(item.get("name"))
+        if name is None:
+            name = self._maybe_str(item.get("displayName")) or slug
         description = self._maybe_str(item.get("description"))
         if description is None:
             description = self._maybe_str(item.get("summary")) or ""
@@ -122,16 +127,27 @@ class RegistryClient:
         )
 
     def _parse_detail(self, data: dict[object, object]) -> SkillDetail:
-        slug = self._maybe_str(data.get("slug"))
+        skill_data = data.get("skill")
+        skill = skill_data if isinstance(skill_data, dict) else data
+        version_data = data.get("latestVersion")
+        latest_version = version_data if isinstance(version_data, dict) else {}
+        moderation_data = data.get("moderation")
+        moderation = moderation_data if isinstance(moderation_data, dict) else {}
+
+        slug = self._maybe_str(skill.get("slug"))
         if slug is None:
-            slug = self._maybe_str(data.get("id")) or ""
-        name = self._maybe_str(data.get("name")) or slug
-        description = self._maybe_str(data.get("description"))
+            slug = self._maybe_str(skill.get("id")) or ""
+        name = self._maybe_str(skill.get("name"))
+        if name is None:
+            name = self._maybe_str(skill.get("displayName")) or slug
+        description = self._maybe_str(skill.get("description"))
         if description is None:
-            description = self._maybe_str(data.get("summary")) or ""
+            description = self._maybe_str(skill.get("summary")) or ""
         version = self._maybe_str(data.get("version"))
         if version is None:
             version = self._maybe_str(data.get("latest_version"))
+        if version is None:
+            version = self._maybe_str(latest_version.get("version"))
         download_url = self._maybe_str(data.get("download_url"))
         if download_url is None:
             download_url = self._maybe_str(data.get("downloadUrl"))
@@ -141,6 +157,8 @@ class RegistryClient:
         security_status = self._maybe_str(data.get("security_status"))
         if security_status is None:
             security_status = self._maybe_str(data.get("status"))
+        if security_status is None:
+            security_status = self._maybe_str(moderation.get("status"))
         return SkillDetail(
             slug=slug,
             name=name,
