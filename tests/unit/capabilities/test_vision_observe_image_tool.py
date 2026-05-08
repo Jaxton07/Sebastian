@@ -28,8 +28,8 @@ def test_vision_observe_image_visible_through_sebastian_allowlist() -> None:
     assert "vision_observe_image" in Sebastian.allowed_tools
 
     registry = CapabilityRegistry()
-    no_tools = {spec["name"] for spec in registry.get_callable_specs(None, None)}
-    all_tools = {spec["name"] for spec in registry.get_callable_specs(ALL_TOOLS, None)}
+    no_tools = {spec["name"] for spec in registry.get_callable_specs(None)}
+    all_tools = {spec["name"] for spec in registry.get_callable_specs(ALL_TOOLS)}
 
     assert "vision_observe_image" not in no_tools
     assert "vision_observe_image" in all_tools
