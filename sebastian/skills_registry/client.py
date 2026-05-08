@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
 
@@ -72,12 +72,21 @@ class RegistryClient:
             raise SkillRegistryError("Skill detail response must be an object")
         return self._parse_detail(payload)
 
-    def resolve_download_url(self, data: dict[str, object]) -> str:
+    def resolve_download_url(
+        self,
+        data: dict[str, object],
+        *,
+        slug: str,
+        version: str | None,
+    ) -> str:
         for key in ("download_url", "downloadUrl", "url"):
             value = self._maybe_str(data.get(key))
             if value is not None:
                 return self._validate_direct_download_url(value)
-        return urljoin(self.registry_url + "/", "api/v1/download")
+        params = {"slug": slug}
+        if version is not None:
+            params["version"] = version
+        return f"{urljoin(self.registry_url + '/', 'api/v1/download')}?{urlencode(params)}"
 
     def _validate_slug(self, slug: str) -> None:
         if not SLUG_PATTERN.fullmatch(slug):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -34,6 +35,7 @@ ORIGIN_FILENAME = ".sebastian-origin.json"
 HTTP_TIMEOUT_SECONDS = 30
 MAX_DOWNLOAD_SIZE = 10 * 1_048_576
 UNSAFE_STATUSES = {"malicious", "quarantined", "hidden", "suspicious", "blocked"}
+logger = logging.getLogger(__name__)
 
 
 class SkillInstallError(RuntimeError):
@@ -142,13 +144,6 @@ def remove_installed_skill(
         entry = entries.get(slug)
         if entry is None:
             raise SkillInstallError(f"Skill {slug!r} is not package-managed")
-        if destination.exists():
-            _validate_local_fingerprint(
-                entry,
-                current_fingerprint=compute_package_fingerprint(destination),
-                force=False,
-            )
-
         backup: Path | None = None
         if destination.exists():
             backup = _backup_path(destination)
@@ -182,16 +177,24 @@ def _install_from_detail(
 ) -> InstallResult:
     detail_slug = str(getattr(detail, "slug"))
     detail_version = getattr(detail, "version", None)
+    detail_version_text = detail_version if isinstance(detail_version, str) else None
     detail_sha256 = getattr(detail, "sha256", None)
+    registry_sha256 = (
+        detail_sha256.strip().lower()
+        if isinstance(detail_sha256, str) and detail_sha256.strip()
+        else None
+    )
     detail_status = getattr(detail, "security_status", None)
     detail_raw = getattr(detail, "raw")
 
     _validate_response_slug(requested_slug, detail_slug)
     _validate_security_status(detail_status)
-    if detail_sha256 is None:
-        raise SkillInstallError("Registry detail is missing required archive sha256")
 
-    download_url = client.resolve_download_url(detail_raw)
+    download_url = client.resolve_download_url(
+        detail_raw,
+        slug=requested_slug,
+        version=detail_version_text,
+    )
     skills_root.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(
@@ -203,7 +206,14 @@ def _install_from_detail(
         staging_root = temp_root / "staging"
 
         _download_archive(download_url, archive)
-        _validate_archive_digest(archive, expected_sha256=detail_sha256)
+        archive_sha256 = _compute_archive_digest(archive)
+        if registry_sha256 is None:
+            logger.warning(
+                "Registry detail for Skill %s has no sha256; recording local archive digest only",
+                requested_slug,
+            )
+        elif archive_sha256 != registry_sha256:
+            raise SkillInstallError("Downloaded archive sha256 does not match registry metadata")
         try:
             safe_extract_zip(archive, staging_root)
         except ArchiveSafetyError as exc:
@@ -214,12 +224,13 @@ def _install_from_detail(
         )
         timestamp = _utc_now()
 
-        origin_payload = {
+        origin_payload: dict[str, object] = {
             "slug": requested_slug,
             "registered_name": metadata.registered_name,
             "registry": client.registry_url,
-            "version": detail_version,
-            "sha256": detail_sha256,
+            "version": detail_version_text,
+            "sha256": archive_sha256,
+            "sha256_verified": registry_sha256 is not None,
             "download_url": download_url,
             "installed_at": timestamp,
         }
@@ -234,9 +245,9 @@ def _install_from_detail(
                 slug=requested_slug,
                 registered_name=metadata.registered_name,
                 registry=client.registry_url,
-                version=detail_version,
+                version=detail_version_text,
                 tag=None,
-                sha256=detail_sha256,
+                sha256=archive_sha256,
                 fingerprint=fingerprint,
                 installed_at=timestamp,
             ),
@@ -318,9 +329,13 @@ def _validate_update_registered_name(
 
 def _validate_archive_digest(archive: Path, *, expected_sha256: str) -> None:
     expected = expected_sha256.strip().lower()
-    actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+    actual = _compute_archive_digest(archive)
     if actual != expected:
         raise SkillInstallError("Downloaded archive sha256 does not match registry metadata")
+
+
+def _compute_archive_digest(archive: Path) -> str:
+    return hashlib.sha256(archive.read_bytes()).hexdigest()
 
 
 def _validate_security_status(status: str | None) -> None:
@@ -416,6 +431,10 @@ def _run_install_transaction(
         if require_existing and existing is None:
             raise SkillInstallError(f"Skill {slug!r} is not package-managed")
         if existing is not None:
+            if not require_existing and not force:
+                raise SkillInstallError(
+                    f"Skill {slug!r} is already installed; retry with force=True to overwrite"
+                )
             _validate_update_registered_name(
                 existing,
                 registered_name,

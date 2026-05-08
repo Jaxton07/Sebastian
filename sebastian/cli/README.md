@@ -97,7 +97,8 @@ Skill package manager 的 CLI 外壳，负责调用 registry client 与 installe
 
 安装、更新或移除后不会刷新当前正在运行的 session；新 Sebastian session
 首轮 turn 会通过 Skill hot reload 生命周期读取新的 `SKILL.md` 快照。
-`sebastian skills update --all` 当前未实现，需按 slug 更新。
+`sebastian skills update --all` 会遍历 package-managed Skill，跳过 unmanaged Skill；
+单个 Skill 更新失败会继续处理后续条目，最终用非零退出码报告失败汇总。
 
 ## CLI 命令一览
 
@@ -115,6 +116,7 @@ Skill package manager 的 CLI 外壳，负责调用 registry client 与 installe
 | `sebastian skills install <slug>` | 安装 Skill package | `skills.install()` |
 | `sebastian skills list` | 查看已安装 Skill | `skills.list_command()` |
 | `sebastian skills update <slug>` | 更新已安装 Skill | `skills.update()` |
+| `sebastian skills update --all` | 更新所有 package-managed Skill | `skills.update()` |
 | `sebastian skills remove <slug>` | 移除 package-managed Skill | `skills.remove()` |
 | `sebastian service restart` | 重启 systemd/launchd 服务 | `service.restart()` |
 | `sebastian service status` | 查看 systemd/launchd 服务状态与日志提示 | `service.status()` |

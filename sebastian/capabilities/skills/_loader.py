@@ -39,10 +39,10 @@ def load_skills(
             if not skill_md.exists():
                 continue
 
-            content = skill_md.read_text(encoding="utf-8")
             try:
+                content = skill_md.read_text(encoding="utf-8")
                 metadata = parse_skill_metadata(content, fallback_name=entry.name)
-            except SkillMetadataError as exc:
+            except (OSError, UnicodeDecodeError, SkillMetadataError) as exc:
                 logger.warning("Skipping invalid Skill %s: %s", skill_md, exc)
                 continue
 

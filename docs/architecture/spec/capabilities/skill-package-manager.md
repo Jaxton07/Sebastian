@@ -40,7 +40,7 @@ registry；显式传入 `--registry` 时才覆盖该记录。install/update/remo
 
 registry URL 必须是 HTTPS，且不能携带 query、fragment 或 credentials。CLI 使用
 Python HTTP client 直连 registry，不 shell out 到 `clawhub` CLI。当前实现是 consumer
-only，`update --all` 未开放，需按 slug 更新。
+only；`update --all` 会遍历 package-managed Skill，跳过 unmanaged Skill，单个失败不影响后续更新。
 
 ## 安装位置与运行时生命周期
 
@@ -79,15 +79,17 @@ registry client 读取 ClawHub-compatible endpoint：
 
 - `GET /api/v1/search?q=<query>&limit=<n>`
 - `GET /api/v1/skills/<slug>`
-- `GET /api/v1/download`
+- `GET /api/v1/download?slug=<slug>[&version=<version>]`
 
 client 只解析 Sebastian 需要的字段：slug、name、description/summary、version、
-download URL、sha256/digest 与 security/moderation status。下载 URL 必须是 HTTPS 且与
-registry 同源；HTTP client 遵循标准 proxy 环境变量。
+download URL、sha256/digest 与 security/moderation status。若 detail 未提供 direct
+download URL，client 使用同源 `/api/v1/download` fallback，并携带 slug/version 查询参数。
+direct 下载 URL 必须是 HTTPS 且与 registry 同源；HTTP client 遵循标准 proxy 环境变量。
 
-安装必须有 registry sha256。archive 下载后先校验 digest，再进入安全解压。被 registry
-标记为 `malicious`、`quarantined`、`blocked`、`hidden`、`suspicious` 的 Skill
-会 fail-closed。
+registry sha256/digest 是可选字段。若 registry 提供 digest，archive 下载后必须匹配；
+若未提供，Sebastian 会计算本地 zip SHA256、写入 lockfile/origin metadata，并记录
+未经过 registry digest 预校验的 warning。被 registry 标记为 `malicious`、
+`quarantined`、`blocked`、`hidden`、`suspicious` 的 Skill 会 fail-closed。
 
 zip archive 被视为不可信输入，安全扫描拒绝：
 
@@ -108,8 +110,8 @@ Skill name 解析复用 runtime loader 的 `parse_skill_metadata()` /
 `install` 流程：
 
 1. 解析 registry 与 Skill detail。
-2. 校验 slug、security status、sha256。
-3. 下载 archive 到临时目录并校验 digest。
+2. 校验 slug 与 security status。
+3. 下载 archive 到临时目录；有 registry digest 时校验 digest，否则记录本地 archive SHA256。
 4. 安全解压并解析 `SKILL.md` metadata。
 5. 检查 registered name 冲突与 destination 状态。
 6. 通过可恢复目录交换写入 `<skills_root>/<slug>`。

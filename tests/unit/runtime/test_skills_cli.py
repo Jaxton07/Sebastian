@@ -359,6 +359,123 @@ def test_update_propagates_version_registry_force_and_allow_rename(
     ]
 
 
+def test_update_all_updates_managed_skills_and_skips_unmanaged(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        skills,
+        "list_installed",
+        lambda: [
+            InstalledSkill(
+                slug="flight",
+                registered_name="skill__flight",
+                version="1.0.0",
+                registry="https://clawhub.ai",
+                managed=True,
+                path=tmp_path / "flight",
+            ),
+            InstalledSkill(
+                slug="manual",
+                registered_name="skill__manual",
+                version=None,
+                registry=None,
+                managed=False,
+                path=tmp_path / "manual",
+            ),
+            InstalledSkill(
+                slug="weather",
+                registered_name="skill__weather",
+                version="1.0.0",
+                registry="https://clawhub.ai",
+                managed=True,
+                path=tmp_path / "weather",
+            ),
+        ],
+    )
+
+    def fake_update(
+        slug: str,
+        *,
+        version: str | None,
+        registry: str | None,
+        force: bool,
+        allow_rename: bool,
+    ) -> InstallResult:
+        calls.append(slug)
+        return InstallResult(
+            slug=slug,
+            registered_name=f"skill__{slug}",
+            version=version or "1.1.0",
+            path=tmp_path / slug,
+        )
+
+    monkeypatch.setattr(skills, "update_skill", fake_update)
+
+    result = runner.invoke(app, ["skills", "update", "--all"])
+
+    assert result.exit_code == 0
+    assert calls == ["flight", "weather"]
+    assert "Updated 2 Skill(s); 0 failed." in result.output
+
+
+def test_update_all_continues_failures_and_returns_nonzero(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        skills,
+        "list_installed",
+        lambda: [
+            InstalledSkill(
+                slug="flight",
+                registered_name="skill__flight",
+                version="1.0.0",
+                registry="https://clawhub.ai",
+                managed=True,
+                path=tmp_path / "flight",
+            ),
+            InstalledSkill(
+                slug="weather",
+                registered_name="skill__weather",
+                version="1.0.0",
+                registry="https://clawhub.ai",
+                managed=True,
+                path=tmp_path / "weather",
+            ),
+        ],
+    )
+
+    def fake_update(
+        slug: str,
+        *,
+        version: str | None,
+        registry: str | None,
+        force: bool,
+        allow_rename: bool,
+    ) -> InstallResult:
+        calls.append(slug)
+        if slug == "flight":
+            raise SkillInstallError("registry down")
+        return InstallResult(
+            slug=slug,
+            registered_name=f"skill__{slug}",
+            version=version or "1.1.0",
+            path=tmp_path / slug,
+        )
+
+    monkeypatch.setattr(skills, "update_skill", fake_update)
+
+    result = runner.invoke(app, ["skills", "update", "--all"])
+
+    assert result.exit_code == 1
+    assert calls == ["flight", "weather"]
+    assert "Updated 1 Skill(s); 1 failed." in result.output
+    assert "flight: registry down" in result.stderr
+
+
 def test_remove_without_yes_can_be_declined(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(

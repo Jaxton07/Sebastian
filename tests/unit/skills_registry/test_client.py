@@ -142,15 +142,21 @@ def test_inspect_rejects_unsafe_slug(slug: str) -> None:
 def test_direct_download_url_rejects_third_party_origin() -> None:
     client = RegistryClient("https://clawhub.ai")
     with pytest.raises(RegistryUrlError):
-        client.resolve_download_url({"download_url": "https://evil.example/x.zip"})
+        client.resolve_download_url(
+            {"download_url": "https://evil.example/x.zip"},
+            slug="flight",
+            version=None,
+        )
 
 
-def test_fallback_download_url_uses_generic_registry_endpoint() -> None:
+def test_fallback_download_url_includes_slug_and_version() -> None:
     client = RegistryClient("https://clawhub.ai")
 
-    assert client.resolve_download_url({"version": "1.2.3"}) == (
-        "https://clawhub.ai/api/v1/download"
-    )
+    assert client.resolve_download_url(
+        {"version": "1.2.3"},
+        slug="flight_search",
+        version="1.2.3",
+    ) == ("https://clawhub.ai/api/v1/download?slug=flight_search&version=1.2.3")
 
 
 def test_parse_search_item_uses_aliases_and_stringifies_values() -> None:

@@ -355,6 +355,31 @@ def test_install_transaction_success_is_loader_visible(tmp_path: Path) -> None:
     assert "skill__flight" in {skill["name"] for skill in load_skills(builtin_dir=tmp_path)}
 
 
+def test_install_existing_managed_slug_requires_force(tmp_path: Path) -> None:
+    from sebastian.skills_registry.installer import SkillInstallError, _run_install_transaction
+
+    destination = tmp_path / "flight"
+    _write_skill(destination, name="flight", description="Installed")
+    existing_fingerprint = compute_package_fingerprint(destination)
+    SkillPackageLock(tmp_path).save({"flight": _entry("flight", fingerprint=existing_fingerprint)})
+    staging = tmp_path / "staging"
+    _write_skill(staging, name="flight", description="Replacement")
+
+    with pytest.raises(SkillInstallError, match="already installed"):
+        _run_install_transaction(
+            skills_root=tmp_path,
+            slug="flight",
+            registered_name="skill__flight",
+            staging_root=staging,
+            origin_payload={"slug": "flight"},
+            lockfile_entry_factory=lambda fingerprint: _entry("flight", fingerprint=fingerprint),
+            force=False,
+        )
+
+    assert "Installed" in (destination / "SKILL.md").read_text(encoding="utf-8")
+    assert (staging / "SKILL.md").is_file()
+
+
 def test_update_rejects_local_fingerprint_mismatch() -> None:
     from sebastian.skills_registry.installer import (
         SkillInstallError,
@@ -419,13 +444,10 @@ def test_remove_transaction_rolls_back_when_lockfile_write_fails(
     assert (destination / "SKILL.md").is_file()
 
 
-def test_remove_rejects_stale_lockfile_fingerprint_without_deleting(
+def test_remove_deletes_even_when_local_fingerprint_changed(
     tmp_path: Path,
 ) -> None:
-    from sebastian.skills_registry.installer import (
-        SkillInstallError,
-        remove_installed_skill,
-    )
+    from sebastian.skills_registry.installer import remove_installed_skill
 
     destination = tmp_path / "flight"
     _write_skill(destination, name="flight")
@@ -434,12 +456,11 @@ def test_remove_rejects_stale_lockfile_fingerprint_without_deleting(
     )
     (destination / "README.md").write_text("local edit", encoding="utf-8")
 
-    with pytest.raises(SkillInstallError, match="local changes"):
-        remove_installed_skill("flight", skills_root=tmp_path, yes=True)
+    result = remove_installed_skill("flight", skills_root=tmp_path, yes=True)
 
-    assert (destination / "SKILL.md").is_file()
-    assert (destination / "README.md").is_file()
-    assert "flight" in SkillPackageLock(tmp_path).load()
+    assert result.slug == "flight"
+    assert not destination.exists()
+    assert "flight" not in SkillPackageLock(tmp_path).load()
 
 
 def test_remove_rejects_unmanaged_manual_skill(tmp_path: Path) -> None:
@@ -594,7 +615,13 @@ class _FakeClient:
             raw={"download_url": "https://clawhub.ai/flight.zip"},
         )
 
-    def resolve_download_url(self, data: dict[str, object]) -> str:
+    def resolve_download_url(
+        self,
+        data: dict[str, object],
+        *,
+        slug: str,
+        version: str | None,
+    ) -> str:
         return str(data["download_url"])
 
 
@@ -614,11 +641,43 @@ class _FakeClientWithResponseSlug:
             raw={"download_url": "https://clawhub.ai/flight.zip"},
         )
 
-    def resolve_download_url(self, data: dict[str, object]) -> str:
+    def resolve_download_url(
+        self,
+        data: dict[str, object],
+        *,
+        slug: str,
+        version: str | None,
+    ) -> str:
         return str(data["download_url"])
 
 
 _RESPONSE_SLUG = "flight"
+
+
+@dataclass(frozen=True)
+class _FakeClientWithoutDigest:
+    registry_url: str | None = None
+
+    def inspect(self, slug: str, *, version: str | None = None) -> SkillDetail:
+        return SkillDetail(
+            slug=slug,
+            name="Flight",
+            description="Flight skill",
+            version=version or "1.0.0",
+            download_url="https://clawhub.ai/flight.zip",
+            sha256=None,
+            security_status="safe",
+            raw={"download_url": "https://clawhub.ai/flight.zip"},
+        )
+
+    def resolve_download_url(
+        self,
+        data: dict[str, object],
+        *,
+        slug: str,
+        version: str | None,
+    ) -> str:
+        return str(data["download_url"])
 
 
 def test_install_skill_uses_registry_download_digest_and_transaction(
@@ -654,6 +713,39 @@ def test_install_skill_uses_registry_download_digest_and_transaction(
     assert result.path == tmp_path / "flight"
     assert (result.path / "SKILL.md").is_file()
     assert (result.path / ".sebastian-origin.json").is_file()
+
+
+def test_install_skill_without_registry_digest_records_local_archive_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.skills_registry import installer
+
+    def fake_download_archive(url: str, dest: Path) -> None:
+        dest.write_bytes(b"zip-without-registry-digest")
+
+    def fake_extract(archive: Path, destination: Path) -> Path:
+        _write_skill(destination, name="flight")
+        return destination
+
+    monkeypatch.setattr(installer, "RegistryClient", _FakeClientWithoutDigest)
+    monkeypatch.setattr(installer, "_download_archive", fake_download_archive)
+    monkeypatch.setattr(installer, "safe_extract_zip", fake_extract)
+
+    result = installer.install_skill(
+        "flight",
+        version=None,
+        registry="https://clawhub.ai",
+        force=False,
+        skills_root=tmp_path,
+    )
+
+    expected_sha = hashlib.sha256(b"zip-without-registry-digest").hexdigest()
+    origin = json.loads((result.path / ".sebastian-origin.json").read_text(encoding="utf-8"))
+    entry = SkillPackageLock(tmp_path).load()["flight"]
+    assert origin["sha256"] == expected_sha
+    assert origin["sha256_verified"] is False
+    assert entry.sha256 == expected_sha
 
 
 def test_install_skill_wraps_archive_safety_errors(

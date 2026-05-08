@@ -29,8 +29,9 @@ skills/
 ## Package Manager 生命周期
 
 - `sebastian skills search <query>` / `inspect <slug>` 只读取 registry 元数据。
-- `install <slug>` / `update <slug>` 会下载 registry zip、校验 sha256、安全解压、
-  写入 lockfile/origin metadata，并把 Skill 放入用户扩展目录。
+- `install <slug>` / `update <slug>` 会下载 registry zip；有 registry sha256 时校验，
+  无 digest 时记录本地 archive SHA256，然后安全解压、写入 lockfile/origin metadata，
+  并把 Skill 放入用户扩展目录。
 - `list` 同时展示 package-managed 与本地 unmanaged Skill。
 - `remove <slug>` 只移除 package-managed Skill，并更新 lockfile。
 - 安装、更新、移除后，变化对新的 Sebastian session 生效；当前运行中的 session

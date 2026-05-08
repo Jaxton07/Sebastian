@@ -75,6 +75,14 @@ def _resolve_update_registry(slug: str, registry: str | None) -> str | None:
     return None
 
 
+def _effective_update_registry(skill: InstalledSkill, registry: str | None) -> str | None:
+    if registry is not None:
+        return resolve_registry_url(registry)
+    if skill.registry is None:
+        return None
+    return resolve_registry_url(skill.registry)
+
+
 def _format_optional(value: object) -> str:
     return "-" if value is None or value == "" else str(value)
 
@@ -164,8 +172,13 @@ def update(
 ) -> None:
     """Update an installed Skill."""
     if all_:
-        typer.echo("❌ Updating all Skills is not implemented yet.", err=True)
-        raise typer.Exit(code=1)
+        _update_all(
+            version=version,
+            registry=registry,
+            force=force,
+            allow_rename=allow_rename,
+        )
+        return
     if slug is None:
         typer.echo("❌ Provide a Skill slug or use --all.", err=True)
         raise typer.Exit(code=1)
@@ -188,6 +201,54 @@ def update(
     )
     typer.echo(f"Updated {result.slug} as {result.registered_name}")
     typer.echo("Available to new Sebastian sessions.")
+
+
+def _update_all(
+    *,
+    version: str | None,
+    registry: str | None,
+    force: bool,
+    allow_rename: bool,
+) -> None:
+    installed = _run_or_exit(list_installed)
+    targets = [skill for skill in installed if skill.managed]
+    if not targets:
+        typer.echo("No package-managed Skills to update.")
+        return
+
+    confirmed_registries: set[str] = set()
+    for skill in targets:
+        effective_registry = _effective_update_registry(skill, registry)
+        if effective_registry is None or effective_registry in confirmed_registries:
+            continue
+        _confirm_registry_url(effective_registry)
+        confirmed_registries.add(effective_registry)
+    if force:
+        typer.confirm("Overwrite local changes if present?", abort=True)
+    if allow_rename:
+        typer.confirm("Allow updates to rename runtime Skills?", abort=True)
+
+    successes = 0
+    failures = 0
+    for skill in targets:
+        try:
+            result = update_skill(
+                skill.slug,
+                version=version,
+                registry=registry,
+                force=force,
+                allow_rename=allow_rename,
+            )
+        except (SkillRegistryError, SkillInstallError, LockfileError, httpx.HTTPError) as exc:
+            failures += 1
+            typer.echo(f"❌ {skill.slug}: {exc}", err=True)
+            continue
+        successes += 1
+        typer.echo(f"Updated {result.slug} as {result.registered_name}")
+
+    typer.echo(f"Updated {successes} Skill(s); {failures} failed.")
+    if failures:
+        raise typer.Exit(code=1)
 
 
 @app.command()

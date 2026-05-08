@@ -74,3 +74,13 @@ def test_skill_loader_skips_invalid_skill_name(tmp_path: Path) -> None:
     from sebastian.capabilities.skills._loader import load_skills
 
     assert load_skills(builtin_dir=tmp_path) == []
+
+
+def test_skill_loader_skips_binary_skill_md(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "binary"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_bytes(b"\xff\xfe\x00")
+
+    from sebastian.capabilities.skills._loader import load_skills
+
+    assert load_skills(builtin_dir=tmp_path) == []
