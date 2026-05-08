@@ -5,15 +5,16 @@ description: Search, inspect, install, update, list, and remove Sebastian Skills
 
 Use this Skill when the user asks to find, install, update, list, or remove Sebastian Skills.
 
-Use the installed CLI shim explicitly:
+Use the public Sebastian CLI command from PATH. Do not call installation-specific
+shim paths directly:
 
 ```bash
-~/.sebastian/bin/sebastian skills search "<query>"
-~/.sebastian/bin/sebastian skills inspect <slug>
-~/.sebastian/bin/sebastian skills install <slug>
-~/.sebastian/bin/sebastian skills list
-~/.sebastian/bin/sebastian skills update <slug>
-~/.sebastian/bin/sebastian skills remove <slug>
+sebastian skills search "<query>"
+sebastian skills inspect <slug>
+sebastian skills install <slug>
+sebastian skills list
+sebastian skills update <slug>
+sebastian skills remove <slug>
 ```
 
 Rules:

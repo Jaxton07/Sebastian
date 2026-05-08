@@ -114,7 +114,7 @@ async def my_tool(param: str) -> ToolResult:
 
 **安装第三方 Skill package**：使用 `sebastian skills search/inspect/install/list/update/remove` 从 ClawHub-compatible registry 管理 Skill。默认 registry 是 `https://clawhub.ai`；search/inspect/install 可用 `--registry` 或 `SEBASTIAN_SKILLS_REGISTRY_URL` 覆盖，update 默认沿用安装时记录的 registry，除非显式传入 `--registry`。install/update/remove 在有效 registry 非默认值时会要求确认，包括 update 使用的已存储 registry。registry digest 存在时必须通过校验，缺失时记录本地 archive SHA256。安装目标为 `~/.sebastian/data/extensions/skills`，安装/更新/移除后的变化只影响新 Sebastian session；已有 session 保持启动时捕获的 prompt/tool snapshot。
 
-**Agent 辅助安装**：内置 `skill_installer` Skill 会指导 Sebastian 通过 `~/.sebastian/bin/sebastian` shim 搜索、检查候选 Skill，并在用户明确确认后执行 install/update/remove；它禁止运行第三方 bundle 中的脚本、禁止 `curl | bash`，也不会自动绕过 unsafe registry 状态。
+**Agent 辅助安装**：内置 `skill_installer` Skill 会指导 Sebastian 通过 PATH 中的公共 `sebastian skills ...` CLI 搜索、检查候选 Skill，并在用户明确确认后执行 install/update/remove；它禁止运行第三方 bundle 中的脚本、禁止 `curl | bash`，也不会自动绕过 unsafe registry 状态。实际读写的数据目录由运行环境中的 `SEBASTIAN_DATA_DIR` 决定。
 
 ## 子模块
 

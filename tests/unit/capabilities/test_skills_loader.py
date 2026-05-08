@@ -11,6 +11,9 @@ def test_builtin_skill_installer_is_loaded() -> None:
     specs = load_skills(builtin_dir=pathlib.Path(skills_pkg.__file__).parent)
     names = {spec["name"] for spec in specs}
     assert "skill__skill_installer" in names
+    installer = next(spec for spec in specs if spec["name"] == "skill__skill_installer")
+    assert "sebastian skills list" in installer["description"]
+    assert "~/.sebastian/bin/sebastian" not in installer["description"]
 
 
 def test_skill_loader_reads_skill_md(tmp_path: Path) -> None:

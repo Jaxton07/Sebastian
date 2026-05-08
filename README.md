@@ -202,9 +202,11 @@ new Sebastian sessions because each new session refreshes the Skill snapshot
 before its first model request.
 
 The builtin `skill_installer` Skill lets Sebastian help with this flow safely:
-it searches and inspects candidates through `~/.sebastian/bin/sebastian`, asks
-for explicit confirmation before install/update/remove, and does not run
-third-party scripts or bypass unsafe registry status.
+it searches and inspects candidates through the public `sebastian skills ...`
+CLI found on `PATH`, asks for explicit confirmation before
+install/update/remove, and does not run third-party scripts or bypass unsafe
+registry status. The target data directory follows the runtime environment,
+including `SEBASTIAN_DATA_DIR` for development or custom installs.
 
 ## 🖥️ Running as a System Service
 

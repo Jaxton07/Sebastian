@@ -158,7 +158,8 @@ shim，保证旧版本升级后拥有稳定 CLI 入口。
 
 Sebastian 内置 `skill_installer` Skill，但没有新增 model-visible native
 `install_skill` 工具。Agent-assisted install 使用既有 Bash 工具调用
-`~/.sebastian/bin/sebastian skills ...`，保持模型可见工具面最小。
+PATH 中的公共 `sebastian skills ...` CLI，保持模型可见工具面最小。Skill
+不直接调用安装态 shim 路径；实际目标数据目录由运行环境中的 `SEBASTIAN_DATA_DIR` 决定。
 
 `skill_installer` 的安全流程：
 
