@@ -149,7 +149,10 @@ Sebastian 内置 `skill_installer` Skill，但没有新增 model-visible native
 `skill_installer` 的安全流程：
 
 - 先 search，再 inspect，安装或更新前必须检查候选 Skill。
-- 向用户总结 registry、slug、version、registered Skill name、安全状态和警告。
+- 安装/更新确认前，向用户总结 registry inspect 可见信息：slug、name、version、
+  security status、download URL 与 SHA256。registered runtime name 需要下载并解析
+  `SKILL.md` 后才能确定，因此由 install/update 成功输出报告；update 若检测到 runtime
+  name 变化，会按 `--allow-rename` 确认语义处理。
 - install/update/remove 前必须获得当前对话中的显式确认。
 - 不自动使用 `--yes`、`--force`、`--allow-rename` 或非默认 `--registry`。
 - 不通过 `--force` 绕过 unsafe registry status。

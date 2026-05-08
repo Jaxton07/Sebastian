@@ -45,7 +45,9 @@ capabilities/
 └── skills/              # Skill 复合能力目录，启动加载 + 新会话首轮热刷新
     ├── __init__.py
     ├── _loader.py       # 扫描 SKILL.md、解析 frontmatter、生成工具 spec
-    └── hot_reload.py    # 新会话首轮检查 SKILL.md 指纹并刷新 Skill registry
+    ├── hot_reload.py    # 新会话首轮检查 SKILL.md 指纹并刷新 Skill registry
+    ├── metadata.py      # SKILL.md frontmatter 解析与 Skill 名校验
+    └── skill_installer/ # 内置 Skill：通过 Sebastian CLI 管理 Skill package
 ```
 
 ## 修改导航

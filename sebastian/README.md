@@ -47,6 +47,7 @@ sebastian/
 │   ├── a2a/        → protocol/a2a/README.md
 │   └── events/     → protocol/events/README.md
 ├── sandbox/        → sandbox/README.md
+├── skills_registry/ # Skill package registry client、installer、lockfile、安全解压
 ├── store/          → store/README.md
 ├── trigger/        → trigger/README.md
 ├── main.py         # 启动入口
@@ -178,6 +179,23 @@ session 首轮热加载时进入 prompt/tool snapshot；已有 session 保持原
 - `a2a/`：A2A 协议目录（dispatcher/types 已移除，Agent 间协作通过 `asyncio.create_task` + 工具调用实现）
 - `events/`：进程内事件总线（EventBus / EventType）
 
+### `skills_registry/`
+
+Skill package manager 的实现包，供 `sebastian skills` CLI 调用。它只实现
+ClawHub-compatible registry consumer，不提供 publish/sync。
+
+- `client.py`：registry URL 解析、search/inspect/download URL 策略
+- `installer.py`：install/update/remove 事务、冲突检查、origin metadata
+- `lockfile.py`：`.sebastian-skills.lock.json` 读写、file lock、atomic write
+- `safety.py`：zip 安全解压、大小限制、fingerprint
+- `models.py`：registry、install、list 输出模型
+
+适合在以下场景进入：
+
+- 修改 Skill registry 兼容字段或安全状态规则
+- 修改安装、更新、移除事务
+- 修改 lockfile/origin metadata 或 archive 安全策略
+
 ### `sandbox/`
 
 执行危险或动态代码时的隔离边界。涉及命令执行、安全限制和容器/沙箱策略时应优先查看这里。
@@ -254,6 +272,7 @@ Typer CLI 子命令与进程守护工具。
 | 修改 A2A 协议或事件总线 | [protocol/README.md](protocol/README.md) |
 | 修改沙箱执行策略 | [sandbox/README.md](sandbox/README.md) |
 | 修改 CLI Skill 包管理 | [cli/README.md](cli/README.md) → `skills.py` |
+| 修改 Skill package registry/installer/lockfile | `skills_registry/` |
 | 修改全局配置解析 | [config/README.md](config/README.md) |
 | 修改 CLI 命令或自升级逻辑 | [cli/README.md](cli/README.md) |
 
