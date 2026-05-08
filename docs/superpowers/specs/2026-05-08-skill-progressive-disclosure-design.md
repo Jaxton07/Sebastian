@@ -100,6 +100,7 @@ Remove:
 - `CapabilityRegistry.get_skill_specs()`
 - `CapabilityRegistry.register_skill_specs()`
 - `CapabilityRegistry.replace_skill_specs()`
+- `ToolSpecProvider.get_callable_specs(..., allowed_skills=...)`
 - Skill handling branches in `PolicyGate.call()`
 - Skill snapshot propagation in `BaseAgent`, `AgentLoop`, and
   `stream_helpers`
@@ -234,6 +235,10 @@ Safety rules:
 - Resolve the Skill root and target path with `Path.resolve()`.
 - Reject symlink escape by requiring the resolved target to stay within the
   resolved Skill root.
+- Reject hidden paths and manager-owned metadata using the same exclusion policy
+  as `show` file listing. For example, `read` must not return
+  `.sebastian-origin.json`, files under `.sebastian/`, hidden files, or files in
+  hidden directories.
 - Read only regular files.
 - Reject directories, sockets, devices, FIFOs, and other special files.
 - Decode as UTF-8 text. Binary or undecodable content fails closed.
@@ -265,6 +270,8 @@ Local Skill content is authoritative for installed Skills. Registry
 inspect/search results are only remote metadata.
 `sebastian skills search <query>` searches local Skills by default. Use
 `--source registry` only when the user wants to find new Skills to install.
+`install`, `update`, and `remove` are mutation commands. Use them only when the
+user explicitly asks to manage installed Skills.
 Skill management is the exception to the general "prefer Read over Bash for
 file reads" rule. Do not use generic Read to access Skill directories; use the
 `sebastian skills` CLI instead.
@@ -302,11 +309,14 @@ not mutate provider tools.
 
 Update these docs to remove Skill-as-tool language:
 
+- `README.md`
 - `sebastian/README.md`
 - `sebastian/capabilities/README.md`
+- `sebastian/capabilities/tools/README.md`
 - `sebastian/capabilities/skills/README.md`
 - `sebastian/cli/README.md`
 - `sebastian/agents/README.md`
+- `sebastian/permissions/README.md`
 - `sebastian/agents/*/manifest.toml`
 - `sebastian/agents/*/README.md`
 - `docs/architecture/spec/capabilities/skill-package-manager.md`
@@ -342,6 +352,7 @@ Required wording changes:
 - `read` rejects absolute paths.
 - `read` rejects `..` traversal.
 - `read` rejects symlink escape.
+- `read` rejects hidden paths and manager-owned metadata paths.
 - `read` rejects directories and special files.
 - `read` rejects undecodable/binary content.
 - `read` fails when file output exceeds the size limit.
@@ -361,6 +372,7 @@ Required wording changes:
   calls unless a real native/MCP tool has that name.
 - `PolicyGate.get_callable_specs()` handles only native and MCP tools.
 - `PolicyGate.call()` has no Skill-specific branch.
+- `ToolSpecProvider.get_callable_specs()` no longer accepts `allowed_skills`.
 - `ToolCallContext` has no `allowed_skills` or `skill_specs_snapshot`.
 - `BaseAgent` prompt includes the Skill bootstrap.
 - `BaseAgent` prompt does not include installed Skill bodies.
