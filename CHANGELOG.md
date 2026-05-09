@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-05-09
+
 ### Fixed
 - 修复 Sebastian 以 systemd/launchd 等非交互服务方式运行时，Agent Bash 工具找不到 `sebastian` CLI，导致已安装 Skill 无法通过 `sebastian skills list/show/read` 查询的问题。
 
