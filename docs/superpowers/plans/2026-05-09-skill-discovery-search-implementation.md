@@ -277,7 +277,7 @@ def _search_tokens(query: str) -> tuple[str, ...]:
         token = raw.strip().casefold()
         if not token:
             continue
-        if _is_ascii_token(token) and (len(token) < 3 or token in _ASCII_STOPWORDS):
+        if _is_ascii_token(token) and token in _ASCII_STOPWORDS:
             continue
         if token in seen:
             continue
@@ -333,12 +333,12 @@ def _search_local(query: str) -> list[InstalledSkill]:
 
 Keep `_print_local_search_rows()` unchanged.
 
-- [ ] **Step 4: Add failing test for ASCII stopword filtering**
+- [ ] **Step 4: Add failing tests for ASCII stopword filtering and short-token exact search**
 
 Add:
 
 ```python
-def test_search_local_filters_ascii_stopwords_and_short_tokens(
+def test_search_local_filters_ascii_stopwords(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -364,16 +364,44 @@ def test_search_local_filters_ascii_stopwords_and_short_tokens(
 
     assert result.exit_code == 0
     assert result.output == "LOCAL\n"
+
+
+def test_search_local_keeps_short_ascii_exact_slug(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        skills,
+        "list_installed",
+        lambda: [
+            InstalledSkill(
+                slug="ci",
+                registered_name="skill__ci",
+                version=None,
+                registry=None,
+                managed=False,
+                path=tmp_path / "ci",
+                source="unmanaged",
+                description="Continuous integration helper",
+                name="ci",
+            ),
+        ],
+    )
+
+    result = runner.invoke(app, ["skills", "search", "ci"])
+
+    assert result.exit_code == 0
+    assert "ci\tunmanaged\tskill__ci\tContinuous integration helper" in result.output
 ```
 
-Expected: FAIL before stopword filtering if `a` or `to` can match the unrelated description; PASS after `_search_tokens()` filters common ASCII stopwords and too-short ASCII tokens while preserving non-ASCII tokens.
+Expected: FAIL before stopword filtering if `a` or `to` can match the unrelated description. The `ci` test guards against over-filtering short ASCII tokens: `ci`, `ui`, `qa`, `go`, and `js` can be legitimate exact Skill names or slugs.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run:
 
 ```bash
-pytest tests/unit/runtime/test_skills_cli.py::test_search_local_multi_token_query_matches_any_token tests/unit/runtime/test_skills_cli.py::test_search_local_matches_frontmatter_name tests/unit/runtime/test_skills_cli.py::test_search_local_filters_ascii_stopwords_and_short_tokens -q
+pytest tests/unit/runtime/test_skills_cli.py::test_search_local_multi_token_query_matches_any_token tests/unit/runtime/test_skills_cli.py::test_search_local_matches_frontmatter_name tests/unit/runtime/test_skills_cli.py::test_search_local_filters_ascii_stopwords tests/unit/runtime/test_skills_cli.py::test_search_local_keeps_short_ascii_exact_slug -q
 ```
 
 Expected: PASS.
@@ -552,7 +580,16 @@ Expected: PASS.
 
 - [ ] **Step 1: Write failing prompt assertions for Bash-capable agents**
 
-Update `test_system_prompt_includes_skill_management_bootstrap()`:
+Update `test_system_prompt_includes_skill_management_bootstrap()` so its local `MyAgent` represents a Bash-capable agent. In the current file, that means changing the class from `allowed_tools: list[str] | None = []` to unrestricted tools:
+
+```python
+class MyAgent(BaseAgent):
+    name = "test"
+    persona = "I am your butler."
+    allowed_tools: list[str] | None = None
+```
+
+Then assert:
 
 ```python
 assert "When Bash is available" in agent.system_prompt
@@ -565,11 +602,29 @@ assert "only when the user wants to find new Skills to install" in agent.system_
 
 Keep existing assertions that the prompt says not to use generic `Read` for Skill directories.
 
-Add a separate test for a restricted agent with no Bash, using the existing `allowed_tools=[]` or no-Bash fixture pattern:
+Add a separate async test for a restricted agent with no Bash, using the same local `MyAgent` + `CapabilityRegistry` + `SessionStore` construction style already used in `tests/unit/core/test_prompt_builder.py`:
 
 ```python
-def test_system_prompt_does_not_instruct_skill_cli_when_bash_unavailable() -> None:
-    agent = _TestAgent(allowed_tools=[])
+@pytest.mark.asyncio
+async def test_system_prompt_does_not_instruct_skill_cli_when_bash_unavailable(
+    tmp_path: Path,
+) -> None:
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.store.session_store import SessionStore
+
+    class MyAgent(BaseAgent):
+        name = "test"
+        persona = "I am your butler."
+        allowed_tools: list[str] | None = []
+
+    store = SessionStore(tmp_path / "sessions")
+    reg = CapabilityRegistry()
+
+    with patch("sebastian.core.base_agent.settings") as mock_settings:
+        mock_settings.sebastian_model = "claude-opus-4-6"
+        mock_settings.llm_max_tokens = 16000
+        mock_settings.workspace_dir = tmp_path / "workspace"
+        agent = MyAgent(reg, store)
 
     assert "sebastian skills search" not in agent.system_prompt
     assert "sebastian skills show" not in agent.system_prompt
@@ -582,7 +637,7 @@ If the implementation chooses to retain a non-actionable Skill Management note f
 Run:
 
 ```bash
-pytest tests/unit/core/test_prompt_builder.py::test_system_prompt_includes_skill_management_bootstrap -q
+pytest tests/unit/core/test_prompt_builder.py::test_system_prompt_includes_skill_management_bootstrap tests/unit/core/test_prompt_builder.py::test_system_prompt_does_not_instruct_skill_cli_when_bash_unavailable -q
 ```
 
 Expected: FAIL because current prompt does not include Bash-gated domain-first discovery guidance, multilingual examples, or no-Bash protection.
@@ -653,7 +708,7 @@ In `docs/architecture/spec/capabilities/skill-package-manager.md`, update CLI se
 - multi-token OR matching
 - fields: slug, frontmatter name, registered_name, description
 - deterministic score sort
-- stopword / short ASCII-token filtering
+- ASCII stopword filtering while preserving short exact Skill names and slugs
 - no keywords/aliases/package mutation
 
 - [ ] **Step 3: Update module READMEs**

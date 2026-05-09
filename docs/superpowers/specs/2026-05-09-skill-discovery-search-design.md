@@ -118,10 +118,11 @@ For local search:
 
 1. Split `<query>` on whitespace into tokens.
 2. Ignore empty tokens.
-3. Ignore common ASCII stopwords and ASCII tokens shorter than 3 characters so
-   natural-language searches such as `"book a flight to Tokyo"` do not match
-   unrelated descriptions through `a` or `to`. Preserve non-ASCII tokens,
-   including short Chinese terms.
+3. Ignore common ASCII stopwords so natural-language searches such as
+   `"book a flight to Tokyo"` do not match unrelated descriptions through `a`
+   or `to`. Do not discard all short ASCII tokens: exact Skill names and slugs
+   such as `ci`, `ui`, `qa`, `go`, and `js` must remain searchable. Preserve
+   non-ASCII tokens, including short Chinese terms.
 4. Match tokens using OR semantics. A Skill is included if any token matches any
    searchable field.
 5. Search these fields:
@@ -215,7 +216,8 @@ Required wording:
 - `skills search` uses multi-token local OR matching across slug, name,
   registered name, and description.
 - Search queries should be keyword-style and the CLI filters common ASCII
-  stopwords / too-short ASCII tokens while preserving Chinese terms.
+  stopwords while preserving short exact Skill names such as `ci` or `ui` and
+  Chinese terms.
 - No `keywords`, aliases, package mutation, embeddings, or automatic candidate
   injection are part of this phase.
 
@@ -240,6 +242,8 @@ Required wording:
   substring.
 - A natural-language query such as `"book a flight to Tokyo"` does not return an
   unrelated Skill merely because `a` or `to` appears in its description.
+- Short ASCII exact slug or name searches such as `ci` and `ui` still return the
+  matching Skill.
 - Search includes frontmatter `name` in addition to slug, registered name, and
   description.
 - Results are sorted by score so stronger name/slug matches appear before weaker
