@@ -227,7 +227,7 @@ def install(
         )
     )
     typer.echo(f"Installed {result.slug} as {result.registered_name}")
-    typer.echo("Available to new Sebastian sessions.")
+    typer.echo("available immediately through sebastian skills list/show/read.")
 
 
 @app.command(name="list")
@@ -310,7 +310,7 @@ def update(
         )
     )
     typer.echo(f"Updated {result.slug} as {result.registered_name}")
-    typer.echo("Available to new Sebastian sessions.")
+    typer.echo("available immediately through sebastian skills list/show/read.")
 
 
 def _update_all(

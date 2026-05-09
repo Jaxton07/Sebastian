@@ -79,4 +79,4 @@ Rules:
 - Do not use `--registry` unless the user names that registry.
 - Never run scripts from downloaded Skill bundles during install.
 - Never use `curl | bash` or similar third-party install commands.
-- After install, update, or remove, tell the user the change applies to new Sebastian sessions.
+- After install, update, or remove, tell the user local Skill catalog changes are available immediately through `sebastian skills list/show/read`.

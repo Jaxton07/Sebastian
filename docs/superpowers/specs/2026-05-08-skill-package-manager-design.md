@@ -98,8 +98,7 @@ After a successful install or update, the CLI prints:
 
 ```text
 Skill installed: skill__flight_search
-Available to new Sebastian sessions. Existing sessions keep their current
-Skill snapshot.
+available immediately through sebastian skills list/show/read.
 ```
 
 ### Agent-Assisted Install

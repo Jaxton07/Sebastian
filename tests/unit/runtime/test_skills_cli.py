@@ -279,7 +279,10 @@ def test_search_registry_http_error_prints_clean_cli_error(monkeypatch) -> None:
     assert "❌ network down" in result.stderr
 
 
-def test_install_prints_registered_name_and_new_session_hint(monkeypatch, tmp_path: Path) -> None:
+def test_install_prints_registered_name_and_immediate_availability_hint(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.setattr(
         skills,
         "install_skill",
@@ -295,7 +298,8 @@ def test_install_prints_registered_name_and_new_session_hint(monkeypatch, tmp_pa
 
     assert result.exit_code == 0
     assert "weather_tool" in result.output
-    assert "new Sebastian sessions" in result.output
+    assert "available immediately" in result.output
+    assert "new Sebastian sessions" not in result.output
 
 
 def test_install_propagates_version_registry_and_force(monkeypatch, tmp_path: Path) -> None:
@@ -515,7 +519,10 @@ def test_update_with_stored_custom_registry_can_be_declined(
     assert calls == []
 
 
-def test_update_prints_registered_name_and_new_session_hint(monkeypatch, tmp_path: Path) -> None:
+def test_update_prints_registered_name_and_immediate_availability_hint(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.setattr(
         skills,
         "update_skill",
@@ -531,7 +538,8 @@ def test_update_prints_registered_name_and_new_session_hint(monkeypatch, tmp_pat
 
     assert result.exit_code == 0
     assert "weather_tool" in result.output
-    assert "new Sebastian sessions" in result.output
+    assert "available immediately" in result.output
+    assert "new Sebastian sessions" not in result.output
 
 
 def test_update_propagates_version_registry_force_and_allow_rename(
