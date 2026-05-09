@@ -79,7 +79,7 @@ def list_installed(root: Path, *, builtin_dir: Path | None = None) -> list[Insta
     for slug, entry in entries.items():
         path = root / slug
         managed_paths.add(path.resolve())
-        metadata = _read_skill_metadata_or_none(path)
+        managed_metadata = _read_skill_metadata_or_none(path)
         installed.append(
             InstalledSkill(
                 slug=slug,
@@ -89,8 +89,8 @@ def list_installed(root: Path, *, builtin_dir: Path | None = None) -> list[Insta
                 managed=True,
                 path=path,
                 source="managed",
-                description=metadata.description if metadata is not None else "",
-                name=metadata.name if metadata is not None else "",
+                description=managed_metadata.description if managed_metadata is not None else "",
+                name=managed_metadata.name if managed_metadata is not None else "",
             )
         )
 

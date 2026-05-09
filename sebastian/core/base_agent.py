@@ -217,7 +217,7 @@ class BaseAgent(ABC):
 
     def _can_use_bash(self) -> bool:
         allowed = _normalize_allowed_tools(self.allowed_tools)
-        if allowed is ALL_TOOLS:
+        if isinstance(allowed, AllToolsSentinel):
             return True
         if allowed is None:
             return False
