@@ -25,8 +25,8 @@ fun List<TimelineItemDto>.toMessagesFromTimeline(baseUrl: String = ""): List<Mes
         items.minOf { it.seq }
     }
 
-    // ── Assistant-side: group by (assistantTurnId, providerCallIndex) ────────
-    data class AssistantGroupKey(val turnId: String?, val pci: Int?)
+    // ── Assistant-side: group by assistant turn ───────────────────────────────
+    data class AssistantGroupKey(val turnId: String?, val fallbackSeq: Long?)
 
     val assistantSideItems = sorted.filter {
         it.kind in setOf("assistant_message", "thinking", "tool_call", "tool_result")
@@ -45,7 +45,11 @@ fun List<TimelineItemDto>.toMessagesFromTimeline(baseUrl: String = ""): List<Mes
     }
 
     for (item in assistantSideItems) {
-        val key = AssistantGroupKey(item.assistantTurnId, item.providerCallIndex)
+        val key = if (item.assistantTurnId != null) {
+            AssistantGroupKey(item.assistantTurnId, null)
+        } else {
+            AssistantGroupKey(null, item.seq)
+        }
         if (currentKey != null && currentKey != key) flushAssistantGroup()
         currentKey = key
         currentGroup += item

@@ -72,14 +72,17 @@ class TimelineMapperTest {
     }
 
     @Test
-    fun flushesAssistantGroupWhenGroupKeyChanges() {
+    fun sameAssistantTurnMergesProviderCallGroups() {
         val messages = listOf(
             item(seq = 1, kind = "assistant_message", content = "first", assistantTurnId = "t1", providerCallIndex = 0),
             item(seq = 2, kind = "assistant_message", content = "second", assistantTurnId = "t1", providerCallIndex = 1),
         ).toMessagesFromTimeline()
-        assertEquals(2, messages.size)
-        assertEquals(MessageRole.ASSISTANT, messages[0].role)
-        assertEquals(MessageRole.ASSISTANT, messages[1].role)
+        assertEquals(1, messages.size)
+        assertEquals(MessageRole.ASSISTANT, messages.single().role)
+        assertEquals(
+            listOf("first", "second"),
+            messages.single().blocks.filterIsInstance<ContentBlock.TextBlock>().map { it.text },
+        )
     }
 
     @Test

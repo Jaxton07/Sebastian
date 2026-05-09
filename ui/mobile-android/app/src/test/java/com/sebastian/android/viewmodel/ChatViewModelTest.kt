@@ -221,6 +221,29 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun `repeated turn_received during active turn keeps execution blocks in one assistant message`() = vmTest {
+        activateSession()
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ThinkingBlockStart("s1", "think-1"))
+        emitEvent(StreamEvent.ThinkingBlockStop("s1", "think-1", durationMs = 1_000L))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "tool-block-1", "tool-1", "bash"))
+        emitEvent(StreamEvent.ToolExecuted("s1", "tool-1", "bash", "done"))
+        emitEvent(StreamEvent.TurnReceived("s1"))
+        emitEvent(StreamEvent.ThinkingBlockStart("s1", "think-2"))
+        emitEvent(StreamEvent.ThinkingBlockStop("s1", "think-2", durationMs = 500L))
+        emitEvent(StreamEvent.ToolBlockStart("s1", "tool-block-2", "tool-2", "bash"))
+        emitEvent(StreamEvent.ToolExecuted("s1", "tool-2", "bash", "done"))
+        dispatcher.scheduler.advanceTimeBy(200)
+
+        val assistantMessages = viewModel.uiState.value.messages.filter { it.role == MessageRole.ASSISTANT }
+        assertEquals(1, assistantMessages.size)
+        assertEquals(
+            listOf("think-1", "tool-block-1", "think-2", "tool-block-2"),
+            assistantMessages.single().blocks.map { it.blockId },
+        )
+    }
+
+    @Test
     fun `composerState becomes STREAMING during text block`() = vmTest {
         activateSession()
         viewModel.uiState.test {
