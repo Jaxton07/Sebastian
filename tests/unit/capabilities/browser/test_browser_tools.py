@@ -124,8 +124,8 @@ def test_browser_tools_visible_only_through_sebastian_allowlist() -> None:
     assert BROWSER_TOOLS <= set(Sebastian.allowed_tools)
 
     registry = CapabilityRegistry()
-    no_tools = {spec["name"] for spec in registry.get_callable_specs(None, None)}
-    all_tools = {spec["name"] for spec in registry.get_callable_specs(ALL_TOOLS, None)}
+    no_tools = {spec["name"] for spec in registry.get_callable_specs(None)}
+    all_tools = {spec["name"] for spec in registry.get_callable_specs(ALL_TOOLS)}
 
     assert BROWSER_TOOLS.isdisjoint(no_tools)
     assert BROWSER_TOOLS <= all_tools

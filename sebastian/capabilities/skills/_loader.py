@@ -1,48 +1,43 @@
 from __future__ import annotations
 
-import re
+import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from sebastian.capabilities.skills.metadata import (
+    SkillMetadataError,
+    parse_skill_metadata,
+)
+
+logger = logging.getLogger(__name__)
 
 
-def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
-    """Parse YAML-style frontmatter from SKILL.md content.
-
-    Returns (metadata_dict, body_without_frontmatter).
-    Only supports simple key: value lines (no nested YAML).
-    """
-    meta: dict[str, str] = {}
-    body = content
-
-    if content.startswith("---"):
-        end = content.find("\n---", 3)
-        if end != -1:
-            fm_block = content[3:end].strip()
-            body = content[end + 4 :].strip()
-            for line in fm_block.splitlines():
-                m = re.match(r"^(\w+)\s*:\s*(.+)$", line.strip())
-                if m:
-                    meta[m.group(1)] = m.group(2).strip()
-
-    return meta, body
+@dataclass(frozen=True)
+class SkillCatalogEntry:
+    slug: str
+    name: str
+    registered_name: str
+    description: str
+    path: Path
+    source: str
 
 
-def load_skills(
+def load_skill_catalog(
     builtin_dir: Path | None = None,
     extra_dirs: list[Path] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[SkillCatalogEntry]:
     """Scan dirs for skill subdirectories containing SKILL.md.
 
-    Returns a list of tool spec dicts suitable for CapabilityRegistry.
-    Tool names are prefixed with "skill__".
-    Later dirs override earlier ones for the same skill name.
+    Returns catalog metadata only. Skill instructions are read on demand through
+    the `sebastian skills show/read` CLI, not injected as provider tool specs.
+    Later dirs override earlier ones for the same Skill name.
     """
     if builtin_dir is None:
         builtin_dir = Path(__file__).parent
 
     dirs: list[Path] = [builtin_dir, *(extra_dirs or [])]
 
-    skills: dict[str, dict[str, Any]] = {}
+    skills: dict[str, SkillCatalogEntry] = {}
 
     for base_dir in dirs:
         if not base_dir.exists():
@@ -54,30 +49,21 @@ def load_skills(
             if not skill_md.exists():
                 continue
 
-            content = skill_md.read_text(encoding="utf-8")
-            meta, body = _parse_frontmatter(content)
+            try:
+                content = skill_md.read_text(encoding="utf-8")
+                metadata = parse_skill_metadata(content, fallback_name=entry.name)
+            except (OSError, UnicodeDecodeError, SkillMetadataError) as exc:
+                logger.warning("Skipping invalid Skill %s: %s", skill_md, exc)
+                continue
 
-            skill_name = meta.get("name", entry.name)
-            description = meta.get("description", "")
-            full_instructions = f"{description}\n\n{body}".strip() if body else description
-
-            tool_name = f"skill__{skill_name}"
-            skills[skill_name] = {
-                "name": tool_name,
-                "description": full_instructions,
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "instructions": {
-                            "type": "string",
-                            "description": (
-                                "Additional context or specific instructions"
-                                " for this skill invocation."
-                            ),
-                        }
-                    },
-                    "required": [],
-                },
-            }
+            source = "builtin" if base_dir == builtin_dir else "local"
+            skills[metadata.name] = SkillCatalogEntry(
+                slug=entry.name,
+                name=metadata.name,
+                registered_name=metadata.registered_name,
+                description=metadata.description,
+                path=entry,
+                source=source,
+            )
 
     return list(skills.values())

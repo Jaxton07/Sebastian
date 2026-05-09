@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+- 新增 `sebastian skills` 命令，可从 ClawHub-compatible registry 搜索、检查、安装、更新和移除 Skill，并可通过 `show` 读取本地 Skill 说明。
+- 新增内置 `skill_manager` Skill，Sebastian 可按安全流程协助用户查看、安装、更新和移除 Skill。
+
+### Changed
+- 安装与升级流程会创建 `~/.sebastian/bin/sebastian` 命令入口，并默认写入 zsh/bash PATH 配置。
+- Skill 不再作为 LLM tool 暴露，Sebastian 改为通过 `sebastian skills show/read` 按需读取本地 Skill 内容。
+- `sebastian skills search` 默认搜索本地已安装 Skill，远端 registry 搜索需要显式 `--source registry`。
+
 ## [0.5.11] - 2026-05-07
 
 ### Added

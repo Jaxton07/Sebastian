@@ -222,8 +222,10 @@ class ChatViewModel @Inject constructor(
                     sseReplayTurnSkipCount--
                     return  // skip replayed completed turn; currentAssistantMessageId stays null
                 }
-                pendingTurnSessionId = event.sessionId
-                currentAssistantMessageId = UUID.randomUUID().toString()
+                if (currentAssistantMessageId == null) {
+                    pendingTurnSessionId = event.sessionId
+                    currentAssistantMessageId = UUID.randomUUID().toString()
+                }
             }
 
             is StreamEvent.ThinkingBlockStart -> {

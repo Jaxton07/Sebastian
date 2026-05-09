@@ -141,6 +141,16 @@ sebastian status             # Check process/service status
 sebastian service status     # Check system service diagnostics
 sebastian update             # Update to latest release (auto-rollback on failure)
 sebastian update --check     # Check for updates without installing
+sebastian skills search flight     # Search local installed Skills
+sebastian skills search flight --source registry
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills show flight-search
+sebastian skills show flight-search --body
+sebastian skills read flight-search references/usage.md
+sebastian skills update flight-search
+sebastian skills remove flight-search
 ```
 
 Typical deployment operations:
@@ -155,11 +165,59 @@ sebastian update
 For service-managed installs, `sebastian update` automatically restarts an
 active systemd/launchd service after the update completes.
 
+Sebastian creates a stable CLI shim at `~/.sebastian/bin/sebastian` during
+install and update. The installer writes this managed shell block to supported
+zsh/bash rc files unless `SEBASTIAN_SKIP_PATH_SETUP=1` is set:
+
+```sh
+# >>> sebastian PATH >>>
+export PATH="$HOME/.sebastian/bin:$PATH"
+# <<< sebastian PATH <<<
+```
+
 Installed runtime config lives at `~/.sebastian/.env`. If
 `SEBASTIAN_DATA_DIR` is customized, runtime config lives at
 `<SEBASTIAN_DATA_DIR>/.env`. Edit that file for settings used by the service,
 such as `SEBASTIAN_BROWSER_UPSTREAM_PROXY`. Repository `.env` remains for local
 source-tree development only.
+
+## 🧩 Skill Packages
+
+Sebastian can install third-party Skills from a ClawHub-compatible registry:
+
+```bash
+sebastian skills search "flight" --source registry
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills search "flight"
+sebastian skills show flight-search
+sebastian skills show flight-search --body
+sebastian skills read flight-search references/usage.md
+sebastian skills update flight-search
+sebastian skills remove flight-search
+```
+
+`sebastian skills search <query>` searches local installed Skills by default.
+Use `--source registry` only when looking for new Skills to install. The
+default registry is `https://clawhub.ai`; remote `search`, `inspect`, and
+`install` resolve the registry from explicit `--registry <url>`, then
+`SEBASTIAN_SKILLS_REGISTRY_URL`, then the default. `update` without `--registry`
+uses the registry recorded when the Skill was installed; passing `--registry`
+overrides that stored registry. Mutating commands ask for
+confirmation before using any non-default effective registry, including a
+stored registry. Installed packages live under
+`~/.sebastian/data/extensions/skills`; local Skill content is read from disk on
+demand with `show --body` and `read`.
+
+The builtin `skill_manager` Skill lets Sebastian help with this flow safely:
+it lists local Skills, reads local `SKILL.md` instructions through
+`sebastian skills show --body`, reads referenced local files through
+`sebastian skills read`, searches and inspects registry candidates through the
+public `sebastian skills ...` CLI found on `PATH`, asks for explicit
+confirmation before install/update/remove, and does not run third-party scripts
+or bypass unsafe registry status. The target data directory follows the runtime
+environment, including `SEBASTIAN_DATA_DIR` for development or custom installs.
 
 ## 🖥️ Running as a System Service
 

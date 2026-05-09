@@ -13,6 +13,7 @@
 - FastAPI gateway 与 SSE 实时推送
 - Session / Task / Event 持久化
 - Memory、Sandbox、Protocol 等基础能力
+- `sebastian` CLI、自升级、服务化启动与 Skill 包管理
 
 如果你刚进入仓库，建议先配合阅读：
 
@@ -46,6 +47,7 @@ sebastian/
 │   ├── a2a/        → protocol/a2a/README.md
 │   └── events/     → protocol/events/README.md
 ├── sandbox/        → sandbox/README.md
+├── skills_registry/ # Skill package registry client、installer、本地 show、lockfile、安全解压
 ├── store/          → store/README.md
 ├── trigger/        → trigger/README.md
 ├── main.py         # 启动入口
@@ -143,19 +145,36 @@ Sub-Agent 插件目录。当前已有：
 
 ### `capabilities/`
 
-能力注册层，负责把工具、MCP、Skill 装载进运行时。
+能力注册层，负责把工具、MCP 装载进运行时，并维护 Skill 本地 catalog。
 
 - `tools/`：所有 Agent 可共享的基础工具
 - `mcps/`：MCP server 集成
-- `skills/`：复合能力定义
+- `skills/`：本地 Skill catalog 与内置 Skill 定义
 - `registry.py`：能力注册表
 - `mcp_client.py`：MCP client 接入
+
+用户安装的 Skill package 默认写入
+`~/.sebastian/data/extensions/skills`。`sebastian skills search` 默认只搜本地，
+本地查询按空白分词并 OR 匹配 slug、frontmatter name、registered name 和 description，
+查询应使用 keyword-style。CLI 会过滤常见 ASCII 停用词，但保留 `ci`、`ui` 等短的精确
+Skill 名称和中文词；处理中文或其他非英文请求时，Agent 应把可能的英文同义词一起放进 query。
+本阶段不引入 keywords、别名、安装包改写、embedding/vector search 或自动候选注入；
+远端 registry 搜索需要显式 `--source registry` 或 `--source all`。remote
+search/inspect/install 使用显式 `--registry` → `SEBASTIAN_SKILLS_REGISTRY_URL` →
+默认 `https://clawhub.ai` 的顺序解析 registry；`update` 不传 `--registry` 时使用该
+Skill 安装时记录在 lockfile 中的 registry，显式传入 `--registry` 则覆盖该记录。
+install/update/remove 等变更命令在有效 registry 非默认值时会要求确认，包括使用已存储
+registry 的 update。本地 Skill 内容以磁盘当前文件为准，通过
+`sebastian skills show --body` 和 `sebastian skills read` 按需读取。
+内置 `skill_manager` Skill 让 Sebastian 通过 CLI 列出和读取本地 Skill，并在用户确认后
+搜索、检查、安装、更新或移除 registry Skill。
 
 适合在以下场景进入：
 
 - 新增工具或 Skill
-- 调整能力发现与注册机制
+- 调整能力发现、工具注册或 Skill catalog 机制
 - 排查工具暴露范围与权限问题
+- 调整 Skill 包安装生命周期或内置 `skill_manager` 说明
 
 ### `memory/`
 
@@ -167,6 +186,23 @@ Sub-Agent 插件目录。当前已有：
 
 - `a2a/`：A2A 协议目录（dispatcher/types 已移除，Agent 间协作通过 `asyncio.create_task` + 工具调用实现）
 - `events/`：进程内事件总线（EventBus / EventType）
+
+### `skills_registry/`
+
+Skill package manager 的实现包，供 `sebastian skills` CLI 调用。它只实现
+ClawHub-compatible registry consumer，不提供 publish/sync。
+
+- `client.py`：registry URL 解析、search/inspect/download URL 策略
+- `installer.py`：install/update/remove 事务、冲突检查、origin metadata
+- `lockfile.py`：`.sebastian-skills.lock.json` 读写、file lock、atomic write
+- `safety.py`：zip 安全解压、大小限制、fingerprint
+- `models.py`：registry、install、list 输出模型
+
+适合在以下场景进入：
+
+- 修改 Skill package registry 兼容字段或安全状态规则
+- 修改安装、更新、移除事务
+- 修改 lockfile/origin metadata 或 archive 安全策略
 
 ### `sandbox/`
 
@@ -181,12 +217,18 @@ Typer CLI 子命令与进程守护工具。
 - `main.py`：Typer CLI 入口；`serve/status/update/version` 顶层命令；挂载 `service` 子命令。
 - `cli/service.py`：systemd/launchd 服务安装、状态、重启。
 - `updater.py`：自升级逻辑（`sebastian update`），含 SHA256 校验、原子替换、失败回滚
+- `skills.py`：`sebastian skills search/inspect/install/list/show/read/update/remove`，
+  从本地 catalog 和 ClawHub-compatible registry 管理用户 Skill 包；本地 search 使用
+  keyword-style multi-token OR 匹配、停用词过滤与确定性排序。
+- `path_setup.py`：安装/升级时刷新 `~/.sebastian/bin/sebastian` shim，并按需写入
+  zsh/bash PATH block。
 
 适合在以下场景进入：
 
 - 修改 CLI 命令或参数
 - 修改自升级/回滚策略
 - 修改守护进程管理逻辑
+- 修改 Skill 包管理、registry override 或 CLI PATH 行为
 
 ### `log/`
 
@@ -238,6 +280,8 @@ Typer CLI 子命令与进程守护工具。
 | 修改权限审查或 workspace 边界 | [permissions/README.md](permissions/README.md) |
 | 修改 A2A 协议或事件总线 | [protocol/README.md](protocol/README.md) |
 | 修改沙箱执行策略 | [sandbox/README.md](sandbox/README.md) |
+| 修改 CLI Skill 包管理 | [cli/README.md](cli/README.md) → `skills.py` |
+| 修改 Skill package registry/installer/lockfile | `skills_registry/` |
 | 修改全局配置解析 | [config/README.md](config/README.md) |
 | 修改 CLI 命令或自升级逻辑 | [cli/README.md](cli/README.md) |
 

@@ -15,6 +15,11 @@ def test_install_script_repairs_incomplete_venv(tmp_path: Path) -> None:
 
     # Simulate a previous failed install that left only the directory behind.
     (project / ".venv").mkdir()
+    old_install = tmp_path / "home" / ".sebastian" / "app"
+    (old_install / "sebastian").mkdir(parents=True)
+    (old_install / "pyproject.toml").write_text("[project]\nname = 'old-sebastian'\n")
+    (old_install / ".venv" / "bin").mkdir(parents=True)
+    (old_install / ".venv" / "bin" / "sebastian").write_text("#!/bin/sh\n")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -42,6 +47,22 @@ PIP
 printf "sebastian %s\\n" "$*" >> "$CALLS_LOG"
 SEBASTIAN
   chmod +x .venv/bin/sebastian
+  exit 0
+fi
+if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  install_dir="${SEBASTIAN_INSTALL_DIR:-}"
+  if [[ -z "$install_dir" ]] \
+    && [[ -f "$HOME/.sebastian/app/pyproject.toml" ]] \
+    && [[ -d "$HOME/.sebastian/app/sebastian" ]]; then
+    install_dir="$HOME/.sebastian/app"
+  fi
+  if [[ -z "$install_dir" ]]; then
+    install_dir="$PWD"
+  fi
+  mkdir -p "$HOME/.sebastian/bin"
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$install_dir" \
+    > "$HOME/.sebastian/bin/sebastian"
+  chmod +x "$HOME/.sebastian/bin/sebastian"
   exit 0
 fi
 exit 1
@@ -77,6 +98,9 @@ exit 1
     assert f"SEBASTIAN_DATA_DIR={data_root}" in env_content
     assert "# SEBASTIAN_BROWSER_UPSTREAM_PROXY=http://127.0.0.1:7890" in env_content
     assert "# SEBASTIAN_BROWSER_DNS_MODE=auto" in env_content
+    shim = tmp_path / "home" / ".sebastian" / "bin" / "sebastian"
+    assert shim.is_file()
+    assert str(project / ".venv" / "bin" / "sebastian") in shim.read_text()
 
 
 def test_install_script_writes_absolute_env_for_relative_custom_data_root(
@@ -113,6 +137,22 @@ PIP
 printf "sebastian %s\\n" "$*" >> "$CALLS_LOG"
 SEBASTIAN
   chmod +x .venv/bin/sebastian
+  exit 0
+fi
+if [[ "$1" == "-m" && "$2" == "sebastian.cli.path_setup" ]]; then
+  install_dir="${SEBASTIAN_INSTALL_DIR:-}"
+  if [[ -z "$install_dir" ]] \
+    && [[ -f "$HOME/.sebastian/app/pyproject.toml" ]] \
+    && [[ -d "$HOME/.sebastian/app/sebastian" ]]; then
+    install_dir="$HOME/.sebastian/app"
+  fi
+  if [[ -z "$install_dir" ]]; then
+    install_dir="$PWD"
+  fi
+  mkdir -p "$HOME/.sebastian/bin"
+  printf '#!/usr/bin/env sh\nexec "%s/.venv/bin/sebastian" "$@"\n' "$install_dir" \
+    > "$HOME/.sebastian/bin/sebastian"
+  chmod +x "$HOME/.sebastian/bin/sebastian"
   exit 0
 fi
 exit 1

@@ -11,8 +11,10 @@ cli/
 ├── __init__.py       # 包定义
 ├── daemon.py         # PID 文件管理与进程生命周期
 ├── init_wizard.py    # 无头初始化向导（sebastian init --headless）
+├── path_setup.py     # 稳定 CLI shim 与 shell PATH 配置
 ├── service.py        # systemd/launchd 服务安装、状态、重启
 ├── service_templates.py # systemd unit / launchd plist 模板渲染
+├── skills.py         # Skill 本地 catalog 与 package registry 管理命令
 └── updater.py        # 自升级逻辑（sebastian update）
 ```
 
@@ -39,6 +41,23 @@ cli/
 
 密码要求：至少 8 字符，需二次确认。
 
+### `path_setup.py`
+
+安装与升级后的 CLI 入口配置工具。它会创建
+`~/.sebastian/bin/sebastian` shim，稳定转发到当前安装目录的
+`.venv/bin/sebastian`，并按当前 shell 写入幂等的 PATH block。
+
+环境变量 `SEBASTIAN_SKIP_PATH_SETUP=1` 仅跳过 shell rc 文件更新，不会跳过
+shim 生成，确保服务和工具调用仍可使用稳定入口。
+
+写入的 managed block 为：
+
+```sh
+# >>> sebastian PATH >>>
+export PATH="$HOME/.sebastian/bin:$PATH"
+# <<< sebastian PATH <<<
+```
+
 ### `updater.py`
 
 自升级逻辑，实现 `sebastian update` 命令的完整流程：
@@ -51,11 +70,43 @@ cli/
 6. 解压到 staging 目录，原子交换 `MANAGED_ENTRIES`（sebastian/、pyproject.toml、scripts/ 等）
 7. `pip install -e .` 更新依赖
 8. 失败自动回滚到备份，成功后清理旧备份
-9. 若检测到 active systemd/launchd 服务，优先自动重启服务；其次重启 legacy PID daemon；否则打印精确的手动启动指引
+9. 刷新 `~/.sebastian/bin/sebastian` CLI shim
+10. 若检测到 active systemd/launchd 服务，优先自动重启服务；其次重启 legacy PID daemon；否则打印精确的手动启动指引
 
 关键常量：
 - `MANAGED_ENTRIES`：更新时替换的顶层条目，`.venv`/`.env`/`secret.key` 等不会被触碰
 - `BACKUP_KEEP = 1`：只保留最近 1 个备份
+
+### `skills.py`
+
+Skill package manager 的 CLI 外壳，负责调用 registry client 与 installer：
+
+- `search_registry()`：用 `RegistryClient.search()` 查询 registry，返回 CLI 行数据。
+- `inspect`：展示 registry 中 Skill 的 slug、name、version、security、download、sha256 等信息。
+- `install` / `update` / `remove`：安装、更新、移除 package-managed Skill，并在非默认有效 registry、强制覆盖、允许 runtime name 变更、移除等高影响操作前要求显式确认。
+- `list`：展示当前 runtime Skill extensions 目录下的 managed / unmanaged Skill。
+
+默认 registry 为 `https://clawhub.ai`。`search` / `inspect` / `install`
+按 `--registry` → `SEBASTIAN_SKILLS_REGISTRY_URL` → 默认 registry 的顺序解析。
+`update` 默认使用已安装 Skill lockfile 中记录的 registry，只有显式传入
+`--registry` 时才覆盖该记录。install/update/remove 等变更命令在有效 registry
+非默认值时要求确认，包括 update 使用的已存储 registry。安装目标是
+`~/.sebastian/data/extensions/skills`（即
+`settings.skills_extensions_dir`），写入 `.sebastian-skills.lock.json` 与
+每个 Skill 目录内的 `.sebastian-origin.json`。
+
+安装、更新或移除后，本地 Skill catalog 立即以磁盘当前文件为准；正在运行的模型 turn
+不会自动注入 Skill 正文，后续需要时通过 CLI 按需读取。
+`sebastian skills list` 会展示当前 runtime 可见的 builtin / managed / unmanaged Skill；
+`sebastian skills search <query>` 默认搜索本地 Skill；`sebastian skills show <name-or-slug>`
+读取本地 Skill metadata、path、source 与可见文件列表；`sebastian skills show <name-or-slug> --body`
+读取 `SKILL.md` instructions；`sebastian skills read <name-or-slug> <relative-path>`
+读取 Skill 目录内引用文件，均不访问 registry。本地 `search <query>` 按空白分词，并用
+OR 语义匹配 slug、frontmatter name、registered name 和 description；Agent 处理中文或其他
+非英文请求时，应使用 keyword-style query，并把可能的英文同义词一起放进 query。CLI 会过滤
+常见 ASCII 停用词，但保留短的精确 Skill 名称和中文词；本阶段不引入 keywords、别名、安装包
+改写、embedding/vector search 或自动候选注入。`sebastian skills update --all` 会遍历 package-managed Skill，跳过 unmanaged Skill；
+单个 Skill 更新失败会继续处理后续条目，最终用非零退出码报告失败汇总。
 
 ## CLI 命令一览
 
@@ -68,6 +119,17 @@ cli/
 | `sebastian update` | 自升级到最新 release | `updater.run_update()` |
 | `sebastian version` | 输出当前 Sebastian 版本 | `main.py` |
 | `sebastian --version` | 输出当前 Sebastian 版本 | `main.py` |
+| `sebastian skills search <query>` | 搜索本地 Skill | `skills.search()` |
+| `sebastian skills search <query> --source registry` | 搜索 registry Skill | `skills.search()` |
+| `sebastian skills inspect <slug>` | 查看 registry Skill 详情 | `skills.inspect()` |
+| `sebastian skills install <slug>` | 安装 Skill package | `skills.install()` |
+| `sebastian skills list` | 查看本地 Skill | `skills.list_command()` |
+| `sebastian skills show <name-or-slug>` | 读取本地 Skill 详情 | `skills.show()` |
+| `sebastian skills show <name-or-slug> --body` | 读取本地 Skill instructions | `skills.show()` |
+| `sebastian skills read <name-or-slug> <relative-path>` | 读取本地 Skill 引用文件 | `skills.read()` |
+| `sebastian skills update <slug>` | 更新已安装 Skill | `skills.update()` |
+| `sebastian skills update --all` | 更新所有 package-managed Skill | `skills.update()` |
+| `sebastian skills remove <slug>` | 移除 package-managed Skill | `skills.remove()` |
 | `sebastian service restart` | 重启 systemd/launchd 服务 | `service.restart()` |
 | `sebastian service status` | 查看 systemd/launchd 服务状态与日志提示 | `service.status()` |
 
@@ -76,8 +138,10 @@ cli/
 | 修改场景 | 优先看 |
 |---------|--------|
 | 修改 CLI 命令注册或参数 | `main.py`（Typer app 定义） |
+| 修改 Skill package manager CLI | `skills.py` |
 | 修改进程守护/PID 逻辑 | `daemon.py` |
 | 修改无头初始化流程 | `init_wizard.py` |
+| 修改 CLI shim 或 PATH 写入逻辑 | `path_setup.py` |
 | 修改自升级逻辑 | `updater.py` |
 
 ---

@@ -55,4 +55,4 @@ color_dim "  模拟器:   http://10.0.2.2:${SEBASTIAN_GATEWAY_PORT}"
 color_grn "━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-exec sebastian serve --reload
+exec python -m sebastian.main serve --reload
