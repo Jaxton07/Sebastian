@@ -137,7 +137,7 @@ private fun ExecutionCapsuleTimeline(
 
     Row(
         modifier = modifier
-            .height(20.dp)
+            .height(14.dp)
             .horizontalScroll(scrollState)
             .padding(start = 2.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -183,7 +183,7 @@ private fun ExecutionCapsule(
     Box(
         modifier = Modifier
             .width(4.dp)
-            .height(14.dp)
+            .height(9.dp)
             .scale(scaleX = 1f, scaleY = scaleY)
             .background(color = color, shape = RoundedCornerShape(percent = 50)),
     )
