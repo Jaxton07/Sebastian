@@ -52,6 +52,26 @@ class ExecutionRenderItemsTest {
     }
 
     @Test
+    fun `blank text block does not split execution groups`() {
+        val first = ContentBlock.ThinkingBlock(blockId = "think-1", text = "plan", done = true)
+        val blankText = ContentBlock.TextBlock(blockId = "text-blank", text = "", done = true)
+        val second = ContentBlock.ToolBlock(
+            blockId = "tool-1",
+            toolId = "call-1",
+            name = "search",
+            displayName = "Search",
+            inputs = "{}",
+            status = ToolStatus.DONE,
+        )
+
+        val items = buildMessageRenderItems(listOf(first, blankText, second))
+
+        assertEquals(1, items.size)
+        val group = items.single() as MessageRenderItem.ExecutionGroup
+        assertEquals(listOf(first, second), group.blocks)
+    }
+
+    @Test
     fun `summary image and file blocks split execution groups`() {
         val think = ContentBlock.ThinkingBlock(blockId = "think-1", text = "plan")
         val summary = ContentBlock.SummaryBlock(blockId = "summary-1", text = "compressed")

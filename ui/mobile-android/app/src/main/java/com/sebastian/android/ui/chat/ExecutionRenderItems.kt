@@ -34,11 +34,13 @@ fun buildMessageRenderItems(blocks: List<ContentBlock>): List<MessageRenderItem>
     }
 
     for (block in blocks) {
-        if (block.isExecutionBlock()) {
-            pendingExecutionBlocks += block
-        } else {
-            flushExecutionGroup()
-            items += MessageRenderItem.Block(block)
+        when {
+            block.isExecutionBlock() -> pendingExecutionBlocks += block
+            block.isBlankTextBlock() -> {}
+            else -> {
+                flushExecutionGroup()
+                items += MessageRenderItem.Block(block)
+            }
         }
     }
     flushExecutionGroup()
@@ -48,6 +50,9 @@ fun buildMessageRenderItems(blocks: List<ContentBlock>): List<MessageRenderItem>
 
 fun ContentBlock.isExecutionBlock(): Boolean =
     this is ContentBlock.ThinkingBlock || this is ContentBlock.ToolBlock
+
+private fun ContentBlock.isBlankTextBlock(): Boolean =
+    this is ContentBlock.TextBlock && text.isBlank()
 
 fun executionStepState(block: ContentBlock): ExecutionStepState = when (block) {
     is ContentBlock.ThinkingBlock ->

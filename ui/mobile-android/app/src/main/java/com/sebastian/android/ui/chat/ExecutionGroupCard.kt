@@ -105,10 +105,10 @@ private fun ExecutionGroupHeader(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight
             },
             contentDescription = if (expanded) "折叠执行步骤" else "展开执行步骤",
-            tint = mutedColor.copy(alpha = 0.72f),
-            modifier = Modifier.size(20.dp),
+            tint = mutedColor.copy(alpha = 0.42f),
+            modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         ExecutionCapsuleTimeline(
             blocks = blocks,
             modifier = Modifier.weight(1f),
@@ -137,7 +137,7 @@ private fun ExecutionCapsuleTimeline(
 
     Row(
         modifier = modifier
-            .height(36.dp)
+            .height(20.dp)
             .horizontalScroll(scrollState)
             .padding(start = 2.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -148,7 +148,7 @@ private fun ExecutionCapsuleTimeline(
                 active = index == activeIndex,
             )
             if (index != stepStates.lastIndex) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(3.dp))
             }
         }
     }
@@ -167,7 +167,7 @@ private fun ExecutionCapsule(
     val scaleY = if (active) {
         val infiniteTransition = rememberInfiniteTransition(label = "execution-capsule")
         val runningScale by infiniteTransition.animateFloat(
-            initialValue = 0.78f,
+            initialValue = 0.82f,
             targetValue = 1.08f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 920),
@@ -182,8 +182,8 @@ private fun ExecutionCapsule(
 
     Box(
         modifier = Modifier
-            .width(8.dp)
-            .height(28.dp)
+            .width(4.dp)
+            .height(14.dp)
             .scale(scaleX = 1f, scaleY = scaleY)
             .background(color = color, shape = RoundedCornerShape(percent = 50)),
     )
