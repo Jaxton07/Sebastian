@@ -194,8 +194,7 @@ def _dedupe_overridden_local_skills(skills: list[InstalledSkill]) -> list[Instal
         for skill in skills
         if not (
             skill.source == "builtin"
-            and (skill.registered_name or f"skill__{skill.name or skill.slug}")
-            in has_user_override
+            and (skill.registered_name or f"skill__{skill.name or skill.slug}") in has_user_override
         )
     ]
 
@@ -329,9 +328,7 @@ def show(
     body: bool = typer.Option(False, "--body", help="Print Skill instructions body"),
 ) -> None:
     """Show local Skill metadata."""
-    detail = _run_or_exit(
-        lambda: show_local_skill(identifier, settings.skills_extensions_dir)
-    )
+    detail = _run_or_exit(lambda: show_local_skill(identifier, settings.skills_extensions_dir))
     _run_or_exit(lambda: _print_local_detail(detail, include_body=body))
 
 

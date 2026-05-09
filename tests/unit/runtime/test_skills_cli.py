@@ -141,9 +141,7 @@ def test_search_all_prints_local_and_registry(monkeypatch, tmp_path: Path) -> No
     monkeypatch.setattr(
         skills,
         "search_registry",
-        lambda query, registry=None: [
-            ("weather-pro", "2.0.0", "reviewed", "Advanced weather")
-        ],
+        lambda query, registry=None: [("weather-pro", "2.0.0", "reviewed", "Advanced weather")],
     )
 
     result = runner.invoke(app, ["skills", "search", "weather", "--source", "all"])
@@ -1213,9 +1211,7 @@ def test_read_prints_local_skill_file(monkeypatch) -> None:
     result = runner.invoke(app, ["skills", "read", "weather", "examples/demo.md"])
 
     assert result.exit_code == 0
-    assert calls == [
-        ("weather", "examples/demo.md", skills.settings.skills_extensions_dir)
-    ]
+    assert calls == [("weather", "examples/demo.md", skills.settings.skills_extensions_dir)]
     assert result.output == "# Example\nUse this sample.\n"
 
 

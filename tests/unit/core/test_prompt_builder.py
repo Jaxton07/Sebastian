@@ -76,14 +76,10 @@ async def test_system_prompt_includes_skill_management_bootstrap(tmp_path: Path)
     assert "## Skill Management" in system_prompt
     assert "When Bash is available" in system_prompt
     assert "search local Skills before generic tools" in system_prompt
-    assert (
-        "机票 航班 飞机票 flight airfare airline ticket travel booking" in system_prompt
-    )
+    assert "机票 航班 飞机票 flight airfare airline ticket travel booking" in system_prompt
     assert "sebastian skills show <name-or-slug> --body" in system_prompt
     assert "Registry" in system_prompt
-    assert (
-        "only when the user wants to find new Skills to install" in system_prompt
-    )
+    assert "only when the user wants to find new Skills to install" in system_prompt
     assert "Do not use generic Read to access Skill directories" in system_prompt
 
 

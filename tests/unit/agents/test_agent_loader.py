@@ -100,10 +100,7 @@ def test_load_agents_rejects_allowed_skills(tmp_path: Path) -> None:
         tmp_path,
         "oldskill",
         "OldSkillAgent",
-        (
-            '[agent]\nclass_name = "OldSkillAgent"\ndescription = "old"\n'
-            "allowed_skills = []\n"
-        ),
+        ('[agent]\nclass_name = "OldSkillAgent"\ndescription = "old"\nallowed_skills = []\n'),
     )
 
     with pytest.raises(ValueError, match="allowed_skills is no longer supported"):
@@ -116,8 +113,7 @@ def test_load_agents_rejects_allowed_skills_before_importing_agent(tmp_path: Pat
     agent_dir = tmp_path / "broken"
     agent_dir.mkdir()
     (agent_dir / "manifest.toml").write_text(
-        '[agent]\nclass_name = "MissingAgent"\ndescription = "broken"\n'
-        "allowed_skills = []\n"
+        '[agent]\nclass_name = "MissingAgent"\ndescription = "broken"\nallowed_skills = []\n'
     )
 
     with pytest.raises(ValueError, match="allowed_skills is no longer supported"):
