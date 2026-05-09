@@ -12,6 +12,7 @@
 - 安装与升级流程会创建 `~/.sebastian/bin/sebastian` 命令入口，并默认写入 zsh/bash PATH 配置。
 - Skill 不再作为 LLM tool 暴露，Sebastian 改为通过 `sebastian skills show/read` 按需读取本地 Skill 内容。
 - `sebastian skills search` 默认搜索本地已安装 Skill，远端 registry 搜索需要显式 `--source registry`。
+- Android App 会将连续 thinking / tool call 执行步骤折叠成外层步骤条，长任务可通过绿色胶囊进度持续感知后台执行状态。
 
 ## [0.5.11] - 2026-05-07
 
