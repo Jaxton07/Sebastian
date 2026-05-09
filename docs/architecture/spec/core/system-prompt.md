@@ -1,5 +1,5 @@
 ---
-version: "1.4"
+version: "1.5"
 last_updated: 2026-05-09
 status: implemented
 ---
@@ -122,7 +122,7 @@ def get_tool_specs(self, allowed: set[str] | None = None) -> list[dict]:
 - 如果当前 Agent 不可用 `Bash`，不注入该 section，也不提示模型调用 Skill CLI。
 - bootstrap 是固定短文本，不随已安装 Skill catalog 动态展开；它不会列出已安装 Skill 名称，也不会注入任何 `SKILL.md` 正文。
 
-bootstrap 的发现策略是：遇到可复用的领域任务时，先搜索本地 Skill，再考虑通用工具；`sebastian skills search <query>` 默认只搜本地 catalog。对中文或其他非英文请求，查询应包含用户原始语义词和可能的英文同义词，例如：
+bootstrap 的发现策略是：遇到可复用的领域任务时，先搜索本地 Skill，再考虑通用工具；`sebastian skills search <query>` 默认只搜本地 catalog。查询应使用 keyword-style，而不是完整自然语言句子。对中文或其他非英文请求，查询应包含用户原始语义词和可能的英文同义词，例如：
 
 ```bash
 sebastian skills search "机票 航班 flight airfare travel"
@@ -130,7 +130,10 @@ sebastian skills search "发票 报销 invoice reimbursement expense"
 sebastian skills search "简历 润色 resume polish CV"
 ```
 
-这保持了 implemented 的 progressive disclosure 边界：Skill 是本地 catalog package，不是 provider tool；执行权限仍只由工具链 `allowed_tools`、PolicyGate 与 PermissionReviewer 管理。
+如果本地 search 返回可信候选，模型应先用 `sebastian skills show <name-or-slug> --body`
+读取 Skill 正文再执行；如果没有可信候选，再继续使用普通工具。registry search 只用于用户想查找可安装的新 Skill。
+
+这保持了 implemented 的 progressive disclosure 边界：Skill 是本地 catalog package，不是 provider tool；执行权限仍只由工具链 `allowed_tools`、PolicyGate 与 PermissionReviewer 管理。bootstrap 不列已安装 Skill 名称，不注入 Skill 正文，也不会把 top-k Skill 候选自动塞进每个 turn。
 
 ---
 

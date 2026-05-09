@@ -103,7 +103,9 @@ Skill package manager 的 CLI 外壳，负责调用 registry client 与 installe
 读取 `SKILL.md` instructions；`sebastian skills read <name-or-slug> <relative-path>`
 读取 Skill 目录内引用文件，均不访问 registry。本地 `search <query>` 按空白分词，并用
 OR 语义匹配 slug、frontmatter name、registered name 和 description；Agent 处理中文或其他
-非英文请求时，应把可能的英文同义词一起放进 query。`sebastian skills update --all` 会遍历 package-managed Skill，跳过 unmanaged Skill；
+非英文请求时，应使用 keyword-style query，并把可能的英文同义词一起放进 query。CLI 会过滤
+常见 ASCII 停用词，但保留短的精确 Skill 名称和中文词；本阶段不引入 keywords、别名、安装包
+改写、embedding/vector search 或自动候选注入。`sebastian skills update --all` 会遍历 package-managed Skill，跳过 unmanaged Skill；
 单个 Skill 更新失败会继续处理后续条目，最终用非零退出码报告失败汇总。
 
 ## CLI 命令一览

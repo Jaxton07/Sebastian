@@ -176,6 +176,15 @@ Default source is `local`. It must not contact the registry.
 network access. Network access happens only with `--source registry` or
 `--source all`.
 
+Local search uses deterministic multi-token OR matching across slug,
+frontmatter `name`, compatibility `registered_name`, and description. Search
+queries should be keyword-style rather than full sentences. The CLI filters
+common ASCII stopwords while preserving short exact Skill names such as `ci` or
+`ui` and non-ASCII terms such as Chinese words. Agents should include likely
+English synonyms for multilingual user requests. This redesign does not add
+`keywords`, aliases, package mutation, embeddings, or automatic candidate
+injection.
+
 Output should separate local and registry results:
 
 ```text
@@ -272,10 +281,12 @@ Local Skill content is authoritative for installed Skills. Registry
 inspect/search results are only remote metadata.
 `sebastian skills search <query>` searches local Skills by default. Use
 `--source registry` only when the user wants to find new Skills to install.
-For reusable domain tasks, search local Skills before falling back to generic
-tools. Build concise search queries from the user's intent; for Chinese or
-other non-English requests, include the original meaningful terms plus likely
-English synonyms so local Skill metadata can match either language.
+When Bash is available, search local Skills before generic tools for reusable
+domain tasks. Build keyword-style search queries from the user's intent; for
+Chinese or other non-English requests, include the original meaningful terms
+plus likely English synonyms so local Skill metadata can match either language.
+If local search returns plausible candidates, read the chosen Skill body before
+acting. If no plausible Skill is found, continue with normal tools.
 
 Examples:
 - User asks: "帮我查机票和航班" -> `sebastian skills search "机票 航班 flight airfare travel"`
@@ -348,6 +359,11 @@ Required wording changes:
 - Generic `Read` does not get a Skill directory whitelist.
 - Registry search is opt-in for remote discovery.
 - The only default model context is the short Skill bootstrap.
+- Local search uses keyword-style multi-token OR matching across slug, name,
+  registered name, and description; it filters common ASCII stopwords while
+  preserving short exact Skill names and Chinese terms.
+- No `keywords`, aliases, package mutation, embeddings, or automatic candidate
+  injection are part of this phase.
 - Sebastian currently has no Skill ACL. Execution policy covers tools.
 - Skill CLI access requires `Bash`; Agents without `Bash` cannot use Skills
   through the CLI.

@@ -1,5 +1,5 @@
 ---
-version: "1.2"
+version: "1.3"
 last_updated: 2026-05-09
 status: implemented
 ---
@@ -37,11 +37,19 @@ sebastian skills update flight-search
 sebastian skills remove flight-search
 ```
 
-`search` 默认只搜索本地已安装 Skill。它把本地查询按空白分词，过滤 ASCII 停用词，
-再用 OR 语义匹配 slug、frontmatter `name`、兼容 `registered_name` 与 description。
-短的精确 Skill name/slug 会被保留，不会因为短词或停用词规则被丢弃。结果按确定性
-score 排序，并用 source、slug 等稳定字段打破并列。搜索不会生成或写入 Skill
-metadata；本阶段不新增检索词字段、别名字段或安装时包内容改写。
+`search` 默认只搜索本地已安装 Skill。它把本地查询按空白分词，过滤常见 ASCII
+停用词，再用 OR 语义匹配 slug、frontmatter `name`、兼容 `registered_name` 与
+description。查询应是 keyword-style，而不是完整自然语言句子；当用户用中文或其他
+非英文表达需求时，Bash-capable Agent 应把用户原始关键词和可能的英文同义词一起放入
+query，例如 `机票 航班 飞机票 flight airfare airline ticket travel booking`。
+
+短的精确 Skill name/slug 会被保留，不会因为短词或停用词规则被丢弃，因此 `ci`、`ui`、
+`qa`、`go`、`js` 这类名称仍可搜索；非 ASCII token 也会保留。结果按确定性 score 排序：
+slug/frontmatter name 精确命中最高，slug/frontmatter name 子串命中次之，description
+命中再次，`registered_name` 命中权重最低，多 token 命中累加；并用 source、slug 等稳定
+字段打破并列。搜索不会生成或写入 Skill metadata；本阶段不新增 `keywords` 字段、别名
+字段、安装时包内容改写、embedding/vector search、LLM CLI 调用，也不会把 top-k Skill
+候选自动注入每个 turn。
 
 只有 `--source registry` 或 `--source all` 才访问远端 registry；单独传 `--registry`
 不会触发网络访问。默认 registry 为 `https://clawhub.ai`。远端 `search`、`inspect`、
@@ -90,6 +98,13 @@ sebastian skills inspect/install/update/remove ...
 本地 Skill 内容以磁盘当前文件为准；`show --body` 和 `read` 在命令执行时读取文件，不依赖
 gateway 中的 runtime snapshot。Registry search/inspect 只用于远端发现和安装前检查，不是
 已安装 Skill 的权威使用说明。
+
+Skill discovery 的 prompt 策略是 prompt-first multilingual query expansion：BaseAgent
+只在 Agent 可用 `Bash` 时注入 Skill Management bootstrap；没有 `Bash` 的 Agent 不会被提示
+调用 `sebastian skills search/show`。遇到旅行、机票、酒店、日程、会议、邮件、文档、
+表格、代码、仓库、浏览器自动化等可复用领域任务时，Agent 应先搜索本地 Skill；如果出现
+可信候选，再用 `sebastian skills show <name-or-slug> --body` 读取正文后执行。registry
+search 只用于用户想查找可安装的新 Skill 时。
 
 ## 本地 Catalog 读取
 

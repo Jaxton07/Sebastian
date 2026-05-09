@@ -2,6 +2,8 @@
 version: "1.0"
 last_updated: 2026-05-09
 status: draft
+integrated_to: capabilities/skill-package-manager.md
+integrated_at: 2026-05-09
 ---
 
 # Skill Discovery Search Design
