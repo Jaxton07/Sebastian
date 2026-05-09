@@ -157,49 +157,77 @@ private fun AssistantMessageBlocks(
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
     ) {
-        blocks.forEach { block ->
-            key(block.blockId) {
-                val alpha = alphaMap[block.blockId]?.value ?: 1f
-                when (block) {
-                    is ContentBlock.ThinkingBlock -> ThinkingCard(
-                        block = block,
-                        onToggle = { onToggleThinking(msgId, block.blockId) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(alpha),
-                    )
-                    is ContentBlock.ToolBlock -> ToolCallCard(
-                        block = block,
-                        onToggle = { onToggleTool(msgId, block.blockId) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(alpha),
-                    )
-                    is ContentBlock.TextBlock -> MarkdownView(
-                        text = block.text,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(alpha),
-                    )
-                    is ContentBlock.SummaryBlock -> SummaryCard(
-                        block = block,
-                        onToggle = { onToggleSummary(msgId, block.blockId) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(alpha),
-                    )
-                    is ContentBlock.ImageBlock -> ImageAttachmentBlock(
-                        block = block,
-                        modifier = Modifier.alpha(alpha),
-                    )
-                    is ContentBlock.FileBlock -> FileAttachmentBlock(
-                        block = block,
-                        modifier = Modifier.alpha(alpha),
-                        maxWidth = 320.dp,
-                    )
+        val renderItems = remember(blocks) { buildMessageRenderItems(blocks) }
+
+        renderItems.forEach { item ->
+            when (item) {
+                is MessageRenderItem.Block -> {
+                    val block = item.block
+                    key(block.blockId) {
+                        val alpha = alphaMap[block.blockId]?.value ?: 1f
+                        RenderStandaloneBlock(
+                            msgId = msgId,
+                            block = block,
+                            alpha = alpha,
+                            onToggleSummary = onToggleSummary,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
+
+                is MessageRenderItem.ExecutionGroup -> {
+                    key(item.blocks.firstOrNull()?.blockId ?: item.id) {
+                        ExecutionGroupCard(
+                            group = item,
+                            onToggleThinking = { blockId -> onToggleThinking(msgId, blockId) },
+                            onToggleTool = { blockId -> onToggleTool(msgId, blockId) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun RenderStandaloneBlock(
+    msgId: String,
+    block: ContentBlock,
+    alpha: Float,
+    onToggleSummary: (String, String) -> Unit,
+) {
+    when (block) {
+        is ContentBlock.TextBlock -> MarkdownView(
+            text = block.text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(alpha),
+        )
+
+        is ContentBlock.SummaryBlock -> SummaryCard(
+            block = block,
+            onToggle = { onToggleSummary(msgId, block.blockId) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(alpha),
+        )
+
+        is ContentBlock.ImageBlock -> ImageAttachmentBlock(
+            block = block,
+            modifier = Modifier.alpha(alpha),
+        )
+
+        is ContentBlock.FileBlock -> FileAttachmentBlock(
+            block = block,
+            modifier = Modifier.alpha(alpha),
+            maxWidth = 320.dp,
+        )
+
+        is ContentBlock.ThinkingBlock,
+        is ContentBlock.ToolBlock -> {
+            // Execution blocks are rendered through ExecutionGroupCard.
         }
     }
 }
