@@ -45,16 +45,19 @@ skills/
 - `remove <slug>` 只移除 package-managed Skill，并更新 lockfile。
 - 安装、更新、移除后，CLI 读取到的本地 Skill 内容以磁盘当前文件为准。
 
-内置 `skill_manager` Skill 负责安全的 agent-assisted Skill management flow：它会使用
-PATH 中的公共 `sebastian skills ...` CLI 列出和读取本地 Skill，也会搜索和检查 registry
-Skill，安装/更新确认前向用户总结
-inspect 可见的 registry metadata（registry、slug/name、version、安全/审核状态、
-download/SHA 信息和警告），并在用户确认后才执行 install/update/remove。runtime
-注册名只能在下载并解析 `SKILL.md` 后确定，因此由 install/update 成功后的 CLI 输出报告。
-CLI inspect 当前不列 bundle 文件，除非未来 registry metadata 提供，否则不要求总结文件列表。
-该 Skill 不会运行下载包中的脚本，不使用 `curl | bash`，也不会自动使用 `--force`、
-`--yes`、`--allow-rename` 或非默认 registry；它不直接调用安装态 shim 路径，目标数据目录由
-运行环境中的 `SEBASTIAN_DATA_DIR` 决定。
+`BaseAgent._skill_management_section()` 是 Bash-capable Agent 每轮默认可见的短 bootstrap，
+负责让普通可复用领域任务先查本地 Skill，并把 browser 工具放在最低优先级。内置
+`skill_manager` Skill 则负责更完整的 Skill 管理流程，包括
+list/show/read/search/inspect/install/update/remove。它会使用 PATH 中的公共
+`sebastian skills ...` CLI 列出和读取本地 Skill，也会搜索和检查 registry Skill，
+安装/更新确认前向用户总结 inspect 可见的 registry metadata（registry、slug/name、
+version、安全/审核状态、download/SHA 信息和警告），并在用户确认后才执行
+install/update/remove。runtime 注册名只能在下载并解析 `SKILL.md` 后确定，因此由
+install/update 成功后的 CLI 输出报告。CLI inspect 当前不列 bundle 文件，除非未来
+registry metadata 提供，否则不要求总结文件列表。该 Skill 不会运行下载包中的脚本，
+不使用 `curl | bash`，也不会自动使用 `--force`、`--yes`、`--allow-rename` 或非默认
+registry；它不直接调用安装态 shim 路径，目标数据目录由运行环境中的
+`SEBASTIAN_DATA_DIR` 决定。
 
 ## Skill 定义格式
 

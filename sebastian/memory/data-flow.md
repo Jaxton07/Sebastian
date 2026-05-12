@@ -11,12 +11,14 @@
 
 ### 触发点
 
-每次 `run_streaming()` 调用时，[`_stream_inner()`](base_agent.py) 在构造 `effective_system_prompt` 之前同步等待记忆检索：
+每次 `run_streaming()` 调用时，[`_stream_inner()`](base_agent.py) 在构造 `effective_system_prompt` 之前同步等待记忆检索，并在 base prompt 之后追加每轮 Runtime Context：
 
 ```
 BaseAgent._stream_inner()                        base_agent.py:466
+  ├─ _runtime_context_section()
+  ├─ _resident_memory_section(session_id)
   ├─ _memory_section(session_id, agent, user_msg)
-  └─ effective_system_prompt = base_prompt + memory_section + todo_section
+  └─ effective_system_prompt = base_prompt + runtime_context + resident + dynamic_memory + todo_section
 ```
 
 ### `_memory_section()` — 入口守卫

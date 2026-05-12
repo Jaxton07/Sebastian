@@ -76,11 +76,33 @@ async def test_system_prompt_includes_skill_management_bootstrap(tmp_path: Path)
     assert "## Skill Management" in system_prompt
     assert "When Bash is available" in system_prompt
     assert "search local Skills before generic tools" in system_prompt
+    assert "reusable domain tasks" in system_prompt
+    assert "search local Skills" in system_prompt
+    assert "before using browser tools" in system_prompt
+    assert "weather" in system_prompt
+    assert "天气 weather forecast meteorology" in system_prompt
+    assert "Browser tools" in system_prompt
+    assert "lowest-priority option" in system_prompt
+    assert "explicitly asks for browser interaction" in system_prompt
     assert "机票 航班 飞机票 flight airfare airline ticket travel booking" in system_prompt
     assert "sebastian skills show <name-or-slug> --body" in system_prompt
     assert "Registry" in system_prompt
     assert "only when the user wants to find new Skills to install" in system_prompt
     assert "Do not use generic Read to access Skill directories" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_skill_management_bootstrap_puts_browser_after_local_skills(
+    tmp_path: Path,
+) -> None:
+    system_prompt = _build_prompt(tmp_path, ["Bash"])
+
+    skill_index = system_prompt.index("search local Skills")
+    browser_index = system_prompt.index("Browser tools")
+
+    assert skill_index < browser_index
+    assert "If local search returns plausible candidates" in system_prompt
+    assert "continue with normal structured tools before browser tools" in system_prompt
 
 
 @pytest.mark.asyncio

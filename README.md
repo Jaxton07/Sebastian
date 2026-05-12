@@ -59,10 +59,10 @@ Sebastian is a goal-driven personal AI butler system. Tell it what you want — 
 - 🏠 **Self-hosted & private** — Runs on your machine. No cloud dependency, no data leaks.
 - 🤖 **Three-tier agent architecture** — Sebastian (head butler) delegates to team leads, who dispatch workers. Your goals get executed, not just answered.
 - 📱 **Native Android app** — Real-time streaming responses, thinking blocks, tool call cards. Built with Kotlin + Jetpack Compose.
-- 🔧 **Zero-config extensibility** — Add tools, MCP servers, skills, and sub-agents by creating files. No core code changes needed.
+- 🔧 **Zero-config extensibility** — Add tools, MCP servers, skills, and sub-agents through local packages and manifest files. No core code changes needed.
 - 🧠 **Persistent memory** — Remembers your preferences and past interactions. Profile facts, episodic history, and a resident snapshot injected into every conversation.
 - 🔒 **Permission & approval system** — Sensitive operations require your approval. Three-tier risk classification (Low / Model-Decides / High-Risk).
-- 🚀 **Dynamic Tool Factory** — When an agent needs a tool that doesn't exist, it can write one, test it in a sandbox, and register it — all autonomously.
+- 🧩 **Skill packages & browser tools** — Search/install local Skills, inspect web pages with Playwright browser tools, and send files, screenshots, images, or downloads back into the timeline.
 
 ## What's Built
 
@@ -72,9 +72,12 @@ Sebastian is a goal-driven personal AI butler system. Tell it what you want — 
 - ✅ Approval notifications for sensitive operations
 - ✅ LLM provider configuration (Anthropic, OpenAI, custom base URL)
 - ✅ Persistent memory — profile facts, episodic history, resident snapshot
+- ✅ Skill package manager — local catalog, registry install/update/remove, safe progressive disclosure
+- ✅ Browser tools — open, observe, act, screenshot, visually inspect, and send downloads as artifacts
+- ✅ Attachments — send images/text files, receive agent-generated image/file/download artifacts
 - ✅ Tool call visualization & execution feedback
 - ✅ Session & task history with timeline hydration
-- ✅ One-click install, update & auto-rollback
+- ✅ One-click install, service setup, update & auto-rollback
 - ✅ Headless server initialization
 
 ## ⚡ Quick Start
@@ -291,9 +294,9 @@ For the full architecture spec, see [docs/architecture/spec/](docs/architecture/
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1** | Core engine, three-tier agents, Android app, gateway, SSE | ✅ Done |
-| **Phase 2** | Memory system, Forge agent, push notifications, skills | 🔄 In progress |
-| **Phase 3** | Voice pipeline, iOS app, trigger engine | 📋 Planned |
-| **Phase 4** | Advanced triggers, more sub-agents, Web UI | 📋 Planned |
+| **Phase 2** | Memory system, Forge agent, local notifications, skills, attachments, browser tools | ✅ Mostly done |
+| **Phase 3** | Voice pipeline, iOS app, remote push, user-facing trigger workflows | 📋 Planned |
+| **Phase 4** | More sub-agents, advanced proactive workflows, Web UI polish | 📋 Planned |
 | **Phase 5** | Biometric auth, multi-factor permissions, audit logging | 📋 Planned |
 
 ## 📚 Documentation

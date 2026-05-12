@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -116,9 +117,109 @@ async def test_run_streaming_uses_prompt_and_tool_snapshots_before_async_waits(
 
     await agent.run_streaming("hello", "snapshot-session")
 
-    assert captured["system_prompt"] == "old prompt"
+    prompt = str(captured["system_prompt"])
+    assert prompt.startswith("old prompt")
+    assert "new prompt" not in prompt
+    assert "## Runtime Context" in prompt
     assert captured["tools_snapshot"] == old_tools
     assert captured["has_skill_specs_snapshot"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_streaming_injects_runtime_time_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.stream_events import TurnDone
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 5, 12, 13, 14, 15, tzinfo=UTC)
+
+        def astimezone(self, tz=None):
+            return self
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+        allowed_tools: list[str] | None = []
+
+    import sebastian.core.base_agent as base_agent_module
+
+    monkeypatch.setattr(base_agent_module, "datetime", FixedDatetime)
+
+    store = SessionStore(tmp_path / "sessions")
+    await store.create_session(Session(id="time-session", agent_type="sebastian", title="t"))
+    agent = TestAgent(MagicMock(), store)
+    agent.system_prompt = "base prompt"
+    captured: dict[str, str] = {}
+
+    async def fake_stream(system_prompt, messages, **kwargs):
+        captured["system_prompt"] = system_prompt
+        yield TurnDone(full_text="done")
+
+    agent._loop.stream = fake_stream  # type: ignore[attr-defined]
+
+    await agent.run_streaming("what time is it?", "time-session")
+
+    prompt = captured["system_prompt"]
+    assert "base prompt" in prompt
+    assert "## Runtime Context" in prompt
+    assert "Current date: Tuesday, 2026-05-12" in prompt
+    assert "Current time: 2026-05-12 13:14:15 UTC +00:00" in prompt
+    assert "Timezone: UTC" in prompt
+    assert "UTC offset: +00:00" in prompt
+    assert "Do not infer the current date or time from model training data." in prompt
+
+
+@pytest.mark.asyncio
+async def test_runtime_time_context_is_generated_per_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sebastian.core.base_agent import BaseAgent
+    from sebastian.core.stream_events import TurnDone
+    from sebastian.core.types import Session
+    from sebastian.store.session_store import SessionStore
+
+    class TickingDatetime(datetime):
+        calls = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.calls += 1
+            return cls(2026, 5, 12, 13, 14, 14 + cls.calls, tzinfo=UTC)
+
+        def astimezone(self, tz=None):
+            return self
+
+    class TestAgent(BaseAgent):
+        name = "sebastian"
+        allowed_tools: list[str] | None = []
+
+    import sebastian.core.base_agent as base_agent_module
+
+    monkeypatch.setattr(base_agent_module, "datetime", TickingDatetime)
+
+    store = SessionStore(tmp_path / "sessions")
+    await store.create_session(Session(id="dynamic-time", agent_type="sebastian", title="t"))
+    agent = TestAgent(MagicMock(), store)
+    prompts: list[str] = []
+
+    async def fake_stream(system_prompt, messages, **kwargs):
+        prompts.append(system_prompt)
+        yield TurnDone(full_text="done")
+
+    agent._loop.stream = fake_stream  # type: ignore[attr-defined]
+
+    await agent.run_streaming("first", "dynamic-time")
+    await agent.run_streaming("second", "dynamic-time")
+
+    assert "Current time: 2026-05-12 13:14:15 UTC +00:00" in prompts[0]
+    assert "Current time: 2026-05-12 13:14:16 UTC +00:00" in prompts[1]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 ---
-version: "1.5"
-last_updated: 2026-05-09
+version: "1.7"
+last_updated: 2026-05-12
 status: implemented
 ---
 
@@ -75,11 +75,23 @@ class BaseAgent(ABC):
 
 **调用时机**：`BaseAgent.__init__` 末尾调用一次，结果存入 `self.system_prompt`，运行期不变。
 
+`build_system_prompt()` only produces the static base prompt. Each LLM turn then builds an
+`effective_system_prompt` in `BaseAgent._stream_inner()` by appending dynamic sections:
+
+1. `## Runtime Context` — current server-local date/time, generated fresh per turn.
+2. Resident memory snapshot.
+3. Dynamic memory retrieval.
+4. Session todos.
+
+Runtime Context is intentionally not persisted in session history and not included in
+`build_system_prompt()`, because doing so would freeze time at process startup or soul rebuild.
+
 ### 3.2 各 section 职责
 
 | 方法 | 说明 |
 |------|------|
 | `_persona_section()` | 角色人设段；Sebastian 覆盖此方法，拼接 `BASE_BUTLER_RULES` + soul 文件内容 |
+| `_runtime_context_section()` | 每轮动态运行时事实，当前包含服务器本地日期、时间、时区，并声明训练数据不可作为当前时间依据 |
 | `_guidelines_section()` | 操作指南（通用行为规范） |
 | `_tools_section(gate)` | 当前 Agent 可用工具摘要，按 allowed_tools 过滤 |
 | `_skill_management_section()` | 固定的 Skill CLI bootstrap；仅 Bash-capable Agent 注入，只列 `sebastian skills` 发现/读取入口，不列已安装 Skill 名称，不注入 Skill body |
@@ -122,7 +134,18 @@ def get_tool_specs(self, allowed: set[str] | None = None) -> list[dict]:
 - 如果当前 Agent 不可用 `Bash`，不注入该 section，也不提示模型调用 Skill CLI。
 - bootstrap 是固定短文本，不随已安装 Skill catalog 动态展开；它不会列出已安装 Skill 名称，也不会注入任何 `SKILL.md` 正文。
 
-bootstrap 的发现策略是：遇到可复用的领域任务时，先搜索本地 Skill，再考虑通用工具；`sebastian skills search <query>` 默认只搜本地 catalog。查询应使用 keyword-style，而不是完整自然语言句子。对中文或其他非英文请求，查询应包含用户原始语义词和可能的英文同义词，例如：
+For Bash-capable agents, the bootstrap also defines capability selection order for reusable
+domain tasks:
+
+1. Search local installed Skills with keyword-style queries.
+2. If a plausible Skill exists, read it with `sebastian skills show <name-or-slug> --body`.
+3. If no plausible Skill exists, continue with normal structured tools.
+4. Use browser tools last, unless the user explicitly asks for browser interaction or the task inherently requires operating a web page.
+
+Weather-like requests are included in this rule; a query such as
+`sebastian skills search "天气 weather forecast meteorology"` should be tried before opening a website.
+
+查询应使用 keyword-style，而不是完整自然语言句子。对中文或其他非英文请求，查询应包含用户原始语义词和可能的英文同义词，例如：
 
 ```bash
 sebastian skills search "机票 航班 flight airfare travel"

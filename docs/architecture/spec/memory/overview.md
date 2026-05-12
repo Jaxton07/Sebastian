@@ -142,6 +142,7 @@ BaseAgent 的长期记忆注入分为两个阶段，按固定顺序拼入 system
 
 ```
 base system prompt
+→ [runtime]  当前运行时日期、时间与时区（_runtime_context_section）
 → [resident] 常驻记忆快照（_resident_memory_section）
 → [dynamic]  动态检索记忆（_memory_section）
 → [todos]    当前待办

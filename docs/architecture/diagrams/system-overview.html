@@ -280,14 +280,15 @@
       <div class="card c-blue" style="max-width:280px;">
         <h3>Android App <span class="badge badge-primary">主入口</span></h3>
         <ul>
-          <li>Kotlin + Jetpack Compose</li>
-          <li>ThreePaneScaffold 自适应导航</li>
-          <li>Chat · SubAgents · Settings 三页</li>
-          <li>SSE 实时流 · 本地通知</li>
+          <li>ui/mobile-android · Kotlin + Compose</li>
+          <li>Chat · SubAgents · Settings · Todo 三栏</li>
+          <li>Provider / Binding / Memory 配置</li>
+          <li>Timeline 水合 · 附件输入输出</li>
+          <li>全局 SSE · 状态恢复 · 本地通知</li>
         </ul>
       </div>
       <div class="card c-blue dim" style="max-width:200px;">
-        <h3>iOS App <span class="badge badge-phase">Phase 3</span></h3>
+        <h3>iOS App <span class="badge badge-phase">Planned</span></h3>
         <ul>
           <li>Swift / SwiftUI</li>
           <li>共享后端协议层</li>
@@ -317,11 +318,12 @@
       <div class="card c-purple">
         <h3>REST API 路由</h3>
         <ul>
-          <li>POST /turns (立即返回, 非阻塞)</li>
-          <li>POST /agents/{type}/sessions</li>
-          <li>GET  /sessions · /tasks · /agents</li>
-          <li>POST /approvals/{id}/grant|deny</li>
-          <li>GET/PATCH /llm/providers</li>
+          <li>POST /turns · /sessions/{id}/turns</li>
+          <li>GET /sessions · /agents · /approvals</li>
+          <li>/llm/catalog · /llm/accounts</li>
+          <li>/agents/{type}/llm-binding</li>
+          <li>/memory/components · /memory/settings</li>
+          <li>/attachments · /debug/logging</li>
         </ul>
       </div>
       <div class="card c-purple">
@@ -336,7 +338,7 @@
       <div class="card c-purple">
         <h3>认证 · 审批</h3>
         <ul>
-          <li>JWT 签名 (secret.key Fernet)</li>
+          <li>JWT 签名密钥来自 secret.key</li>
           <li>Owner / Family / Guest 三角色</li>
           <li>Approval 队列 · 超时失效</li>
           <li>PolicyGate Stage-0 校验</li>
@@ -345,10 +347,11 @@
       <div class="card c-purple">
         <h3>启动初始化</h3>
         <ul>
-          <li>Agent 单例实例化</li>
-          <li>Tools / MCPs / Skills 扫描注册</li>
+          <li>DB → Store → EventBus → Agent → SSE</li>
+          <li>AttachmentStore · BrowserSessionManager</li>
+          <li>Tools / MCPs / Skill catalog 加载</li>
           <li>ResidentMemory 快照全量重建</li>
-          <li>SESSION_COMPLETED catch-up sweep</li>
+          <li>SchedulerRunner · consolidation catch-up</li>
         </ul>
       </div>
     </div>
@@ -396,7 +399,7 @@
             <ul>
               <li>编写代码 · 调试 · 构建工具</li>
               <li>沙箱执行 (Docker)</li>
-              <li>Dynamic Tool Factory</li>
+              <li>manifest allowed_tools 白名单</li>
             </ul>
           </div>
           <div class="card c-green dim">
@@ -521,12 +524,12 @@
         <h3>Native Tools</h3>
         <ul>
           <li>Bash · Read · Write · Edit</li>
-          <li>Glob · Grep · TodoWrite</li>
-          <li>delegate_to_agent (Sebastian)</li>
-          <li>spawn_sub_agent (组长)</li>
-          <li>check_sub_agents · inspect_session</li>
-          <li>stop_agent · resume_agent</li>
-          <li>memory_save · memory_search</li>
+          <li>Glob · Grep · todo_read / todo_write</li>
+          <li>send_file · vision_observe_image</li>
+          <li>browser_* · screenshot_send</li>
+          <li>memory_save · memory_search · switch_soul</li>
+          <li>delegate / spawn / ask_parent 协议工具</li>
+          <li>check / inspect / stop / resume</li>
         </ul>
       </div>
       <div class="card c-red">
@@ -541,10 +544,11 @@
       <div class="card c-red">
         <h3>Skills</h3>
         <ul>
-          <li>SKILL.md 格式自然语言步骤</li>
-          <li>skills/ 目录自动注册</li>
-          <li>per-agent 白名单过滤</li>
-          <li>extensions/ 外置目录</li>
+          <li>本地 catalog package · SKILL.md</li>
+          <li>sebastian skills list/search/show/read</li>
+          <li>ClawHub-compatible registry consumer</li>
+          <li>lockfile · 安全解压 · PATH shim</li>
+          <li>不作为 provider tool 直接暴露</li>
         </ul>
       </div>
     </div>
@@ -565,8 +569,10 @@
       <div class="card c-purple">
         <h3>OpenAI 兼容</h3>
         <ul>
-          <li>gpt-4o · 本地模型</li>
+          <li>GPT-5.x / o 系列 / GPT-4o</li>
+          <li>DeepSeek · GLM · 本地模型</li>
           <li>自定义 base_url</li>
+          <li>reasoning_content / think_tags</li>
           <li>openai_compat.py 适配层</li>
         </ul>
       </div>
@@ -575,9 +581,9 @@
         <ul>
           <li>Catalog → Account → Binding 三层</li>
           <li>Fernet 加密 API Key 存储</li>
-          <li>per-agent LLMBinding 绑定</li>
+          <li>per-agent / memory component 绑定</li>
           <li>内置 Catalog JSON Loader</li>
-          <li>运行时切换 · is_default</li>
+          <li>__default__ binding 作为 fallback</li>
         </ul>
       </div>
     </div>
@@ -627,12 +633,12 @@
       <div class="card c-teal">
         <h3>Event Bus</h3>
         <ul>
-          <li>turn.received / delta / response</li>
+          <li>turn.delta / thinking_delta / done</li>
           <li>thinking_block.start / stop</li>
           <li>tool_block.start / stop</li>
           <li>tool.running / executed / failed</li>
           <li>task.created / started / completed</li>
-          <li>approval.requested / granted</li>
+          <li>approval.requested / granted / denied</li>
           <li>session.paused / resumed / stalled</li>
         </ul>
       </div>
@@ -673,11 +679,11 @@
         <h3>SQLite (主数据库)</h3>
         <ul>
           <li>sessions / session_items / tasks</li>
-          <li>checkpoints / session_todos</li>
-          <li>llm_providers · llm_accounts · llm_bindings</li>
-          <li>memory_profiles · memory_episodes</li>
-          <li>memory_decision_log · entity_registry</li>
-          <li>app_settings KV 表</li>
+          <li>checkpoints / session_todos / approvals</li>
+          <li>llm_accounts · custom_models · bindings</li>
+          <li>attachments · events · app_settings</li>
+          <li>memory_profiles · memory_episodes · slots</li>
+          <li>session_consolidations · scheduled_job_runs</li>
         </ul>
       </div>
       <div class="card c-orange">
@@ -685,17 +691,19 @@
         <ul>
           <li>~/.sebastian/data/sebastian.db</li>
           <li>~/.sebastian/data/secret.key (chmod 600)</li>
-          <li>~/.sebastian/data/extensions/</li>
+          <li>~/.sebastian/data/extensions/skills</li>
+          <li>~/.sebastian/data/workspace · attachments</li>
           <li>~/.sebastian/logs/ (三文件轮转)</li>
+          <li>~/.sebastian/run/ (PID · update backups)</li>
           <li>setup wizard 首启自动生成</li>
         </ul>
       </div>
       <div class="card c-orange dim">
-        <h3>ChromaDB <span class="badge badge-phase">Phase 2b</span></h3>
+        <h3>Semantic Memory <span class="badge badge-phase">Planned</span></h3>
         <ul>
-          <li>向量语义记忆检索</li>
-          <li>本地运行，无外部服务</li>
-          <li>embedding 混合检索</li>
+          <li>向量语义记忆检索预留</li>
+          <li>当前未接入运行时</li>
+          <li>后续 embedding 混合检索</li>
         </ul>
       </div>
     </div>
@@ -711,12 +719,13 @@
     <span class="sect-label" style="color:var(--gray);">基础设施</span>
     <div class="row">
       <div class="card c-gray">
-        <h3>Docker Compose</h3>
+        <h3>运行与服务化</h3>
         <ul>
-          <li>sebastian (Gateway + Agents, 主进程)</li>
-          <li>sandbox (代码执行 Docker 隔离)</li>
-          <li>chromadb (向量存储, Phase 2b)</li>
-          <li>voice (faster-whisper STT+TTS, Phase 3)</li>
+          <li>sebastian serve (Gateway + Agents)</li>
+          <li>sebastian service install/start/status</li>
+          <li>launchd / systemd user service</li>
+          <li>Docker sandbox 承载高危执行</li>
+          <li>install.sh · bootstrap.sh · update</li>
         </ul>
       </div>
       <div class="card c-gray">
@@ -731,9 +740,10 @@
       <div class="card c-gray">
         <h3>身份 · 推送</h3>
         <ul>
-          <li>Owner / Family / Guest 三角色 (Phase 1)</li>
+          <li>Owner / Family / Guest 三角色</li>
           <li>声纹 + 人脸识别 · 抗仿冒 (Phase 5)</li>
-          <li>FCM / APNs 移动推送 (Phase 2)</li>
+          <li>Android 本地通知已接入</li>
+          <li>FCM / APNs 远程推送规划中</li>
           <li>Sandbox: 高危操作 Docker 隔离执行</li>
         </ul>
       </div>

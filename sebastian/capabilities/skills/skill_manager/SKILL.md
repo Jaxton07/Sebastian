@@ -59,6 +59,14 @@ sebastian skills update --all
 sebastian skills remove <slug>
 ```
 
+Task-solving policy:
+
+- For reusable domain tasks, search local installed Skills before using browser tools.
+- Use local `show --body` output as the authoritative instructions for using an installed Skill.
+- Do not use registry search or inspect output as a substitute for local usage instructions.
+- Browser tools are the lowest-priority option. Use them only when the user explicitly asks for browser interaction, when the task is inherently about operating a web page, or when local Skills and normal structured tools cannot solve the task.
+- For weather-like requests, prefer a local Skill search such as `sebastian skills search "天气 weather forecast meteorology"` before opening a website.
+
 Rules:
 
 - Do not treat registry search or inspect output as local installed Skill usage instructions.
