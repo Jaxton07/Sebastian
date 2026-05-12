@@ -308,7 +308,7 @@ Dirty 后不允许继续提供 last-known-good resident memory。只有 metadata
 
 ### BaseAgent 测试
 
-- Prompt 顺序：base → resident → dynamic → todos
+- Prompt 顺序：base → runtime → resident → dynamic → todos
 - Dynamic retrieval 返回空 ≠ resident memory 为空
 - 热路径读取 resident Markdown 时不访问 SQLite
 - Dynamic 自动注入过滤 resident 中已出现的 record id / `slot_value` key / canonical bullet

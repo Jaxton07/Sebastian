@@ -595,7 +595,7 @@ Agent 继续执行，本轮无记忆注入。`warning` 级日志包含完整 tra
 | `sebastian/memory/resident/resident_dedupe.py` | `canonical_bullet`、`slot_value_dedupe_key` 等去重纯函数 |
 | `sebastian/memory/retrieval/retrieval.py` | `RetrievalContext` 新增 `resident_record_ids` / `resident_dedupe_keys` / `resident_canonical_bullets` 三字段；`MemorySectionAssembler` 在 `_keep()` 中过滤已注入记录 |
 | `sebastian/memory/consolidation/consolidation.py` | `dirty scope` wrapping：会话沉淀 commit 后标记快照为脏，触发重建 |
-| `sebastian/core/base_agent.py` | `_resident_memory_section()` 读取快照；`_memory_section()` 传入去重字段；`_stream_inner()` 按 base → resident → dynamic → todos 顺序拼接 system prompt |
+| `sebastian/core/base_agent.py` | `_resident_memory_section()` 读取快照；`_memory_section()` 传入去重字段；`_stream_inner()` 按 base → runtime → resident → dynamic → todos 顺序拼接 system prompt |
 | `sebastian/gateway/state.py` | `resident_snapshot_refresher` 单例 |
 | `sebastian/gateway/app.py` | startup 调用 `rebuild()`，shutdown 调用 `cleanup()` |
 | `sebastian/capabilities/tools/memory_save/__init__.py` | 工具 commit 后标记快照脏 |

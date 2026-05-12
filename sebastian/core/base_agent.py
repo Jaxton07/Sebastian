@@ -7,6 +7,7 @@ import logging
 import time
 from abc import ABC
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -193,9 +194,10 @@ class BaseAgent(ABC):
                 "`sebastian skills search <query>` searches local Skills by default. Use "
                 "`--source registry` only when the user wants to find new Skills to install.",
                 "When Bash is available, search local Skills before generic tools for "
-                "reusable domain tasks. This includes travel, flights, hotels, calendar, "
-                "meetings, email, documents, spreadsheets, code, repositories, browser "
-                "automation, and other repeatable workflows.",
+                "reusable domain tasks. For reusable domain tasks, search local Skills "
+                "before using browser tools. This includes weather, travel, flights, "
+                "hotels, calendar, meetings, email, documents, spreadsheets, finance, "
+                "code, repositories, browser automation, and other repeatable workflows.",
                 "Use keyword-style search queries, not full user sentences. If the user uses "
                 "Chinese or other non-English terms, include the user's meaningful keywords "
                 "plus likely English synonyms, separated by spaces.",
@@ -204,9 +206,16 @@ class BaseAgent(ABC):
                 'travel booking"`',
                 '- `sebastian skills search "酒店 住宿 hotel lodging accommodation travel"`',
                 '- `sebastian skills search "日程 会议 calendar schedule meeting"`',
+                "Weather examples:",
+                '- `sebastian skills search "天气 weather forecast meteorology"`',
                 "If local search returns plausible candidates, read the chosen Skill body "
                 "with `sebastian skills show <name-or-slug> --body` before acting.",
-                "If no plausible Skill is found, continue with normal tools.",
+                "If no plausible Skill is found, continue with normal structured tools "
+                "before browser tools.",
+                "Browser tools are the lowest-priority option. Use browser tools when "
+                "the user explicitly asks for browser interaction, when the task is "
+                "inherently about operating a web page, or when local Skills and normal "
+                "structured tools cannot solve the task.",
                 "`install`, `update`, and `remove` are mutation commands. Use them only when "
                 "the user explicitly asks to manage installed Skills.",
                 'Skill management is the exception to the general "prefer Read over Bash for '
@@ -225,6 +234,25 @@ class BaseAgent(ABC):
 
     def _agents_section(self, agent_registry: Mapping[str, Any] | None = None) -> str:  # noqa: ARG002
         return ""
+
+    def _runtime_context_section(self) -> str:
+        now = datetime.now().astimezone()
+        timezone_name = now.tzname() or "local"
+        raw_offset = now.strftime("%z")
+        utc_offset = f"{raw_offset[:3]}:{raw_offset[3:]}" if raw_offset else "unknown"
+        return "\n".join(
+            [
+                "## Runtime Context",
+                "",
+                f"Current date: {now.strftime('%A, %Y-%m-%d')}",
+                f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')} {timezone_name} {utc_offset}",
+                f"Timezone: {timezone_name}",
+                f"UTC offset: {utc_offset}",
+                "",
+                "Treat this section as authoritative for current date and time. "
+                "Do not infer the current date or time from model training data.",
+            ]
+        )
 
     def _knowledge_dir(self) -> Path:
         module_file = inspect.getfile(type(self))
@@ -621,7 +649,8 @@ class BaseAgent(ABC):
             resident_dedupe_keys=resident.rendered_dedupe_keys,
             resident_canonical_bullets=resident.rendered_canonical_bullets,
         )
-        sections = [system_prompt_snapshot]
+        runtime_context_section = self._runtime_context_section()
+        sections = [system_prompt_snapshot, runtime_context_section]
         if resident.content:
             sections.append(resident.content)
         if memory_section:

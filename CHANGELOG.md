@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Agent prompts now receive current runtime date/time every turn and prefer local Skill discovery before browser tools for reusable domain tasks.
+
 ## [0.5.14] - 2026-05-10
 
 ### Fixed

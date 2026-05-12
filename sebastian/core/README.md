@@ -52,7 +52,7 @@ CREATED → PLANNING → RUNNING → COMPLETED
 | 工具结果回灌给 LLM 的内容 | [agent_loop.py](agent_loop.py) 的 `_tool_result_content` 与 provider 图片投影；视觉工具经 [stream_events.py](stream_events.py) 的 `ToolResult.model_content/model_images` 回灌，`artifact` 工具结果只能回灌轻量事实文本 |
 | 多轮 thinking signature 回填逻辑 | [agent_loop.py](agent_loop.py) 处理 `ThinkingBlockStop` 的分支 |
 | BaseAgent 默认行为（system_prompt、run_streaming、thinking_effort 参数） | [base_agent.py](base_agent.py) |
-| 每轮 system prompt 的记忆上下文注入（`_resident_memory_section` 注入常驻快照、`_memory_section` 注入动态检索；注入顺序：base → resident → dynamic → todos） | [base_agent.py](base_agent.py) |
+| 每轮 system prompt 的动态上下文注入（`_runtime_context_section` 注入当前时间；`_resident_memory_section` 注入常驻快照、`_memory_section` 注入动态检索；注入顺序：base → runtime → resident → dynamic → todos） | [base_agent.py](base_agent.py) |
 | 对话上下文读取（`get_context_messages`）和消息写入（`append_message`） | [base_agent.py](base_agent.py) 直接调用 `SessionStore`（不经 `EpisodicMemory`） |
 | Sub-Agent session 执行入口 | [session_runner.py](session_runner.py) 的 `run_agent_session()` |
 | 僵死 session 检测与恢复 | [stalled_watchdog.py](stalled_watchdog.py) |
