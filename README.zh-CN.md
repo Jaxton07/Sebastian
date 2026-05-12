@@ -59,10 +59,10 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统。你只需告诉
 - 🏠 **自托管，隐私优先** — 跑在你自己的机器上，不依赖云服务，数据不外泄。
 - 🤖 **三层 Agent 架构** — Sebastian（总管家）委派组长，组长分派组员。你的目标被**执行**，而不只是被回复。
 - 📱 **Android 原生客户端** — 流式响应实时显示、思考过程可视化、工具调用卡片。Kotlin + Jetpack Compose 构建。
-- 🔧 **零配置扩展** — 新增工具、MCP 服务、Skill、子代理只需创建文件并重启，无需改动核心代码。
+- 🔧 **零配置扩展** — 通过本地包与 manifest 扩展工具、MCP 服务、Skill、子代理，无需改动核心代码。
 - 🧠 **持久记忆系统** — 记住你的偏好与历史对话。画像事实、情景记忆、常驻快照每轮固定注入，越用越懂你。
 - 🔒 **权限与审批机制** — 敏感操作需要主人批准。三档风险分类（低 / 模型判断 / 高风险）。
-- 🚀 **动态工具工厂** — 代理发现缺少工具时，可以自己编写、沙箱测试、注册永久使用 —— 全自动。
+- 🧩 **Skill 包与浏览器工具** — 支持搜索/安装本地 Skill，通过 Playwright 浏览器工具查看网页，并把文件、截图、图片或下载结果发送回时间线。
 
 ## 已实现功能
 
@@ -72,8 +72,11 @@ Sebastian 是一个目标驱动的个人全能 AI 管家系统。你只需告诉
 - ✅ 敏感操作审批通知
 - ✅ LLM 服务商配置（Anthropic、OpenAI、自定义 base URL）
 - ✅ 持久记忆 — 用户画像、情景历史、常驻快照
+- ✅ Skill 包管理器 — 本地 catalog、registry 安装/更新/移除、安全渐进读取
+- ✅ 浏览器工具 — 打开、观察、操作、截图、视觉查看网页，并把下载作为 artifact 发送
+- ✅ 附件能力 — 发送图片/文本文件，接收 Agent 生成的图片/文件/下载 artifact
 - ✅ 会话与任务历史，支持 Timeline 历史恢复
-- ✅ 一键安装、升级与自动回滚
+- ✅ 一键安装、服务注册、升级与自动回滚
 - ✅ 无头服务器初始化
 
 ## ⚡ 快速开始
@@ -95,6 +98,8 @@ https://raw.githubusercontent.com/PhantomButler/Sebastian/main/docs/AGENTIC_DEPL
 Agent 会读取 [Agentic 部署指南](docs/AGENTIC_DEPLOYMENT.md)，帮你补齐
 Python/Conda 等基础环境，运行 Sebastian 安装器，设置开机自启，并引导你完成
 Cloudflare / Tailscale / 局域网访问配置。
+Sebastian 已包含浏览器工具所需的 Playwright Python 依赖，但本机 Chromium runtime
+需要在 Sebastian 运行环境中单独执行 `python -m playwright install chromium` 安装。
 
 ### 手动安装服务端（macOS / Linux）
 
@@ -134,12 +139,60 @@ cd "${TAR%.tar.gz}"
 ## 🧭 常用命令
 
 ```bash
+sebastian version                            # 查看已安装 Sebastian 版本
 sebastian serve                              # 启动服务（首次启动会打开初始化向导）
 sebastian serve --host 0.0.0.0 --port 8823   # 自定义绑定地址
 sebastian init --headless                    # 无头初始化（适用于无图形界面的服务器）
+sebastian status                             # 查看进程/服务状态
+sebastian service status                     # 查看系统服务诊断
 sebastian update                             # 升级到最新版本（失败自动回滚）
 sebastian update --check                     # 仅检查更新，不执行升级
+sebastian skills search flight               # 搜索本地已安装 Skill
+sebastian skills search flight --source registry
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills show flight-search
+sebastian skills show flight-search --body
+sebastian skills read flight-search references/usage.md
+sebastian skills update flight-search
+sebastian skills remove flight-search
 ```
+
+服务化安装时，`sebastian update` 会在升级完成后自动重启 active 的 systemd/launchd 服务。
+安装和升级会创建稳定 CLI shim：`~/.sebastian/bin/sebastian`，并默认把该目录写入支持的
+zsh/bash rc 文件；设置 `SEBASTIAN_SKIP_PATH_SETUP=1` 可跳过 PATH 写入。
+
+运行时配置保存在 `~/.sebastian/.env`；自定义 `SEBASTIAN_DATA_DIR` 时，配置位于
+`<SEBASTIAN_DATA_DIR>/.env`。服务模式读取这里的配置，例如
+`SEBASTIAN_BROWSER_UPSTREAM_PROXY`。源码仓库 `.env` 仅用于本地源码开发。
+
+## 🧩 Skill 包
+
+Sebastian 可以从 ClawHub-compatible registry 安装第三方 Skill：
+
+```bash
+sebastian skills search "flight" --source registry
+sebastian skills inspect flight-search
+sebastian skills install flight-search
+sebastian skills list
+sebastian skills search "flight"
+sebastian skills show flight-search
+sebastian skills show flight-search --body
+sebastian skills read flight-search references/usage.md
+sebastian skills update flight-search
+sebastian skills remove flight-search
+```
+
+`sebastian skills search <query>` 默认只搜索本地已安装 Skill。需要查找新 Skill 时才使用
+`--source registry`。默认 registry 是 `https://clawhub.ai`；远端搜索、检查和安装按
+显式 `--registry <url>` → `SEBASTIAN_SKILLS_REGISTRY_URL` → 默认 registry 的顺序解析。
+变更命令在使用非默认有效 registry 时会要求确认。安装包位于
+`~/.sebastian/data/extensions/skills`，本地 Skill 内容通过 `show --body` 和 `read` 按需读取。
+
+内置 `skill_manager` Skill 可让 Sebastian 按安全流程协助你查看、安装、更新或移除 Skill：
+它会先列出/读取本地说明，安装/更新/移除前要求明确确认，不运行第三方脚本，也不绕过不安全
+registry 状态。
 
 ## 🖥️ 作为系统服务运行
 
@@ -213,9 +266,9 @@ sudo loginctl enable-linger $USER
 | 阶段 | 重点 | 状态 |
 |------|------|------|
 | **Phase 1** | 核心引擎、三层 Agent、Android App、Gateway、SSE | ✅ 已完成 |
-| **Phase 2** | 记忆系统、Forge Agent、推送通知、Skills | 🔄 进行中 |
-| **Phase 3** | 语音管道、iOS App、触发器引擎 | 📋 计划中 |
-| **Phase 4** | 高级触发器、更多子代理、Web UI 完善 | 📋 计划中 |
+| **Phase 2** | 记忆系统、Forge Agent、本地通知、Skills、附件、浏览器工具 | ✅ 基本完成 |
+| **Phase 3** | 语音管道、iOS App、远程推送、面向用户的触发器工作流 | 📋 计划中 |
+| **Phase 4** | 更多子代理、高级主动工作流、Web UI 完善 | 📋 计划中 |
 | **Phase 5** | 生物识别、多因素权限、审计日志 | 📋 计划中 |
 
 ## 📚 文档
